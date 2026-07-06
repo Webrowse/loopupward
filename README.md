@@ -1,36 +1,241 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LoopUpward
 
-## Getting Started
+Turn intentions into progress.
 
-First, run the development server:
+LoopUpward is a personal growth operating system that connects your thoughts, goals, habits, and reflections into one continuous improvement loop.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Most productivity tools start with tasks.
+
+Humans don't.
+
+We start with:
+- "I want to learn a language."
+- "I want to become healthier."
+- "I should read this book."
+- "I don't want another year to disappear."
+
+LoopUpward captures those thoughts, helps turn them into systems, connects them to daily actions, and shows whether life is actually moving forward.
+
+---
+
+## The Loop
+
+```
+Capture
+   ↓
+Organize
+   ↓
+Act
+   ↓
+Reflect
+   ↺
+Improve
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Mind — Capture without friction
 
-## Learn More
+A blank space for thoughts, goals, ideas, quotes, dreams, and plans.
 
-To learn more about Next.js, take a look at the following resources:
+No forced folders.
+No complicated setup.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Capture first. Structure later.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+### Life — Build your own system
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Create your own areas:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Health
+- Career
+- Money
+- Learning
+- Relationships
+- Anything else
+
+Everything is flexible.
+
+A goal can contain goals.
+
+Example:
+
+```
+Learn French
+ └── Reach B2
+      └── Finish grammar book
+           └── Chapter 5 today
+```
+
+Progress flows upward automatically.
+
+---
+
+### Today — Execution layer
+
+Daily actions are connected to larger goals.
+
+Completing:
+
+```
+Practice French today
+```
+
+updates:
+
+```
+French habit
+→ monthly goal
+→ yearly progress
+```
+
+No disconnected todo lists.
+
+---
+
+### Reflect — See your progress
+
+Understand:
+
+- Am I more consistent than last month?
+- Which promises did I keep?
+- What areas need attention?
+
+Supports:
+
+- weekly reviews
+- monthly reviews
+- quarterly/yearly reflection
+- habit history
+- progress trends
+
+---
+
+## Tech Stack
+
+### Frontend
+
+- Next.js
+- TypeScript
+- Tailwind CSS
+
+### Backend
+
+- Rust
+- Axum
+- Tokio
+- SQLx
+- PostgreSQL
+
+### Infrastructure
+
+- Railway
+- Cloudflare
+- Docker
+
+---
+
+## Backend Architecture
+
+```
+Frontend
+    |
+    |
+Rust API
+    |
+    |
+PostgreSQL
+```
+
+LoopUpward uses an event-based model.
+
+Actions create history events.
+
+Reports, streaks, progress, and reflections are generated from real history instead of mutable counters.
+
+---
+
+## Core Concepts
+
+### Life Items
+
+A universal object.
+
+Can represent:
+
+- goal
+- habit
+- book
+- quote
+- project
+- dream
+- financial target
+
+---
+
+### Events
+
+Immutable history:
+
+Examples:
+
+- completed workout
+- finished chapter
+- practiced language
+- reached milestone
+
+Your progress is calculated from what actually happened.
+
+---
+
+## Authentication
+
+- Google Sign-In
+- Custom Rust session system
+- Hashed session tokens
+- Private user data isolation
+
+---
+
+## Monetization Support
+
+Includes:
+
+- subscription system
+- premium access
+- admin grants
+- payment webhook architecture
+
+---
+
+## Data Ownership
+
+Your life data belongs to you.
+
+LoopUpward supports full JSON export.
+
+---
+
+## Status
+
+Early development.
+
+Currently focused on:
+
+- reliability
+- personal use
+- improving the daily growth loop
+
+---
+
+## Philosophy
+
+Notes remember who you wanted to become.
+
+Tasks remember what you had to do.
+
+LoopUpward remembers the journey between them.

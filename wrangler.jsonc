@@ -1,0 +1,17 @@
+{
+  // Cloudflare Workers config for the LoopUpward frontend (OpenNext adapter).
+  // Deploy with: npm run deploy:cf
+  "name": "lifeos",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-05-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "vars": {
+    // Set the real values with `wrangler secret`/dashboard or in a .prod override:
+    // NEXT_PUBLIC_* values are inlined at build time from .env — keep them in
+    // the build environment, not here.
+  }
+}

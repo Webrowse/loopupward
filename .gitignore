@@ -24,6 +24,15 @@
 .DS_Store
 *.pem
 
+# Rust (backend)
+backend/target/
+
+# OpenNext Cloudflare build output
+.open-next/
+
+# Wrangler
+.wrangler/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

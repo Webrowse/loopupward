@@ -1,26 +1,156 @@
 @import "tailwindcss";
 
+/* ————— LoopUpward design tokens: warm paper & ink ————— */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #faf7f1;
+  --surface: #fffdf9;
+  --surface-2: #f2ede3;
+  --ink: #211e19;
+  --ink-2: #6b6355;
+  --ink-3: #9a917f;
+  --line: #e8e2d4;
+  --line-soft: #f0ebdf;
+  --accent: #3d7a50;
+  --accent-deep: #2a5e3b;
+  --accent-soft: #e4efe2;
+  --amber: #c07423;
+  --amber-soft: #f6e9d8;
+  --danger: #b4543e;
+  --shadow-card: 0 1px 2px rgb(33 30 25 / 0.04), 0 4px 16px rgb(33 30 25 / 0.05);
+  --shadow-float: 0 2px 8px rgb(33 30 25 / 0.08), 0 12px 40px rgb(33 30 25 / 0.12);
+}
+
+:root[data-theme="dark"] {
+  --bg: #151310;
+  --surface: #1e1b17;
+  --surface-2: #26221d;
+  --ink: #efeae0;
+  --ink-2: #b3aa99;
+  --ink-3: #7d7566;
+  --line: #302b24;
+  --line-soft: #282420;
+  --accent: #7cb98a;
+  --accent-deep: #9ecfaa;
+  --accent-soft: #223528;
+  --amber: #e0954a;
+  --amber-soft: #33271a;
+  --danger: #d67a63;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.2), 0 4px 16px rgb(0 0 0 / 0.25);
+  --shadow-float: 0 2px 8px rgb(0 0 0 / 0.3), 0 12px 40px rgb(0 0 0 / 0.4);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-soft: var(--accent-soft);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --radius-card: 1.25rem;
+  --radius-btn: 0.875rem;
+  --shadow-card: var(--shadow-card);
+  --shadow-float: var(--shadow-float);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--bg);
+  color-scheme: light;
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv05", "ss01";
+}
+
+/* Display serif for headings that should feel human */
+.font-display {
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
+}
+
+/* Soft paper grain so surfaces don't feel sterile */
+.paper-grain {
+  position: relative;
+}
+.paper-grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.48 0 0 0 0 0.42 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Entry reveal used across screens */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise-in {
+  animation: rise-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Check bloom on completing an action */
+@keyframes bloom {
+  0% { transform: scale(0.6); }
+  55% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.bloom {
+  animation: bloom 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Progress bar fill ease */
+.bar-fill {
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Sheet slide-up */
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.sheet-up {
+  animation: sheet-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fade-in {
+  animation: fade-in 0.25s ease both;
+}
+
+/* Hide scrollbars on horizontal chip rows */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* Tap feedback */
+.pressable {
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+.pressable:active {
+  transform: scale(0.97);
+}
+
+::selection {
+  background: var(--accent-soft);
 }
