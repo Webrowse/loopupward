@@ -42,6 +42,10 @@ pub struct Item {
     pub status: String,
     pub cadence: Option<String>,
     #[serde(default)]
+    pub cadence_days: Option<Vec<i32>>,
+    #[serde(default)]
+    pub cadence_count: Option<i32>,
+    #[serde(default)]
     pub pinned: bool,
     #[serde(default)]
     pub position: i32,
@@ -120,8 +124,8 @@ const KINDS: &[&str] = &[
 ];
 const TRACKERS: &[&str] = &["none", "check", "counter", "percent", "money", "habit", "book"];
 const STATUSES: &[&str] = &["active", "done", "someday", "archived"];
-const HORIZONS: &[&str] = &["life", "year", "quarter", "month", "week"];
-const CADENCES: &[&str] = &["daily", "weekdays", "weekly"];
+const HORIZONS: &[&str] = &["someday", "life", "year", "quarter", "month", "week", "today"];
+const CADENCES: &[&str] = &["daily", "weekdays", "days", "weekly", "monthly"];
 const PERIODS: &[&str] = &["week", "month", "quarter", "year"];
 
 fn bad(msg: impl Into<String>) -> ApiError {
@@ -185,6 +189,16 @@ impl Item {
         ck_in("status", &self.status, STATUSES)?;
         ck_opt_in("horizon", &self.horizon, HORIZONS)?;
         ck_opt_in("cadence", &self.cadence, CADENCES)?;
+        if let Some(days) = &self.cadence_days {
+            if days.len() > 7 || days.iter().any(|d| !(0..=6).contains(d)) {
+                return Err(bad("cadenceDays must be weekday numbers 0–6"));
+            }
+        }
+        if let Some(n) = self.cadence_count {
+            if !(1..=100).contains(&n) {
+                return Err(bad("cadenceCount is out of range"));
+            }
+        }
         if let Some(u) = &self.unit {
             ck_len("unit", u, MAX_UNIT)?;
         }
@@ -257,21 +271,23 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
         r.validate()?;
         sqlx::query(
             "insert into items (id, user_id, area_id, parent_id, kind, tracker, title, note,
-               target, current, unit, horizon, status, cadence, pinned, position,
-               created_at_ms, completed_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+               target, current, unit, horizon, status, cadence, cadence_days, cadence_count,
+               pinned, position, created_at_ms, completed_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
              on conflict (id) do update set
                area_id = excluded.area_id, parent_id = excluded.parent_id,
                kind = excluded.kind, tracker = excluded.tracker, title = excluded.title,
                note = excluded.note, target = excluded.target, current = excluded.current,
                unit = excluded.unit, horizon = excluded.horizon, status = excluded.status,
-               cadence = excluded.cadence, pinned = excluded.pinned,
+               cadence = excluded.cadence, cadence_days = excluded.cadence_days,
+               cadence_count = excluded.cadence_count, pinned = excluded.pinned,
                position = excluded.position, completed_at_ms = excluded.completed_at_ms
              where items.user_id = $2",
         )
         .bind(r.id).bind(user).bind(r.area_id).bind(r.parent_id).bind(&r.kind)
         .bind(&r.tracker).bind(&r.title).bind(&r.note).bind(r.target).bind(r.current)
-        .bind(&r.unit).bind(&r.horizon).bind(&r.status).bind(&r.cadence).bind(r.pinned)
+        .bind(&r.unit).bind(&r.horizon).bind(&r.status).bind(&r.cadence)
+        .bind(&r.cadence_days).bind(r.cadence_count).bind(r.pinned)
         .bind(r.position).bind(r.created_at).bind(r.completed_at)
         .execute(&mut *conn)
         .await?;
@@ -432,7 +448,9 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             kind: r.get("kind"), tracker: r.get("tracker"), title: r.get("title"),
             note: r.get("note"), target: r.get("target"), current: r.get("current"),
             unit: r.get("unit"), horizon: r.get("horizon"), status: r.get("status"),
-            cadence: r.get("cadence"), pinned: r.get("pinned"), position: r.get("position"),
+            cadence: r.get("cadence"), cadence_days: r.get("cadence_days"),
+            cadence_count: r.get("cadence_count"),
+            pinned: r.get("pinned"), position: r.get("position"),
             created_at: r.get("created_at_ms"), completed_at: r.get("completed_at_ms"),
         }).collect();
     let seeds = sqlx::query("select * from seeds where user_id = $1 order by created_at_ms desc")

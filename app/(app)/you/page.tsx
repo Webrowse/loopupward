@@ -23,7 +23,7 @@ export default function YouPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `lifeos-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `loopupward-export-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
     } finally {
@@ -35,7 +35,7 @@ export default function YouPage() {
     user?.premiumUntil && new Date(user.premiumUntil).getFullYear() > new Date().getFullYear() + 50;
 
   return (
-    <div className="rise-in">
+    <div className="rise-in lg:max-w-2xl">
       <header className="pt-6 pb-6">
         <p className="text-sm text-ink-3">The person behind all this</p>
         <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">You</h1>
@@ -124,6 +124,16 @@ export default function YouPage() {
           <Button small variant="soft" onClick={download} disabled={exporting}>
             {exporting ? "Preparing…" : "Export everything"}
           </Button>
+        </div>
+      </Card>
+
+      <Card className="p-5 mb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-ink">New here?</p>
+            <p className="text-xs text-ink-3">Capture → organize → act → reflect</p>
+          </div>
+          <Link href="/guide"><Button small variant="soft">How it works</Button></Link>
         </div>
       </Card>
 

@@ -24,7 +24,7 @@ export default function TodayPage() {
   };
 
   return (
-    <div className="rise-in">
+    <div className="rise-in lg:max-w-2xl">
       <header className="pt-6 pb-6 flex items-start justify-between gap-4">
         <div>
           <p className="text-sm text-ink-3">{prettyDay(day)}</p>
@@ -93,7 +93,8 @@ export default function TodayPage() {
 function ActionRow({
   entry, onToggle, onDelete,
 }: { entry: TodayEntry; onToggle: () => void; onDelete?: () => void }) {
-  const { action, item, carriedFrom, virtualHabit } = entry;
+  const { action, item, carriedFrom, virtualHabit, dayValue, dayTarget, scheduleLabel } = entry;
+  const multi = dayTarget > 1;
   return (
     <div
       className={`group flex items-center gap-3 rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3 shadow-(--shadow-card) transition-opacity ${
@@ -102,16 +103,28 @@ function ActionRow({
     >
       <button
         onClick={onToggle}
-        aria-label={action.done ? "Mark not done" : "Mark done"}
-        className={`pressable grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition-colors ${
+        aria-label={
+          action.done ? "Undo" : multi ? `Log one (${dayValue} of ${dayTarget})` : "Mark done"
+        }
+        className={`pressable relative grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition-colors ${
           action.done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
         }`}
       >
-        {action.done && (
+        {action.done ? (
           <svg className="bloom" width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-        )}
+        ) : multi && dayValue > 0 ? (
+          <svg className="absolute inset-[-2px]" width="24" height="24" viewBox="0 0 24 24">
+            <circle
+              cx="12" cy="12" r="10" fill="none" stroke="var(--accent)" strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeDasharray={2 * Math.PI * 10}
+              strokeDashoffset={2 * Math.PI * 10 * (1 - Math.min(1, dayValue / dayTarget))}
+              transform="rotate(-90 12 12)"
+            />
+          </svg>
+        ) : null}
       </button>
 
       <div className="min-w-0 flex-1">
@@ -128,7 +141,14 @@ function ActionRow({
           </span>
         )}
         <div className="flex gap-2 text-xs text-ink-3">
-          {virtualHabit && <span>habit</span>}
+          {multi && (
+            <span className="tabular-nums font-medium text-accent-deep">
+              {Math.min(dayValue, dayTarget)}/{dayTarget}
+              {item?.unit ? ` ${item.unit}` : ""}
+            </span>
+          )}
+          {scheduleLabel && <span>{scheduleLabel}</span>}
+          {virtualHabit && !scheduleLabel && <span>habit</span>}
           {carriedFrom && <span className="text-amber">carried from {shortDay(carriedFrom)}</span>}
         </div>
       </div>

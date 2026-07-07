@@ -58,7 +58,7 @@ export default function LifePage() {
           <Button onClick={() => setAdding(true)}>Create your first area</Button>
         </EmptyState>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
           {areas.map((area) => (
             <AreaCard key={area.id} areaId={area.id} />
           ))}
@@ -90,7 +90,7 @@ export default function LifePage() {
         </Link>
       </div>
 
-      <Sheet open={adding} onClose={() => setAdding(false)} title="A new room in your life">
+      <Sheet open={adding} onClose={() => setAdding(false)} title="A new room in your life" onSubmit={save}>
         <Field label="Name">
           <input
             className={inputCls}

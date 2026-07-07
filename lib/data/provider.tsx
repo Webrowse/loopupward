@@ -39,6 +39,7 @@ interface LifeContextValue {
 
   addItem: (partial: Partial<Item> & { title: string }) => Item | null;
   updateItem: (id: string, patch: Partial<Item>) => void;
+  moveItem: (id: string, dest: { areaId?: string | null; parentId?: string | null }) => void;
   deleteItem: (id: string) => void;
   completeItem: (id: string) => void;
   reopenItem: (id: string) => void;
@@ -227,7 +228,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     const item: Item = {
       id: uid(), areaId: null, parentId: null, kind: "note", tracker: "none",
       note: "", target: null, current: 0, unit: null, horizon: null,
-      status: "active", cadence: null, pinned: false,
+      status: "active", cadence: null, cadenceDays: null, cadenceCount: null, pinned: false,
       position: db.items.length, createdAt: Date.now(), completedAt: null,
       ...partial,
       title: partial.title.trim(),
@@ -256,6 +257,31 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     if (logIds.length) removeRows("logs", logIds);
     removeRows("items", [id]);
   }, [db, upsertRows, removeRows]);
+
+  /** Reorganize the life tree: change area and/or parent. Guards against cycles. */
+  const moveItem = useCallback((id: string, dest: { areaId?: string | null; parentId?: string | null }) => {
+    const item = db.items.find((i) => i.id === id);
+    if (!item) return;
+    let parentId = dest.parentId !== undefined ? dest.parentId : item.parentId;
+    if (parentId === id) parentId = item.parentId; // cannot be its own parent
+    if (parentId) {
+      // walking up from the new parent must never reach the item itself
+      let cur = db.items.find((i) => i.id === parentId) ?? null;
+      const seen = new Set<string>();
+      while (cur) {
+        if (cur.id === id) { parentId = item.parentId; break; }
+        if (!cur.parentId || seen.has(cur.parentId)) break;
+        seen.add(cur.parentId);
+        cur = db.items.find((i) => i.id === cur!.parentId) ?? null;
+      }
+    }
+    const areaId = dest.areaId !== undefined
+      ? dest.areaId
+      : parentId
+        ? db.items.find((i) => i.id === parentId)?.areaId ?? item.areaId
+        : item.areaId;
+    upsertRows("items", [{ ...item, parentId, areaId }]);
+  }, [db.items, upsertRows]);
 
   const completeItem = useCallback((id: string) => {
     const item = db.items.find((i) => i.id === id);
@@ -303,11 +329,13 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   const toggleEntry = useCallback((entry: TodayEntry) => {
     const day = today();
     if (entry.virtualHabit && entry.item) {
-      // habit: toggle today's log
-      const existing = db.logs.filter((l) => l.itemId === entry.item!.id && l.date === day);
+      // scheduled item: log one unit toward today's target, or undo the day
       if (entry.action.done) {
+        const existing = db.logs.filter(
+          (l) => l.itemId === entry.item!.id && l.date === day && l.op === "add"
+        );
         if (existing.length) removeRows("logs", existing.map((l) => l.id));
-      } else if (!existing.length) {
+      } else {
         upsertRows("logs", [{
           id: uid(), itemId: entry.item.id, date: day, op: "add", value: 1, createdAt: Date.now(),
         }]);
@@ -377,7 +405,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     theme, setTheme,
     addSeed, archiveSeed, plantSeed,
     addArea, updateArea, deleteArea,
-    addItem, updateItem, deleteItem, completeItem, reopenItem, bumpTracker, setTracker,
+    addItem, updateItem, moveItem, deleteItem, completeItem, reopenItem, bumpTracker, setTracker,
     addAction, deleteAction, toggleEntry,
     saveReflection,
     signOut, exportJSON,

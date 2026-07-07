@@ -18,7 +18,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { ready, syncError, dismissSyncError } = useLife();
 
   return (
-    <div className="relative z-[1] mx-auto flex min-h-dvh w-full max-w-lg flex-col lg:max-w-2xl">
+    <div className="relative z-[1] min-h-dvh lg:flex">
       {syncError && (
         <div className="fixed top-[max(0.75rem,env(safe-area-inset-top))] left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2">
           <div className="fade-in flex items-start gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-ink-2 shadow-(--shadow-float)">
@@ -27,11 +27,46 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       )}
-      <main className="flex-1 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-28">
-        {ready ? children : <ShellSkeleton />}
-      </main>
 
-      <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-lg -translate-x-1/2 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:max-w-2xl">
+      {/* desktop: quiet left rail */}
+      <aside className="hidden lg:flex sticky top-0 h-dvh w-56 shrink-0 flex-col border-r border-line-soft px-4 py-8">
+        <Link href="/home" className="px-3 font-display text-xl text-ink">
+          LoopUpward
+        </Link>
+        <nav className="mt-8 flex flex-col gap-1">
+          {TABS.map((tab) => {
+            const active = pathname === tab.href || pathname.startsWith(tab.href + "/");
+            const Icon = tab.icon;
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                className={`pressable flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                  active ? "bg-surface text-accent-deep shadow-(--shadow-card)" : "text-ink-2 hover:bg-surface-2"
+                }`}
+              >
+                <Icon active={active} />
+                {tab.label}
+              </Link>
+            );
+          })}
+        </nav>
+        <Link
+          href="/guide"
+          className="mt-auto px-3 text-xs text-ink-3 hover:text-ink-2"
+        >
+          How it works →
+        </Link>
+      </aside>
+
+      <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col lg:mx-0 lg:min-h-0 lg:max-w-none lg:flex-1">
+        <main className="flex-1 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-28 lg:px-10 lg:pb-12 lg:pt-8">
+          {ready ? children : <ShellSkeleton />}
+        </main>
+      </div>
+
+      {/* mobile: bottom tab bar */}
+      <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-lg -translate-x-1/2 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden">
         <div className="flex items-center justify-around rounded-3xl border border-line-soft bg-surface/90 px-2 py-2 shadow-(--shadow-float) backdrop-blur-xl">
           {TABS.map((tab) => {
             const active = pathname === tab.href || pathname.startsWith(tab.href + "/");

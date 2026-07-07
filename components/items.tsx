@@ -3,8 +3,11 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
-import { Item, ItemKind, KIND_META, TrackerType } from "@/lib/types";
-import { children as childrenOf, formatValue, itemProgress, ownProgress, habitDays, currentStreak } from "@/lib/progress";
+import { Cadence, Horizon, HORIZON_META, Item, ItemKind, KIND_META, TrackerType } from "@/lib/types";
+import {
+  children as childrenOf, currentStreak, formatValue, habitDailyTarget, habitDays,
+  itemProgress, ownProgress, scheduleLabel,
+} from "@/lib/progress";
 import { areaColor } from "@/lib/palette";
 import { Bar } from "./progress";
 import { Button, Chip, Field, Sheet, inputCls } from "./ui";
@@ -20,7 +23,7 @@ export function ItemCard({ item }: { item: Item }) {
   const c = areaColor(area?.color);
   const color = theme === "dark" ? c.fgDark : c.fg;
   const streak =
-    item.kind === "habit" ? currentStreak(habitDays(db.logs, item.id)) : 0;
+    item.kind === "habit" ? currentStreak(habitDays(db.logs, item.id, habitDailyTarget(item))) : 0;
 
   return (
     <button
@@ -45,6 +48,12 @@ export function ItemCard({ item }: { item: Item }) {
               <span className="text-amber font-medium">{streak} day streak</span>
             )}
             {trackerCaption(item)}
+            {scheduleLabel(item) && <span>{scheduleLabel(item)}</span>}
+            {item.horizon && (
+              <span className="rounded-full bg-surface-2 px-1.5 py-px">
+                {HORIZON_META.find((h) => h.value === item.horizon)?.label.toLowerCase() ?? item.horizon}
+              </span>
+            )}
           </div>
         </div>
         {progress !== null && item.tracker !== "habit" && (
@@ -126,9 +135,97 @@ const TRACKER_OPTIONS: { value: TrackerType; label: string; hint: string }[] = [
   { value: "counter", label: "Count", hint: "workout 200 times, read 20 books" },
   { value: "percent", label: "Percent", hint: "course 45% complete" },
   { value: "money", label: "Money", hint: "save toward an amount" },
-  { value: "habit", label: "Daily habit", hint: "streaks, logged day by day" },
+  { value: "habit", label: "Habit", hint: "streaks, logged day by day — 3L water, 20 pushups" },
   { value: "book", label: "Book", hint: "chapter 7 of 20" },
 ];
+
+/* ————— Schedule editor (shared by create/edit sheet and item page) ————— */
+
+const DOW = [
+  { n: 1, label: "M" }, { n: 2, label: "T" }, { n: 3, label: "W" }, { n: 4, label: "T" },
+  { n: 5, label: "F" }, { n: 6, label: "S" }, { n: 0, label: "S" },
+];
+
+export interface ScheduleValue {
+  cadence: Cadence;
+  cadenceDays: number[] | null;
+  cadenceCount: number | null;
+}
+
+export function ScheduleEditor({
+  value, onChange,
+}: { value: ScheduleValue; onChange: (v: ScheduleValue) => void }) {
+  const options: { key: string; cadence: Cadence; label: string }[] = [
+    { key: "none", cadence: null, label: "No schedule" },
+    { key: "daily", cadence: "daily", label: "Every day" },
+    { key: "weekdays", cadence: "weekdays", label: "Weekdays" },
+    { key: "days", cadence: "days", label: "Specific days" },
+    { key: "weekly", cadence: "weekly", label: "Times per week" },
+    { key: "monthly", cadence: "monthly", label: "Monthly" },
+  ];
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((o) => (
+          <Chip
+            key={o.key}
+            active={value.cadence === o.cadence}
+            onClick={() =>
+              onChange({
+                cadence: o.cadence,
+                cadenceDays: o.cadence === "days" ? value.cadenceDays ?? [1, 3, 5] : null,
+                cadenceCount: o.cadence === "weekly" ? value.cadenceCount ?? 3 : null,
+              })
+            }
+          >
+            {o.label}
+          </Chip>
+        ))}
+      </div>
+      {value.cadence === "days" && (
+        <div className="mt-3 flex gap-1.5">
+          {DOW.map((d, i) => {
+            const active = (value.cadenceDays ?? []).includes(d.n);
+            return (
+              <button
+                key={i}
+                type="button"
+                aria-label={`weekday ${d.n}`}
+                onClick={() => {
+                  const cur = new Set(value.cadenceDays ?? []);
+                  if (active) cur.delete(d.n);
+                  else cur.add(d.n);
+                  onChange({ ...value, cadenceDays: [...cur] });
+                }}
+                className={`grid h-9 w-9 place-items-center rounded-full border text-sm font-medium transition-colors ${
+                  active ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line bg-surface text-ink-2"
+                }`}
+              >
+                {d.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {value.cadence === "weekly" && (
+        <div className="mt-3 flex items-center gap-3">
+          {[2, 3, 4, 5, 6].map((n) => (
+            <Chip
+              key={n}
+              active={value.cadenceCount === n}
+              onClick={() => onChange({ ...value, cadenceCount: n })}
+            >
+              {n}×
+            </Chip>
+          ))}
+        </div>
+      )}
+      {value.cadence && (
+        <p className="mt-2 text-xs text-ink-3">It will appear on Today automatically.</p>
+      )}
+    </div>
+  );
+}
 
 const KIND_ORDER: ItemKind[] = [
   "goal", "habit", "project", "book", "dream", "idea", "note", "quote",
@@ -161,6 +258,12 @@ export function ItemSheet({
   const [kind, setKind] = useState<ItemKind>(editing?.kind ?? "goal");
   const [tracker, setTracker] = useState<TrackerType>(editing?.tracker ?? "check");
   const [areaId, setAreaId] = useState<string | null>(editing?.areaId ?? defaultAreaId ?? null);
+  const [horizon, setHorizon] = useState<Horizon>(editing?.horizon ?? null);
+  const [schedule, setSchedule] = useState<ScheduleValue>({
+    cadence: editing?.cadence ?? null,
+    cadenceDays: editing?.cadenceDays ?? null,
+    cadenceCount: editing?.cadenceCount ?? null,
+  });
   const [target, setTarget] = useState(editing?.target != null ? String(editing.target) : "");
   const [unit, setUnit] = useState(editing?.unit ?? "");
   const [note, setNote] = useState(editing?.note ?? "");
@@ -175,6 +278,12 @@ export function ItemSheet({
     setKind(editing?.kind ?? "goal");
     setTracker(editing?.tracker ?? "check");
     setAreaId(editing?.areaId ?? defaultAreaId ?? null);
+    setHorizon(editing?.horizon ?? null);
+    setSchedule({
+      cadence: editing?.cadence ?? null,
+      cadenceDays: editing?.cadenceDays ?? null,
+      cadenceCount: editing?.cadenceCount ?? null,
+    });
     setTarget(editing?.target != null ? String(editing.target) : "");
     setUnit(editing?.unit ?? "");
     setNote(editing?.note ?? "");
@@ -184,18 +293,27 @@ export function ItemSheet({
   const pickKind = (k: ItemKind) => {
     setKind(k);
     if (!touchedTracker) setTracker(KIND_DEFAULT_TRACKER[k] ?? "none");
+    if (k === "habit" && !schedule.cadence) {
+      setSchedule({ cadence: "daily", cadenceDays: null, cadenceCount: null });
+    }
   };
 
   const needsTarget = ["counter", "money", "book", "percent"].includes(tracker);
+  const isHabit = tracker === "habit";
   const canSave = title.trim().length > 0 && (editing ? true : limits.canAddItem);
 
   const save = () => {
+    if (!canSave) return;
     const t = target.trim() === "" ? (tracker === "percent" ? 100 : null) : parseFloat(target);
     const patch = {
       title: title.trim(),
       kind,
       tracker,
       areaId,
+      horizon,
+      cadence: schedule.cadence,
+      cadenceDays: schedule.cadence === "days" ? schedule.cadenceDays : null,
+      cadenceCount: schedule.cadence === "weekly" ? schedule.cadenceCount : null,
       target: Number.isNaN(t as number) ? null : t,
       unit: unit.trim() || (tracker === "money" ? "₹" : null),
       note,
@@ -212,7 +330,7 @@ export function ItemSheet({
   const sortedAreas = useMemo(() => [...db.areas].sort((a, b) => a.position - b.position), [db.areas]);
 
   return (
-    <Sheet open={open} onClose={onClose} title={editing ? "Edit" : "Give it a shape"}>
+    <Sheet open={open} onClose={onClose} title={editing ? "Edit" : "Give it a shape"} onSubmit={save}>
       <Field label="What is it?">
         <input
           className={inputCls}
@@ -272,6 +390,43 @@ export function ItemSheet({
           </Field>
         </div>
       )}
+
+      {isHabit && (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Amount per day">
+            <input
+              className={inputCls}
+              type="number"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              placeholder="1"
+            />
+          </Field>
+          <Field label="Unit">
+            <input
+              className={inputCls}
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              placeholder="glasses, km, pages…"
+            />
+          </Field>
+        </div>
+      )}
+
+      <Field label="When does it appear?">
+        <ScheduleEditor value={schedule} onChange={setSchedule} />
+      </Field>
+
+      <Field label="Planning horizon">
+        <div className="flex flex-wrap gap-1.5">
+          <Chip active={horizon === null} onClick={() => setHorizon(null)}>None</Chip>
+          {HORIZON_META.map((h) => (
+            <Chip key={h.value} active={horizon === h.value} onClick={() => setHorizon(h.value)}>
+              {h.label}
+            </Chip>
+          ))}
+        </div>
+      </Field>
 
       {sortedAreas.length > 0 && !defaultParentId && (
         <Field label="Life area">

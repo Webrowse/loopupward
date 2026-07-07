@@ -65,7 +65,7 @@ export default function SpacePage() {
           </Link>
         </EmptyState>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 lg:columns-2 lg:gap-4 lg:space-y-0 xl:columns-3 [&>*]:lg:mb-4 [&>*]:lg:break-inside-avoid">
           {entries.map((e) => (
             <div
               key={e.id}

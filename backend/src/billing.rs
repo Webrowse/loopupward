@@ -78,7 +78,7 @@ pub async fn subscribe(
             "plan_id": rzp_plan,
             "total_count": total_count,
             "customer_notify": 1,
-            "notes": { "user_id": user.id.to_string(), "lifeos_plan": body.plan },
+            "notes": { "user_id": user.id.to_string(), "loopupward_plan": body.plan },
         }))
         .send()
         .await?
@@ -162,7 +162,7 @@ pub async fn webhook(
     let Some(user_id) = sub["notes"]["user_id"].as_str().and_then(|s| Uuid::parse_str(s).ok()) else {
         return Ok(Json(json!({ "ok": true, "skipped": "no user" })));
     };
-    let plan = sub["notes"]["lifeos_plan"].as_str();
+    let plan = sub["notes"]["loopupward_plan"].as_str();
     let status = sub["status"].as_str().unwrap_or("unknown");
     let period_end: Option<DateTime<Utc>> = sub["current_end"]
         .as_i64()

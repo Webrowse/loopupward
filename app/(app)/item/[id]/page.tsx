@@ -4,32 +4,37 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
-import { KIND_META } from "@/lib/types";
+import { HORIZON_META, Item, KIND_META } from "@/lib/types";
 import {
-  ancestors, bestStreak, children as childrenOf, currentStreak,
-  formatValue, habitDays, itemProgress,
+  ancestors, bestStreak, children as childrenOf, currentStreak, descendants,
+  formatValue, habitDailyTarget, habitDays, itemProgress, scheduleLabel,
 } from "@/lib/progress";
 import { areaColor } from "@/lib/palette";
-import { today } from "@/lib/dates";
-import { ItemCard, ItemSheet, TrackerControls } from "@/components/items";
+import { shortDay, today } from "@/lib/dates";
+import { ItemCard, ItemSheet, ScheduleEditor, TrackerControls } from "@/components/items";
 import { Bar, Heatmap, Ring, StatTile } from "@/components/progress";
-import { Button, EmptyState, Sheet, inputCls } from "@/components/ui";
+import { Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
 export default function ItemPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const {
-    db, theme, updateItem, deleteItem, completeItem, reopenItem, addAction, premium,
+    db, theme, updateItem, moveItem, deleteItem, completeItem, reopenItem, addAction, premium,
   } = useLife();
   const [addingChild, setAddingChild] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [todayPiece, setTodayPiece] = useState("");
 
   const item = db.items.find((i) => i.id === id);
   const kids = useMemo(() => (item ? childrenOf(db, item.id) : []), [db, item]);
   const crumbs = useMemo(() => (item ? ancestors(db, item).reverse() : []), [db, item]);
-  const days = useMemo(() => (item ? habitDays(db.logs, item.id) : new Set<string>()), [db.logs, item]);
+  const days = useMemo(
+    () => (item ? habitDays(db.logs, item.id, habitDailyTarget(item)) : new Set<string>()),
+    [db.logs, item]
+  );
 
   if (!item) {
     return (
@@ -53,8 +58,28 @@ export default function ItemPage() {
     setTodayPiece("");
   };
 
+  /* history: completed actions + log events for this node, newest first */
+  const history = [
+    ...db.actions
+      .filter((a) => a.itemId === item.id && a.done)
+      .map((a) => ({ key: `a${a.id}`, date: a.date, text: a.title, kind: "action" as const, value: 0 })),
+    ...db.logs
+      .filter((l) => l.itemId === item.id)
+      .map((l) => ({
+        key: `l${l.id}`, date: l.date, kind: l.op === "set" ? ("set" as const) : ("log" as const),
+        text: "", value: l.value,
+      })),
+  ]
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+    .slice(0, 30);
+
+  const nextStep =
+    openActions.length > 0
+      ? openActions[0].title
+      : kids.find((k) => k.status === "active")?.title ?? null;
+
   return (
-    <div className="rise-in pb-4">
+    <div className="rise-in pb-4 lg:max-w-2xl">
       {/* breadcrumb — where this lives in your life */}
       <nav className="pt-2 text-xs text-ink-3 flex flex-wrap items-center gap-1">
         {area ? (
@@ -80,6 +105,18 @@ export default function ItemPage() {
           <h1 className="font-display text-[1.7rem] leading-tight text-ink mt-1 break-words">
             {item.title}
           </h1>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-ink-3">
+            {item.horizon && (
+              <button onClick={() => setScheduling(true)} className="rounded-full bg-surface-2 px-2 py-0.5">
+                {HORIZON_META.find((h) => h.value === item.horizon)?.label ?? item.horizon}
+              </button>
+            )}
+            {scheduleLabel(item) && (
+              <button onClick={() => setScheduling(true)} className="rounded-full bg-accent-soft px-2 py-0.5 text-accent-deep">
+                {scheduleLabel(item)}
+              </button>
+            )}
+          </div>
         </div>
         {progress !== null && !isHabit && (
           <Ring value={progress} size={72} stroke={7} color={color} label={`${Math.round(progress * 100)}%`} />
@@ -128,12 +165,20 @@ export default function ItemPage() {
         </div>
       )}
 
-      {/* break off a piece for today */}
+      {/* the next small step */}
       {item.status === "active" && !isHabit && (
         <div className="mb-6">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-3 mb-2">
-            Break off a piece for today
+            {nextStep ? "Next small step" : "Break off a piece for today"}
           </p>
+          {nextStep && (
+            <p className="text-sm text-ink-2 mb-2">
+              → {nextStep}
+              {openActions.length > 0 && (
+                <span className="text-ink-3"> · waiting in <Link href="/today" className="text-accent-deep">Today</Link></span>
+              )}
+            </p>
+          )}
           <div className="flex gap-2">
             <input
               className={inputCls}
@@ -144,11 +189,6 @@ export default function ItemPage() {
             />
             <Button small onClick={addPiece} disabled={!todayPiece.trim()}>Today</Button>
           </div>
-          {openActions.length > 0 && (
-            <p className="text-xs text-ink-3 mt-2">
-              {openActions.length} open in <Link href="/today" className="text-accent-deep">Today</Link>
-            </p>
-          )}
         </div>
       )}
 
@@ -172,6 +212,27 @@ export default function ItemPage() {
         )}
       </section>
 
+      {/* history */}
+      {history.length > 0 && (
+        <section className="mb-6">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-3 mb-2">History</p>
+          <div className="rounded-(--radius-card) border border-line-soft bg-surface px-4 py-2 shadow-(--shadow-card) divide-y divide-line-soft">
+            {history.map((h) => (
+              <div key={h.key} className="flex items-baseline justify-between gap-3 py-2 text-sm">
+                <span className="min-w-0 truncate text-ink-2">
+                  {h.kind === "action" && <>✓ {h.text}</>}
+                  {h.kind === "log" && (
+                    <>+{h.value === 1 && habitDailyTarget(item) === 1 ? "1 day" : formatValue(item, h.value)}</>
+                  )}
+                  {h.kind === "set" && <>→ {formatValue(item, h.value)}</>}
+                </span>
+                <span className="shrink-0 text-xs text-ink-3 tabular-nums">{shortDay(h.date)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* actions */}
       <div className="flex flex-wrap gap-2 border-t border-line-soft pt-4">
         {item.status === "active" ? (
@@ -179,8 +240,10 @@ export default function ItemPage() {
         ) : (
           <Button small variant="soft" onClick={() => reopenItem(item.id)}>Reopen</Button>
         )}
+        <Button small variant="ghost" onClick={() => setMoving(true)}>Move</Button>
+        <Button small variant="ghost" onClick={() => setScheduling(true)}>Schedule</Button>
         {item.status === "active" && (
-          <Button small variant="ghost" onClick={() => updateItem(item.id, { status: "someday" })}>
+          <Button small variant="ghost" onClick={() => updateItem(item.id, { status: "someday", horizon: "someday" })}>
             Someday
           </Button>
         )}
@@ -195,6 +258,13 @@ export default function ItemPage() {
 
       <ItemSheet open={addingChild} onClose={() => setAddingChild(false)} defaultParentId={item.id} />
       <ItemSheet open={editing} onClose={() => setEditing(false)} editing={item} />
+      <MoveSheet open={moving} onClose={() => setMoving(false)} item={item} onMove={moveItem} />
+      <ScheduleSheet
+        open={scheduling}
+        onClose={() => setScheduling(false)}
+        item={item}
+        onSave={(patch) => updateItem(item.id, patch)}
+      />
 
       <Sheet open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Let this go?">
         <p className="text-sm text-ink-2 leading-relaxed mb-4">
@@ -217,6 +287,154 @@ export default function ItemPage() {
         </div>
       </Sheet>
     </div>
+  );
+}
+
+/* ————— Move: reorganize your life anytime ————— */
+
+function MoveSheet({
+  open, onClose, item, onMove,
+}: {
+  open: boolean;
+  onClose: () => void;
+  item: Item;
+  onMove: (id: string, dest: { areaId?: string | null; parentId?: string | null }) => void;
+}) {
+  const { db } = useLife();
+  const [search, setSearch] = useState("");
+
+  // an item can't be nested inside itself or its own descendants
+  const forbidden = useMemo(() => {
+    const set = new Set(descendants(db, item.id).map((d) => d.id));
+    set.add(item.id);
+    return set;
+  }, [db, item.id]);
+
+  const candidates = db.items
+    .filter(
+      (i) =>
+        !forbidden.has(i.id) &&
+        i.status !== "archived" &&
+        i.id !== item.parentId &&
+        (!search.trim() || i.title.toLowerCase().includes(search.trim().toLowerCase()))
+    )
+    .slice(0, 12);
+
+  const parent = item.parentId ? db.items.find((i) => i.id === item.parentId) : null;
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Move">
+      <Field label="Life area">
+        <div className="flex flex-wrap gap-1.5">
+          <Chip active={item.areaId === null} onClick={() => onMove(item.id, { areaId: null })}>
+            None
+          </Chip>
+          {[...db.areas].sort((a, b) => a.position - b.position).map((a) => (
+            <Chip
+              key={a.id}
+              active={item.areaId === a.id}
+              onClick={() => onMove(item.id, { areaId: a.id })}
+            >
+              {a.emoji} {a.name}
+            </Chip>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Lives inside">
+        {parent ? (
+          <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-line px-3.5 py-2.5">
+            <span className="min-w-0 truncate text-sm text-ink">{parent.title}</span>
+            <button
+              className="shrink-0 text-xs text-danger"
+              onClick={() => onMove(item.id, { parentId: null })}
+            >
+              remove parent
+            </button>
+          </div>
+        ) : (
+          <p className="mb-2 text-sm text-ink-3">Top level — it belongs to no bigger thing yet.</p>
+        )}
+        <input
+          className={inputCls}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search for a new parent…"
+        />
+        <div className="mt-2 space-y-1.5">
+          {candidates.map((cand) => (
+            <button
+              key={cand.id}
+              onClick={() => {
+                onMove(item.id, { parentId: cand.id });
+                onClose();
+              }}
+              className="pressable block w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-left text-sm text-ink hover:border-accent"
+            >
+              {KIND_META[cand.kind].emoji} {cand.title}
+            </button>
+          ))}
+          {search.trim() && candidates.length === 0 && (
+            <p className="text-sm text-ink-3">Nothing matches.</p>
+          )}
+        </div>
+      </Field>
+    </Sheet>
+  );
+}
+
+/* ————— Schedule & horizon ————— */
+
+function ScheduleSheet({
+  open, onClose, item, onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  item: Item;
+  onSave: (patch: Partial<Item>) => void;
+}) {
+  return (
+    <Sheet open={open} onClose={onClose} title="When?">
+      <Field label="Planning horizon">
+        <div className="flex flex-wrap gap-1.5">
+          <Chip active={item.horizon === null} onClick={() => onSave({ horizon: null })}>None</Chip>
+          {HORIZON_META.map((h) => (
+            <Chip
+              key={h.value}
+              active={item.horizon === h.value}
+              onClick={() =>
+                onSave({
+                  horizon: h.value,
+                  // moving out of someday makes it active again
+                  ...(item.status === "someday" && h.value !== "someday" ? { status: "active" as const } : {}),
+                  ...(h.value === "someday" ? { status: "someday" as const } : {}),
+                })
+              }
+            >
+              {h.label}
+            </Chip>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-ink-3">
+          The same thing moves through time: someday → year → month → week → today.
+        </p>
+      </Field>
+
+      <Field label="Repeats">
+        <ScheduleEditor
+          value={{ cadence: item.cadence, cadenceDays: item.cadenceDays, cadenceCount: item.cadenceCount }}
+          onChange={(v) =>
+            onSave({
+              cadence: v.cadence,
+              cadenceDays: v.cadence === "days" ? v.cadenceDays : null,
+              cadenceCount: v.cadence === "weekly" ? v.cadenceCount : null,
+            })
+          }
+        />
+      </Field>
+
+      <Button full variant="soft" onClick={onClose}>Done</Button>
+    </Sheet>
   );
 }
 

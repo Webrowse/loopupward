@@ -32,7 +32,27 @@ export type TrackerType =
 
 export type ItemStatus = "active" | "done" | "someday" | "archived";
 
-export type Horizon = "life" | "year" | "quarter" | "month" | "week" | null;
+/** Planning horizon — the same node moves through time: someday → year → … → today. */
+export type Horizon = "someday" | "life" | "year" | "quarter" | "month" | "week" | "today" | null;
+
+export const HORIZON_META: { value: Exclude<Horizon, null>; label: string }[] = [
+  { value: "someday", label: "Someday" },
+  { value: "year", label: "This year" },
+  { value: "quarter", label: "This quarter" },
+  { value: "month", label: "This month" },
+  { value: "week", label: "This week" },
+  { value: "today", label: "Today" },
+];
+
+/**
+ * When an item appears on Today:
+ * - daily      every day (“20 pushups every day”)
+ * - weekdays   Monday–Friday
+ * - days       specific weekdays via cadenceDays (“French Mon/Wed/Fri”)
+ * - weekly     cadenceCount times per week (“exercise 4× a week”)
+ * - monthly    once a month (“pay bills”)
+ */
+export type Cadence = "daily" | "weekdays" | "days" | "weekly" | "monthly" | null;
 
 export interface Area {
   id: string;
@@ -59,8 +79,12 @@ export interface Item {
   unit: string | null;
   horizon: Horizon;
   status: ItemStatus;
-  /** habit cadence — habits appear in Today automatically */
-  cadence: "daily" | "weekdays" | "weekly" | null;
+  /** schedule — anything with a cadence appears on Today automatically */
+  cadence: Cadence;
+  /** for cadence "days": weekday numbers as in Date.getDay() (0 = Sunday) */
+  cadenceDays: number[] | null;
+  /** for cadence "weekly": how many times per week */
+  cadenceCount: number | null;
   pinned: boolean;
   position: number;
   createdAt: number;

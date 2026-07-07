@@ -49,7 +49,7 @@ export default function ReflectPage() {
   const hasAnything = db.actions.length + db.logs.length > 0;
 
   return (
-    <div className="rise-in">
+    <div className="rise-in lg:max-w-2xl">
       <header className="pt-6 pb-4">
         <p className="text-sm text-ink-3">Am I becoming better?</p>
         <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">Reflect</h1>

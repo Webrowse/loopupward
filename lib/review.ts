@@ -1,6 +1,6 @@
 import { DB, Item } from "./types";
 import { Period, periodRange, previousAnchor } from "./dates";
-import { areaOfItem, bestStreak, completionsInRange, habitDays } from "./progress";
+import { areaOfItem, bestStreak, completionsInRange, habitDailyTarget, habitDays } from "./progress";
 
 export interface AreaScore {
   areaId: string | null;
@@ -79,7 +79,7 @@ export function computeReview(db: DB, period: Period, anchor: string, todayStr: 
   const habitItems = db.items.filter((i) => i.kind === "habit" && i.status !== "archived");
   const possible = daysInRangeUpTo(start, end, todayStr);
   const habits: HabitScore[] = habitItems.map((h) => {
-    const all = habitDays(db.logs, h.id);
+    const all = habitDays(db.logs, h.id, habitDailyTarget(h));
     const inRange = [...all].filter((d) => d >= start && d <= end);
     // habits count toward their area's score too
     const areaId = areaOfItem(db, h);

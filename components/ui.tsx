@@ -90,10 +90,23 @@ export function Segmented<T extends string>({
   );
 }
 
-/** Bottom sheet — the app's primary editing surface on mobile. */
+/**
+ * Bottom sheet on mobile, centered dialog on larger screens.
+ * Always fits the viewport (internal scrolling), closes on Escape or outside
+ * click, and — when `onSubmit` is given — submits on Enter from any field
+ * except textareas.
+ */
 export function Sheet({
-  open, onClose, title, children,
-}: { open: boolean; onClose: () => void; title?: string; children: ReactNode }) {
+  open, onClose, title, children, onSubmit, wide,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title?: string;
+  children: ReactNode;
+  /** primary action fired by the Enter key (ignored inside textareas) */
+  onSubmit?: () => void;
+  wide?: boolean;
+}) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -107,16 +120,46 @@ export function Sheet({
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center overflow-hidden sm:p-6">
       <div className="absolute inset-0 bg-ink/30 backdrop-blur-[2px] fade-in" onClick={onClose} />
-      <div className="sheet-up relative w-full sm:max-w-md max-h-[88dvh] overflow-y-auto bg-surface rounded-t-3xl sm:rounded-3xl border border-line-soft shadow-(--shadow-float) pb-[env(safe-area-inset-bottom)]">
-        <div className="sticky top-0 bg-surface pt-3 pb-2 px-5 rounded-t-3xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        onKeyDown={(e) => {
+          if (
+            onSubmit &&
+            e.key === "Enter" &&
+            !e.shiftKey &&
+            !(e.target instanceof HTMLTextAreaElement)
+          ) {
+            e.preventDefault();
+            onSubmit();
+          }
+        }}
+        className={`sheet-up relative flex w-full ${wide ? "sm:max-w-xl" : "sm:max-w-md"} max-h-[88dvh] sm:max-h-[85dvh] flex-col bg-surface rounded-t-3xl sm:rounded-3xl border border-line-soft shadow-(--shadow-float)`}
+      >
+        <div className="shrink-0 pt-3 pb-2 px-5">
           <div className="mx-auto h-1 w-10 rounded-full bg-line sm:hidden" />
-          {title && (
-            <h2 className="font-display text-xl mt-3 text-ink">{title}</h2>
-          )}
+          <div className="mt-3 flex items-start justify-between gap-4">
+            {title ? (
+              <h2 className="font-display text-xl text-ink leading-snug">{title}</h2>
+            ) : (
+              <span />
+            )}
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="pressable -mr-1 grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-3 hover:bg-surface-2 hover:text-ink"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M2 2l10 10M12 2 2 12" />
+              </svg>
+            </button>
+          </div>
         </div>
-        <div className="px-5 pb-6">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+          {children}
+        </div>
       </div>
     </div>
   );
