@@ -9,7 +9,7 @@ import { itemProgress, todayEntries } from "@/lib/progress";
 import { areaColor } from "@/lib/palette";
 import { ItemSheet } from "@/components/items";
 import { Bar, Ring } from "@/components/progress";
-import { Button } from "@/components/ui";
+import { Button, Sheet } from "@/components/ui";
 
 const WHISPERS = [
   "I want to run a marathon",
@@ -27,7 +27,10 @@ export default function HomePage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const inbox = db.seeds
-    .filter((s) => !s.archivedAt && !s.itemId)
+    .filter((s) => s.status === "inbox" && !s.itemId)
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const resting = db.seeds
+    .filter((s) => s.status === "later" && !s.itemId)
     .sort((a, b) => b.createdAt - a.createdAt);
 
   const capture = () => {
@@ -100,6 +103,7 @@ export default function HomePage() {
           )}
 
           {inbox.length > 0 && <SeedInbox seeds={inbox} />}
+          {resting.length > 0 && <RestingSeeds seeds={resting} />}
 
           <div className="mt-8 flex items-center justify-between text-sm lg:hidden">
             <Link href="/space" className="text-ink-3 hover:text-ink-2">Your quiet space →</Link>
@@ -137,8 +141,9 @@ export default function HomePage() {
 /* ————— seed inbox with one-tap triage ————— */
 
 function SeedInbox({ seeds }: { seeds: Seed[] }) {
-  const { addItem, plantSeed, archiveSeed } = useLife();
+  const { addItem, plantSeed, setSeedStatus, deleteSeed } = useLife();
   const [shaping, setShaping] = useState<Seed | null>(null);
+  const [confirming, setConfirming] = useState<Seed | null>(null);
 
   const quick = (seed: Seed, kind: "goal" | "habit" | "note") => {
     const title = seed.text.replace(/^quote:\s*/i, "").trim();
@@ -164,15 +169,20 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
           >
             <p className="text-[0.95rem] text-ink leading-snug">{seed.text}</p>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-sm">
+              <TriageChip onClick={() => setShaping(seed)}>🪴 Organize</TriageChip>
               <TriageChip onClick={() => quick(seed, "goal")}>🎯 Goal</TriageChip>
               <TriageChip onClick={() => quick(seed, "habit")}>🔁 Habit</TriageChip>
-              <TriageChip onClick={() => quick(seed, "note")}>📝 Keep</TriageChip>
-              <TriageChip onClick={() => archiveSeed(seed.id)}>🌙 Later</TriageChip>
+              <TriageChip onClick={() => setSeedStatus(seed.id, "later")} title="Rests below — nothing is lost">
+                🌙 Later
+              </TriageChip>
+              <TriageChip onClick={() => setSeedStatus(seed.id, "archived")} title="Kept forever, out of sight">
+                🫙 Archive
+              </TriageChip>
               <button
-                onClick={() => setShaping(seed)}
-                className="pressable ml-auto text-xs font-medium text-accent-deep"
+                onClick={() => setConfirming(seed)}
+                className="pressable ml-auto text-xs text-ink-3 hover:text-danger"
               >
-                more…
+                delete
               </button>
             </div>
           </div>
@@ -187,14 +197,73 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
           if (shaping) plantSeed(shaping, item);
         }}
       />
+
+      <Sheet
+        open={confirming !== null}
+        onClose={() => setConfirming(null)}
+        title="Delete this thought?"
+        cancelLabel="Keep it"
+        primary={{
+          label: "Delete forever",
+          danger: true,
+          onClick: () => {
+            if (confirming) deleteSeed(confirming.id);
+            setConfirming(null);
+          },
+        }}
+      >
+        <p className="text-sm text-ink-2 leading-relaxed">
+          “{confirming?.text}” will be gone for good. If you just want it out of the way,
+          Archive keeps it safe and hidden instead.
+        </p>
+      </Sheet>
     </section>
   );
 }
 
-function TriageChip({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+/** Seeds resting in "later" — visible, never vanished. */
+function RestingSeeds({ seeds }: { seeds: Seed[] }) {
+  const { setSeedStatus } = useLife();
+  const [openList, setOpenList] = useState(false);
+
+  return (
+    <section className="mt-6">
+      <button
+        onClick={() => setOpenList((v) => !v)}
+        className="pressable flex w-full items-center justify-between text-xs font-medium uppercase tracking-wide text-ink-3"
+      >
+        <span>🌙 Resting — {seeds.length}</span>
+        <span>{openList ? "hide" : "show"}</span>
+      </button>
+      {openList && (
+        <div className="mt-3 space-y-2">
+          {seeds.map((seed) => (
+            <div
+              key={seed.id}
+              className="flex items-center justify-between gap-3 rounded-xl border border-line-soft bg-surface px-4 py-2.5"
+            >
+              <p className="min-w-0 truncate text-sm text-ink-2">{seed.text}</p>
+              <button
+                onClick={() => setSeedStatus(seed.id, "inbox")}
+                className="pressable shrink-0 text-xs font-medium text-accent-deep"
+              >
+                wake ↑
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TriageChip({
+  children, onClick, title,
+}: { children: React.ReactNode; onClick: () => void; title?: string }) {
   return (
     <button
       onClick={onClick}
+      title={title}
       className="pressable rounded-full border border-line bg-bg px-2.5 py-1 text-xs font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
     >
       {children}

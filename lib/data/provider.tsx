@@ -6,7 +6,9 @@ import {
 import {
   api, ApiRequestError, apiConfigured, ApiUser, clearToken, getToken,
 } from "../api";
-import { Action, Area, DB, EMPTY_DB, Item, Reflection, Seed, TableName } from "../types";
+import {
+  Action, Area, DB, EMPTY_DB, Item, JournalEntry, Label, Reflection, Seed, SeedStatus, TableName,
+} from "../types";
 import { CloudRepo } from "./cloud";
 import { LocalRepo, clearLocalDB, localHasData, readLocalDB } from "./local";
 import { Repo } from "./repo";
@@ -30,8 +32,15 @@ interface LifeContextValue {
   setTheme: (t: "light" | "dark") => void;
 
   addSeed: (text: string) => Seed;
-  archiveSeed: (id: string) => void;
+  setSeedStatus: (id: string, status: SeedStatus) => void;
+  deleteSeed: (id: string) => void;
   plantSeed: (seed: Seed, item: Item) => void;
+
+  saveJournal: (date: string, patch: Partial<Omit<JournalEntry, "id" | "date" | "createdAt" | "updatedAt">>) => void;
+
+  addLabel: (name: string, emoji: string, color: string) => Label | null;
+  updateLabel: (id: string, patch: Partial<Label>) => void;
+  deleteLabel: (id: string) => void;
 
   addArea: (name: string, emoji: string, color: string) => Area | null;
   updateArea: (id: string, patch: Partial<Area>) => void;
@@ -46,9 +55,15 @@ interface LifeContextValue {
   bumpTracker: (item: Item, delta: number) => void;
   setTracker: (item: Item, value: number) => void;
 
-  addAction: (title: string, date: string, itemId?: string | null, amount?: number) => void;
+  addAction: (
+    title: string,
+    date: string,
+    itemId?: string | null,
+    amount?: number,
+    opts?: { priority?: number; note?: string }
+  ) => void;
   deleteAction: (id: string) => void;
-  toggleEntry: (entry: TodayEntry) => void;
+  toggleEntry: (entry: TodayEntry, day?: string) => void;
 
   saveReflection: (period: Reflection["period"], periodKey: string, text: string) => void;
 
@@ -186,20 +201,67 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
 
   /* ————— seeds ————— */
   const addSeed = useCallback((text: string): Seed => {
-    const seed: Seed = { id: uid(), text: text.trim(), createdAt: Date.now(), itemId: null, archivedAt: null };
+    const seed: Seed = {
+      id: uid(), text: text.trim(), createdAt: Date.now(),
+      itemId: null, archivedAt: null, status: "inbox",
+    };
     upsertRows("seeds", [seed]);
     return seed;
   }, [upsertRows]);
 
-  const archiveSeed = useCallback((id: string) => {
+  const setSeedStatus = useCallback((id: string, status: SeedStatus) => {
     const seed = db.seeds.find((s) => s.id === id);
-    if (seed) upsertRows("seeds", [{ ...seed, archivedAt: Date.now() }]);
+    if (!seed) return;
+    upsertRows("seeds", [{
+      ...seed,
+      status,
+      archivedAt: status === "archived" ? Date.now() : null,
+    }]);
   }, [db.seeds, upsertRows]);
+
+  const deleteSeed = useCallback((id: string) => removeRows("seeds", [id]), [removeRows]);
 
   const plantSeed = useCallback((seed: Seed, item: Item) => {
     upsertRows("items", [item]);
-    upsertRows("seeds", [{ ...seed, itemId: item.id, archivedAt: Date.now() }]);
+    upsertRows("seeds", [{ ...seed, itemId: item.id, archivedAt: Date.now(), status: "archived" }]);
   }, [upsertRows]);
+
+  /* ————— daily journal ————— */
+  const saveJournal = useCallback((date: string, patch: Partial<Omit<JournalEntry, "id" | "date" | "createdAt" | "updatedAt">>) => {
+    const existing = db.journal.find((j) => j.date === date);
+    const entry: JournalEntry = existing
+      ? { ...existing, ...patch, updatedAt: Date.now() }
+      : {
+          id: uid(), date, roughNotes: "", endOfDay: "", mood: null, energy: null,
+          createdAt: Date.now(), updatedAt: Date.now(),
+          ...patch,
+        };
+    upsertRows("journal", [entry]);
+  }, [db.journal, upsertRows]);
+
+  /* ————— labels ————— */
+  const addLabel = useCallback((name: string, emoji: string, color: string): Label | null => {
+    const label: Label = {
+      id: uid(), name: name.trim(), emoji, color,
+      position: db.labels.length, createdAt: Date.now(),
+    };
+    upsertRows("labels", [label]);
+    return label;
+  }, [db.labels.length, upsertRows]);
+
+  const updateLabel = useCallback((id: string, patch: Partial<Label>) => {
+    const label = db.labels.find((l) => l.id === id);
+    if (label) upsertRows("labels", [{ ...label, ...patch }]);
+  }, [db.labels, upsertRows]);
+
+  const deleteLabel = useCallback((id: string) => {
+    // content survives — items simply lose the tag
+    const tagged = db.items
+      .filter((i) => i.labels.includes(id))
+      .map((i) => ({ ...i, labels: i.labels.filter((l) => l !== id) }));
+    if (tagged.length) upsertRows("items", tagged);
+    removeRows("labels", [id]);
+  }, [db.items, db.labels, upsertRows, removeRows]);
 
   /* ————— areas ————— */
   const addArea = useCallback((name: string, emoji: string, color: string): Area | null => {
@@ -228,7 +290,8 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     const item: Item = {
       id: uid(), areaId: null, parentId: null, kind: "note", tracker: "none",
       note: "", target: null, current: 0, unit: null, horizon: null,
-      status: "active", cadence: null, cadenceDays: null, cadenceCount: null, pinned: false,
+      status: "active", cadence: null, cadenceDays: null, cadenceCount: null,
+      labels: [], pinned: false,
       position: db.items.length, createdAt: Date.now(), completedAt: null,
       ...partial,
       title: partial.title.trim(),
@@ -316,18 +379,24 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   }, [upsertRows]);
 
   /* ————— actions / today ————— */
-  const addAction = useCallback((title: string, date: string, itemId: string | null = null, amount = 1) => {
+  const addAction = useCallback((
+    title: string,
+    date: string,
+    itemId: string | null = null,
+    amount = 1,
+    opts: { priority?: number; note?: string } = {}
+  ) => {
     const action: Action = {
       id: uid(), itemId, title: title.trim(), date, done: false, doneAt: null,
-      amount, createdAt: Date.now(),
+      amount, priority: opts.priority ?? 0, note: opts.note ?? "", createdAt: Date.now(),
     };
     upsertRows("actions", [action]);
   }, [upsertRows]);
 
   const deleteAction = useCallback((id: string) => removeRows("actions", [id]), [removeRows]);
 
-  const toggleEntry = useCallback((entry: TodayEntry) => {
-    const day = today();
+  const toggleEntry = useCallback((entry: TodayEntry, forDay?: string) => {
+    const day = forDay ?? today();
     if (entry.virtualHabit && entry.item) {
       // scheduled item: log one unit toward today's target, or undo the day
       if (entry.action.done) {
@@ -403,7 +472,9 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     ready, db, mode, cloudAvailable, user, premium, owner, limits,
     syncError, dismissSyncError,
     theme, setTheme,
-    addSeed, archiveSeed, plantSeed,
+    addSeed, setSeedStatus, deleteSeed, plantSeed,
+    saveJournal,
+    addLabel, updateLabel, deleteLabel,
     addArea, updateArea, deleteArea,
     addItem, updateItem, moveItem, deleteItem, completeItem, reopenItem, bumpTracker, setTracker,
     addAction, deleteAction, toggleEntry,

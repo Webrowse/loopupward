@@ -11,6 +11,8 @@ pub struct Caps {
     pub actions: i64,
     pub logs: i64,
     pub reflections: i64,
+    pub journal: i64,
+    pub labels: i64,
 }
 
 pub fn caps(premium: bool) -> Caps {
@@ -23,6 +25,8 @@ pub fn caps(premium: bool) -> Caps {
             actions: 200_000,
             logs: 1_000_000,
             reflections: 10_000,
+            journal: 50_000,
+            labels: 500,
         }
     } else {
         Caps {
@@ -33,6 +37,8 @@ pub fn caps(premium: bool) -> Caps {
             actions: 10_000,
             logs: 50_000,
             reflections: 300,
+            journal: 1_000,
+            labels: 10,
         }
     }
 }
@@ -47,6 +53,10 @@ pub fn caps_json(premium: bool) -> Value {
         "actions": c.actions,
         "logs": c.logs,
         "reflections": c.reflections,
+        "journal": c.journal,
+        "labels": c.labels,
+        "journalRoughChars": if premium { MAX_JOURNAL_ROUGH_PREMIUM } else { MAX_JOURNAL_ROUGH_FREE },
+        "journalEodChars": if premium { MAX_JOURNAL_EOD_PREMIUM } else { MAX_JOURNAL_EOD_FREE },
     })
 }
 
@@ -56,6 +66,11 @@ pub const MAX_NOTE: usize = 8_000;
 pub const MAX_SEED_TEXT: usize = 2_000;
 pub const MAX_REFLECTION_TEXT: usize = 20_000;
 pub const MAX_NAME: usize = 120;
+/* journal walls — the human loop stays human-sized */
+pub const MAX_JOURNAL_ROUGH_FREE: usize = 5_000;
+pub const MAX_JOURNAL_EOD_FREE: usize = 3_000;
+pub const MAX_JOURNAL_ROUGH_PREMIUM: usize = 20_000;
+pub const MAX_JOURNAL_EOD_PREMIUM: usize = 10_000;
 pub const MAX_EMOJI: usize = 16;
 pub const MAX_UNIT: usize = 32;
 pub const MAX_BATCH_ROWS: usize = 500;

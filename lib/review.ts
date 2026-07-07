@@ -25,6 +25,14 @@ export interface TrackerDelta {
   endValue: number | null;
 }
 
+export interface JournalStats {
+  daysWritten: number;
+  avgMood: number | null;
+  avgEnergy: number | null;
+  /** most frequent meaningful words across the period's notes */
+  topWords: string[];
+}
+
 export interface ReviewData {
   period: Period;
   start: string;
@@ -39,12 +47,31 @@ export interface ReviewData {
   trackers: TrackerDelta[];
   booksFinished: Item[];
   goalsCompleted: Item[];
+  journal: JournalStats;
   previous: {
     completed: number;
     consistency: number;
     habitDays: Record<string, number>; // itemId -> days done
     trackerAdded: Record<string, number>; // itemId -> units added
   };
+}
+
+const STOPWORDS = new Set(
+  ("the a an and or but if then so to of in on at for with about into from up down out over under again i me my we our you your he she it they them this that these those is are was were be been being have has had do does did will would could should can not no yes today day days really very just also more most some much lot get got make made want wanted going go went think thought feel felt like time year month week new know knew need needs im ive dont didnt cant wont its lets").split(" ")
+);
+
+/** Naive frequency count of meaningful words — no AI, just honest counting. */
+function topWords(text: string, n = 3): string[] {
+  const counts = new Map<string, number>();
+  for (const raw of text.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+    if (raw.length < 4 || STOPWORDS.has(raw)) continue;
+    counts.set(raw, (counts.get(raw) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, c]) => c >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([w]) => w);
 }
 
 function daysInRangeUpTo(start: string, end: string, todayStr: string): number {
@@ -131,6 +158,18 @@ export function computeReview(db: DB, period: Period, anchor: string, todayStr: 
     (i) => ["goal", "project", "milestone"].includes(i.kind) && inRangeDone(i)
   );
 
+  /* journal: the human record of the period */
+  const entries = db.journal.filter((j) => j.date >= start && j.date <= end);
+  const written = entries.filter((j) => j.roughNotes.trim() || j.endOfDay.trim());
+  const moods = entries.map((j) => j.mood).filter((m): m is number => m !== null);
+  const energies = entries.map((j) => j.energy).filter((e): e is number => e !== null);
+  const journal: JournalStats = {
+    daysWritten: written.length,
+    avgMood: moods.length ? moods.reduce((a, b) => a + b, 0) / moods.length : null,
+    avgEnergy: energies.length ? energies.reduce((a, b) => a + b, 0) / energies.length : null,
+    topWords: topWords(written.map((j) => `${j.roughNotes} ${j.endOfDay}`).join(" ")),
+  };
+
   /* consistency = (done actions + habit days) / (planned actions + possible habit days) */
   const habitDone = habits.reduce((s, h) => s + h.daysDone, 0);
   const habitPossible = habits.reduce((s, h) => s + h.daysPossible, 0);
@@ -167,6 +206,7 @@ export function computeReview(db: DB, period: Period, anchor: string, todayStr: 
     trackers,
     booksFinished,
     goalsCompleted,
+    journal,
     previous: {
       completed: prevCompleted,
       consistency: prevPlanned ? prevCompleted / prevPlanned : 0,

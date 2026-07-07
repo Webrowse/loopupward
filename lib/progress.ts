@@ -231,10 +231,10 @@ export function scheduledState(item: Item, logs: Log[], day: string): ScheduledS
   return { due, done, dayValue, dayTarget, label };
 }
 
-export function todayEntries(db: DB, day = today()): TodayEntry[] {
+export function todayEntries(db: DB, day = today(), includeCarried = day === today()): TodayEntry[] {
   const entries: TodayEntry[] = [];
 
-  // 1. real actions for today
+  // 1. real actions for the day
   for (const a of db.actions.filter((a) => a.date === day)) {
     entries.push({
       action: a,
@@ -248,7 +248,8 @@ export function todayEntries(db: DB, day = today()): TodayEntry[] {
   }
 
   // 2. unfinished actions from earlier days — carried forward, never shamed
-  for (const a of db.actions.filter((a) => !a.done && a.date < day)) {
+  //    (only on the real today; browsing other days shows just that day)
+  for (const a of includeCarried ? db.actions.filter((a) => !a.done && a.date < day) : []) {
     entries.push({
       action: a,
       item: a.itemId ? db.items.find((i) => i.id === a.itemId) ?? null : null,
@@ -275,6 +276,8 @@ export function todayEntries(db: DB, day = today()): TodayEntry[] {
         done: state.done,
         doneAt: null,
         amount: 1,
+        priority: 0,
+        note: "",
         createdAt: item.createdAt,
       },
       item,
@@ -288,6 +291,7 @@ export function todayEntries(db: DB, day = today()): TodayEntry[] {
 
   return entries.sort((a, b) => {
     if (a.action.done !== b.action.done) return a.action.done ? 1 : -1;
+    if (a.action.priority !== b.action.priority) return b.action.priority - a.action.priority;
     return a.action.createdAt - b.action.createdAt;
   });
 }

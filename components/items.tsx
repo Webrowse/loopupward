@@ -48,6 +48,10 @@ export function ItemCard({ item }: { item: Item }) {
               <span className="text-amber font-medium">{streak} day streak</span>
             )}
             {trackerCaption(item)}
+            {item.labels.slice(0, 3).map((lid) => {
+              const l = db.labels.find((x) => x.id === lid);
+              return l ? <span key={lid}>{l.emoji} {l.name}</span> : null;
+            })}
             {scheduleLabel(item) && <span>{scheduleLabel(item)}</span>}
             {item.horizon && (
               <span className="rounded-full bg-surface-2 px-1.5 py-px">
@@ -153,10 +157,10 @@ export interface ScheduleValue {
 }
 
 export function ScheduleEditor({
-  value, onChange,
-}: { value: ScheduleValue; onChange: (v: ScheduleValue) => void }) {
+  value, onChange, noneLabel = "No schedule",
+}: { value: ScheduleValue; onChange: (v: ScheduleValue) => void; noneLabel?: string }) {
   const options: { key: string; cadence: Cadence; label: string }[] = [
-    { key: "none", cadence: null, label: "No schedule" },
+    { key: "none", cadence: null, label: noneLabel },
     { key: "daily", cadence: "daily", label: "Every day" },
     { key: "weekdays", cadence: "weekdays", label: "Weekdays" },
     { key: "days", cadence: "days", label: "Specific days" },
@@ -266,6 +270,7 @@ export function ItemSheet({
   });
   const [target, setTarget] = useState(editing?.target != null ? String(editing.target) : "");
   const [unit, setUnit] = useState(editing?.unit ?? "");
+  const [labelIds, setLabelIds] = useState<string[]>(editing?.labels ?? []);
   const [note, setNote] = useState(editing?.note ?? "");
   const [touchedTracker, setTouchedTracker] = useState(Boolean(editing));
 
@@ -286,6 +291,7 @@ export function ItemSheet({
     });
     setTarget(editing?.target != null ? String(editing.target) : "");
     setUnit(editing?.unit ?? "");
+    setLabelIds(editing?.labels ?? []);
     setNote(editing?.note ?? "");
     setTouchedTracker(Boolean(editing));
   }
@@ -316,6 +322,7 @@ export function ItemSheet({
       cadenceCount: schedule.cadence === "weekly" ? schedule.cadenceCount : null,
       target: Number.isNaN(t as number) ? null : t,
       unit: unit.trim() || (tracker === "money" ? "₹" : null),
+      labels: labelIds,
       note,
     };
     if (editing) {
@@ -330,7 +337,13 @@ export function ItemSheet({
   const sortedAreas = useMemo(() => [...db.areas].sort((a, b) => a.position - b.position), [db.areas]);
 
   return (
-    <Sheet open={open} onClose={onClose} title={editing ? "Edit" : "Give it a shape"} onSubmit={save}>
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={editing ? "Edit" : "Give it a shape"}
+      primary={{ label: editing ? "Save" : "Plant it", onClick: save }}
+      primaryDisabled={!canSave}
+    >
       <Field label="What is it?">
         <input
           className={inputCls}
@@ -441,6 +454,26 @@ export function ItemSheet({
         </Field>
       )}
 
+      {db.labels.length > 0 && (
+        <Field label="Labels">
+          <div className="flex flex-wrap gap-1.5">
+            {[...db.labels].sort((a, b) => a.position - b.position).map((l) => (
+              <Chip
+                key={l.id}
+                active={labelIds.includes(l.id)}
+                onClick={() =>
+                  setLabelIds((prev) =>
+                    prev.includes(l.id) ? prev.filter((x) => x !== l.id) : [...prev, l.id]
+                  )
+                }
+              >
+                {l.emoji} {l.name}
+              </Chip>
+            ))}
+          </div>
+        </Field>
+      )}
+
       <Field label="Notes">
         <textarea
           className={`${inputCls} min-h-20 resize-none`}
@@ -455,10 +488,6 @@ export function ItemSheet({
           You&apos;ve reached the free plan&apos;s active items. Upgrade for unlimited.
         </p>
       )}
-
-      <Button full onClick={save} disabled={!canSave}>
-        {editing ? "Save" : "Plant it"}
-      </Button>
     </Sheet>
   );
 }

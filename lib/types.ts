@@ -85,13 +85,18 @@ export interface Item {
   cadenceDays: number[] | null;
   /** for cadence "weekly": how many times per week */
   cadenceCount: number | null;
+  /** user-created label ids (labels are tags, independent of areas) */
+  labels: string[];
   pinned: boolean;
   position: number;
   createdAt: number;
   completedAt: number | null;
 }
 
-/** A quick capture. Lives in the inbox until planted into the system. */
+/** A quick capture. Personal thoughts never vanish silently:
+ *  inbox → later (resting) → archived (kept, hidden) → deleted only with confirmation. */
+export type SeedStatus = "inbox" | "later" | "archived";
+
 export interface Seed {
   id: string;
   text: string;
@@ -99,6 +104,7 @@ export interface Seed {
   /** set when converted into an item */
   itemId: string | null;
   archivedAt: number | null;
+  status: SeedStatus;
 }
 
 /** One concrete thing to do on a given day. The Today view is made of these. */
@@ -112,6 +118,9 @@ export interface Action {
   doneAt: number | null;
   /** how much completing this adds to the linked item's `current` */
   amount: number;
+  /** 0 = normal, 1 = high */
+  priority: number;
+  note: string;
   createdAt: number;
 }
 
@@ -138,6 +147,33 @@ export interface Reflection {
   updatedAt: number;
 }
 
+/** The daily journal: what I planned, did, thought, felt. One entry per day. */
+export interface JournalEntry {
+  id: string;
+  /** ISO date YYYY-MM-DD */
+  date: string;
+  /** free writing — "Today I'm thinking about…" */
+  roughNotes: string;
+  /** end-of-day reflection (went well / could improve / learned) */
+  endOfDay: string;
+  /** 1–5 */
+  mood: number | null;
+  /** 1–5 */
+  energy: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** User-created tag: Rust, Family, French B2… independent of life areas. */
+export interface Label {
+  id: string;
+  name: string;
+  color: string;
+  emoji: string;
+  position: number;
+  createdAt: number;
+}
+
 export interface DB {
   areas: Area[];
   items: Item[];
@@ -145,6 +181,8 @@ export interface DB {
   actions: Action[];
   logs: Log[];
   reflections: Reflection[];
+  journal: JournalEntry[];
+  labels: Label[];
 }
 
 export const EMPTY_DB: DB = {
@@ -154,6 +192,8 @@ export const EMPTY_DB: DB = {
   actions: [],
   logs: [],
   reflections: [],
+  journal: [],
+  labels: [],
 };
 
 export type TableName = keyof DB;

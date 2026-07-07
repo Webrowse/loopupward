@@ -46,6 +46,8 @@ pub struct Item {
     #[serde(default)]
     pub cadence_count: Option<i32>,
     #[serde(default)]
+    pub labels: Vec<Uuid>,
+    #[serde(default)]
     pub pinned: bool,
     #[serde(default)]
     pub position: i32,
@@ -61,6 +63,12 @@ pub struct Seed {
     pub created_at: i64,
     pub item_id: Option<Uuid>,
     pub archived_at: Option<i64>,
+    #[serde(default = "inbox")]
+    pub status: String,
+}
+
+fn inbox() -> String {
+    "inbox".into()
 }
 
 #[derive(Serialize, Deserialize)]
@@ -75,6 +83,10 @@ pub struct ActionRow {
     pub done_at: Option<i64>,
     #[serde(default = "one")]
     pub amount: f64,
+    #[serde(default)]
+    pub priority: i32,
+    #[serde(default)]
+    pub note: String,
     pub created_at: i64,
 }
 
@@ -105,6 +117,36 @@ pub struct Reflection {
     pub updated_at: i64,
 }
 
+/// One journal entry per user per day (Postgres table: daily_entries).
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalEntry {
+    pub id: Uuid,
+    pub date: String,
+    #[serde(default)]
+    pub rough_notes: String,
+    #[serde(default)]
+    pub end_of_day: String,
+    pub mood: Option<i32>,
+    pub energy: Option<i32>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Label {
+    pub id: Uuid,
+    pub name: String,
+    #[serde(default)]
+    pub color: String,
+    #[serde(default)]
+    pub emoji: String,
+    #[serde(default)]
+    pub position: i32,
+    pub created_at: i64,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DbPayload {
@@ -114,6 +156,8 @@ pub struct DbPayload {
     pub actions: Vec<ActionRow>,
     pub logs: Vec<LogRow>,
     pub reflections: Vec<Reflection>,
+    pub journal: Vec<JournalEntry>,
+    pub labels: Vec<Label>,
 }
 
 /* ————— validation ————— */
@@ -214,7 +258,40 @@ impl Seed {
         if self.text.trim().is_empty() {
             return Err(bad("seed text is required"));
         }
-        ck_len("text", &self.text, MAX_SEED_TEXT)
+        ck_len("text", &self.text, MAX_SEED_TEXT)?;
+        ck_in("status", &self.status, &["inbox", "later", "archived"])
+    }
+}
+
+impl JournalEntry {
+    fn validate(&self, premium: bool) -> ApiResult<()> {
+        ck_date(&self.date)?;
+        let (rough_max, eod_max) = if premium {
+            (MAX_JOURNAL_ROUGH_PREMIUM, MAX_JOURNAL_EOD_PREMIUM)
+        } else {
+            (MAX_JOURNAL_ROUGH_FREE, MAX_JOURNAL_EOD_FREE)
+        };
+        ck_len("daily notes", &self.rough_notes, rough_max)?;
+        ck_len("reflection", &self.end_of_day, eod_max)?;
+        for (field, v) in [("mood", self.mood), ("energy", self.energy)] {
+            if let Some(n) = v {
+                if !(1..=5).contains(&n) {
+                    return Err(bad(format!("{field} must be 1–5")));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Label {
+    fn validate(&self) -> ApiResult<()> {
+        if self.name.trim().is_empty() {
+            return Err(bad("label name is required"));
+        }
+        ck_len("name", &self.name, MAX_NAME)?;
+        ck_len("emoji", &self.emoji, MAX_EMOJI)?;
+        ck_len("color", &self.color, 32)
     }
 }
 
@@ -224,7 +301,11 @@ impl ActionRow {
             return Err(bad("action title is required"));
         }
         ck_len("title", &self.title, MAX_TITLE)?;
+        ck_len("note", &self.note, MAX_NOTE)?;
         ck_date(&self.date)?;
+        if !(0..=2).contains(&self.priority) {
+            return Err(bad("priority is out of range"));
+        }
         ck_num("amount", self.amount)
     }
 }
@@ -272,22 +353,23 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
         sqlx::query(
             "insert into items (id, user_id, area_id, parent_id, kind, tracker, title, note,
                target, current, unit, horizon, status, cadence, cadence_days, cadence_count,
-               pinned, position, created_at_ms, completed_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+               labels, pinned, position, created_at_ms, completed_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
              on conflict (id) do update set
                area_id = excluded.area_id, parent_id = excluded.parent_id,
                kind = excluded.kind, tracker = excluded.tracker, title = excluded.title,
                note = excluded.note, target = excluded.target, current = excluded.current,
                unit = excluded.unit, horizon = excluded.horizon, status = excluded.status,
                cadence = excluded.cadence, cadence_days = excluded.cadence_days,
-               cadence_count = excluded.cadence_count, pinned = excluded.pinned,
+               cadence_count = excluded.cadence_count, labels = excluded.labels,
+               pinned = excluded.pinned,
                position = excluded.position, completed_at_ms = excluded.completed_at_ms
              where items.user_id = $2",
         )
         .bind(r.id).bind(user).bind(r.area_id).bind(r.parent_id).bind(&r.kind)
         .bind(&r.tracker).bind(&r.title).bind(&r.note).bind(r.target).bind(r.current)
         .bind(&r.unit).bind(&r.horizon).bind(&r.status).bind(&r.cadence)
-        .bind(&r.cadence_days).bind(r.cadence_count).bind(r.pinned)
+        .bind(&r.cadence_days).bind(r.cadence_count).bind(&r.labels).bind(r.pinned)
         .bind(r.position).bind(r.created_at).bind(r.completed_at)
         .execute(&mut *conn)
         .await?;
@@ -299,15 +381,15 @@ async fn upsert_seeds(conn: &mut PgConnection, user: Uuid, rows: &[Seed]) -> Api
     for r in rows {
         r.validate()?;
         sqlx::query(
-            "insert into seeds (id, user_id, text, item_id, created_at_ms, archived_at_ms)
-             values ($1, $2, $3, $4, $5, $6)
+            "insert into seeds (id, user_id, text, item_id, created_at_ms, archived_at_ms, status)
+             values ($1, $2, $3, $4, $5, $6, $7)
              on conflict (id) do update set
                text = excluded.text, item_id = excluded.item_id,
-               archived_at_ms = excluded.archived_at_ms
+               archived_at_ms = excluded.archived_at_ms, status = excluded.status
              where seeds.user_id = $2",
         )
         .bind(r.id).bind(user).bind(&r.text).bind(r.item_id)
-        .bind(r.created_at).bind(r.archived_at)
+        .bind(r.created_at).bind(r.archived_at).bind(&r.status)
         .execute(&mut *conn)
         .await?;
     }
@@ -318,15 +400,18 @@ async fn upsert_actions(conn: &mut PgConnection, user: Uuid, rows: &[ActionRow])
     for r in rows {
         r.validate()?;
         sqlx::query(
-            "insert into actions (id, user_id, item_id, title, date, done, done_at_ms, amount, created_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            "insert into actions (id, user_id, item_id, title, date, done, done_at_ms, amount,
+               priority, note, created_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
              on conflict (id) do update set
                item_id = excluded.item_id, title = excluded.title, date = excluded.date,
-               done = excluded.done, done_at_ms = excluded.done_at_ms, amount = excluded.amount
+               done = excluded.done, done_at_ms = excluded.done_at_ms, amount = excluded.amount,
+               priority = excluded.priority, note = excluded.note
              where actions.user_id = $2",
         )
         .bind(r.id).bind(user).bind(r.item_id).bind(&r.title).bind(&r.date)
-        .bind(r.done).bind(r.done_at).bind(r.amount).bind(r.created_at)
+        .bind(r.done).bind(r.done_at).bind(r.amount).bind(r.priority).bind(&r.note)
+        .bind(r.created_at)
         .execute(&mut *conn)
         .await?;
     }
@@ -345,6 +430,51 @@ async fn upsert_logs(conn: &mut PgConnection, user: Uuid, rows: &[LogRow]) -> Ap
         )
         .bind(r.id).bind(user).bind(r.item_id).bind(&r.date).bind(&r.op)
         .bind(r.value).bind(r.created_at)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn upsert_journal(
+    conn: &mut PgConnection,
+    user: Uuid,
+    rows: &[JournalEntry],
+    premium: bool,
+) -> ApiResult<()> {
+    for r in rows {
+        r.validate(premium)?;
+        // one entry per day: a second device writing the same date merges into it
+        sqlx::query(
+            "insert into daily_entries (id, user_id, date, rough_notes, end_of_day, mood, energy,
+               created_at_ms, updated_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+             on conflict (user_id, date) do update set
+               rough_notes = excluded.rough_notes, end_of_day = excluded.end_of_day,
+               mood = excluded.mood, energy = excluded.energy,
+               updated_at_ms = excluded.updated_at_ms",
+        )
+        .bind(r.id).bind(user).bind(&r.date).bind(&r.rough_notes).bind(&r.end_of_day)
+        .bind(r.mood).bind(r.energy).bind(r.created_at).bind(r.updated_at)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn upsert_labels(conn: &mut PgConnection, user: Uuid, rows: &[Label]) -> ApiResult<()> {
+    for r in rows {
+        r.validate()?;
+        sqlx::query(
+            "insert into labels (id, user_id, name, color, emoji, position, created_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7)
+             on conflict (id) do update set
+               name = excluded.name, color = excluded.color, emoji = excluded.emoji,
+               position = excluded.position
+             where labels.user_id = $2",
+        )
+        .bind(r.id).bind(user).bind(&r.name).bind(&r.color).bind(&r.emoji)
+        .bind(r.position).bind(r.created_at)
         .execute(&mut *conn)
         .await?;
     }
@@ -372,8 +502,16 @@ async fn upsert_reflections(conn: &mut PgConnection, user: Uuid, rows: &[Reflect
 
 /* ————— caps enforcement (checked inside the transaction, then commit) ————— */
 
+/// Client table name → Postgres table name.
+fn sql_table(table: &str) -> &str {
+    match table {
+        "journal" => "daily_entries",
+        other => other,
+    }
+}
+
 async fn count(conn: &mut PgConnection, table: &str, user: Uuid) -> ApiResult<i64> {
-    let sql = format!("select count(*) as n from {table} where user_id = $1");
+    let sql = format!("select count(*) as n from {} where user_id = $1", sql_table(table));
     let row = sqlx::query(&sql).bind(user).fetch_one(conn).await?;
     Ok(row.get("n"))
 }
@@ -393,6 +531,8 @@ async fn enforce_caps(
             "actions" => c.actions,
             "logs" => c.logs,
             "reflections" => c.reflections,
+            "journal" => c.journal,
+            "labels" => c.labels,
             _ => i64::MAX,
         };
         if n > cap {
@@ -449,7 +589,7 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             note: r.get("note"), target: r.get("target"), current: r.get("current"),
             unit: r.get("unit"), horizon: r.get("horizon"), status: r.get("status"),
             cadence: r.get("cadence"), cadence_days: r.get("cadence_days"),
-            cadence_count: r.get("cadence_count"),
+            cadence_count: r.get("cadence_count"), labels: r.get("labels"),
             pinned: r.get("pinned"), position: r.get("position"),
             created_at: r.get("created_at_ms"), completed_at: r.get("completed_at_ms"),
         }).collect();
@@ -458,13 +598,15 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
         .iter().map(|r| Seed {
             id: r.get("id"), text: r.get("text"), created_at: r.get("created_at_ms"),
             item_id: r.get("item_id"), archived_at: r.get("archived_at_ms"),
+            status: r.get("status"),
         }).collect();
     let actions = sqlx::query("select * from actions where user_id = $1")
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| ActionRow {
             id: r.get("id"), item_id: r.get("item_id"), title: r.get("title"),
             date: r.get("date"), done: r.get("done"), done_at: r.get("done_at_ms"),
-            amount: r.get("amount"), created_at: r.get("created_at_ms"),
+            amount: r.get("amount"), priority: r.get("priority"), note: r.get("note"),
+            created_at: r.get("created_at_ms"),
         }).collect();
     let logs = sqlx::query("select * from logs where user_id = $1")
         .bind(user).fetch_all(&state.pool).await?
@@ -478,8 +620,21 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             id: r.get("id"), period: r.get("period"), period_key: r.get("period_key"),
             text: r.get("text"), created_at: r.get("created_at_ms"), updated_at: r.get("updated_at_ms"),
         }).collect();
+    let journal = sqlx::query("select * from daily_entries where user_id = $1 order by date")
+        .bind(user).fetch_all(&state.pool).await?
+        .iter().map(|r| JournalEntry {
+            id: r.get("id"), date: r.get("date"), rough_notes: r.get("rough_notes"),
+            end_of_day: r.get("end_of_day"), mood: r.get("mood"), energy: r.get("energy"),
+            created_at: r.get("created_at_ms"), updated_at: r.get("updated_at_ms"),
+        }).collect();
+    let labels = sqlx::query("select * from labels where user_id = $1 order by position")
+        .bind(user).fetch_all(&state.pool).await?
+        .iter().map(|r| Label {
+            id: r.get("id"), name: r.get("name"), color: r.get("color"), emoji: r.get("emoji"),
+            position: r.get("position"), created_at: r.get("created_at_ms"),
+        }).collect();
 
-    Ok(DbPayload { areas, items, seeds, actions, logs, reflections })
+    Ok(DbPayload { areas, items, seeds, actions, logs, reflections, journal, labels })
 }
 
 #[derive(Deserialize)]
@@ -521,6 +676,10 @@ async fn apply_upsert(
         "actions" => upsert_actions(tx.as_mut(), user.id, &parse::<ActionRow>(rows)?).await,
         "logs" => upsert_logs(tx.as_mut(), user.id, &parse::<LogRow>(rows)?).await,
         "reflections" => upsert_reflections(tx.as_mut(), user.id, &parse::<Reflection>(rows)?).await,
+        "journal" => {
+            upsert_journal(tx.as_mut(), user.id, &parse::<JournalEntry>(rows)?, user.premium()).await
+        }
+        "labels" => upsert_labels(tx.as_mut(), user.id, &parse::<Label>(rows)?).await,
         _ => Err(ApiError::NotFound),
     }
 }
@@ -536,14 +695,19 @@ pub async fn remove(
     Path(table): Path<String>,
     Json(body): Json<IdsBody>,
 ) -> ApiResult<Json<Value>> {
-    const TABLES: &[&str] = &["areas", "items", "seeds", "actions", "logs", "reflections"];
+    const TABLES: &[&str] = &[
+        "areas", "items", "seeds", "actions", "logs", "reflections", "journal", "labels",
+    ];
     if !TABLES.contains(&table.as_str()) {
         return Err(ApiError::NotFound);
     }
     if body.ids.len() > MAX_BATCH_ROWS {
         return Err(ApiError::BadRequest(format!("Max {MAX_BATCH_ROWS} ids per request")));
     }
-    let sql = format!("delete from {table} where user_id = $1 and id = any($2)");
+    let sql = format!(
+        "delete from {} where user_id = $1 and id = any($2)",
+        sql_table(&table)
+    );
     sqlx::query(&sql)
         .bind(user.id)
         .bind(&body.ids)
@@ -559,7 +723,8 @@ pub async fn import(
     Json(body): Json<DbPayload>,
 ) -> ApiResult<Json<Value>> {
     let total = body.areas.len() + body.items.len() + body.seeds.len()
-        + body.actions.len() + body.logs.len() + body.reflections.len();
+        + body.actions.len() + body.logs.len() + body.reflections.len()
+        + body.journal.len() + body.labels.len();
     if total > MAX_IMPORT_ROWS {
         return Err(ApiError::BadRequest(format!("Import too large (max {MAX_IMPORT_ROWS} rows)")));
     }
@@ -570,10 +735,12 @@ pub async fn import(
     upsert_actions(tx.as_mut(), user.id, &body.actions).await?;
     upsert_logs(tx.as_mut(), user.id, &body.logs).await?;
     upsert_reflections(tx.as_mut(), user.id, &body.reflections).await?;
+    upsert_journal(tx.as_mut(), user.id, &body.journal, user.premium()).await?;
+    upsert_labels(tx.as_mut(), user.id, &body.labels).await?;
     enforce_caps(
         &mut tx,
         &user,
-        &["areas", "items", "seeds", "actions", "logs", "reflections"],
+        &["areas", "items", "seeds", "actions", "logs", "reflections", "journal", "labels"],
     )
     .await?;
     tx.commit().await?;

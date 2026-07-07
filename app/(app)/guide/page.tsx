@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BackLink } from "@/components/ui";
 
 const STEPS = [
   {
@@ -40,7 +41,10 @@ const STEPS = [
 export default function GuidePage() {
   return (
     <div className="rise-in lg:max-w-2xl">
-      <header className="pt-6 pb-8">
+      <div className="pt-2">
+        <BackLink fallback="/home" />
+      </div>
+      <header className="pt-4 pb-8">
         <p className="text-sm text-ink-3">How LoopUpward works</p>
         <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">
           One loop, repeated gently

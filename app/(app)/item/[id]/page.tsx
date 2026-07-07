@@ -13,7 +13,7 @@ import { areaColor } from "@/lib/palette";
 import { shortDay, today } from "@/lib/dates";
 import { ItemCard, ItemSheet, ScheduleEditor, TrackerControls } from "@/components/items";
 import { Bar, Heatmap, Ring, StatTile } from "@/components/progress";
-import { Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
+import { BackLink, Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
 export default function ItemPage() {
   const { id } = useParams<{ id: string }>();
@@ -80,6 +80,10 @@ export default function ItemPage() {
 
   return (
     <div className="rise-in pb-4 lg:max-w-2xl">
+      <div className="pt-2">
+        <BackLink fallback={area ? `/life/${area.id}` : "/life"} />
+      </div>
+
       {/* breadcrumb — where this lives in your life */}
       <nav className="pt-2 text-xs text-ink-3 flex flex-wrap items-center gap-1">
         {area ? (
@@ -266,25 +270,25 @@ export default function ItemPage() {
         onSave={(patch) => updateItem(item.id, patch)}
       />
 
-      <Sheet open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Let this go?">
-        <p className="text-sm text-ink-2 leading-relaxed mb-4">
+      <Sheet
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Let this go?"
+        cancelLabel="Keep"
+        primary={{
+          label: "Delete",
+          danger: true,
+          onClick: () => {
+            const dest = crumbs.length ? `/item/${crumbs[crumbs.length - 1].id}` : area ? `/life/${area.id}` : "/life";
+            deleteItem(item.id);
+            router.push(dest);
+          },
+        }}
+      >
+        <p className="text-sm text-ink-2 leading-relaxed">
           “{item.title}” will be removed.
           {kids.length > 0 && ` The ${kids.length} things inside move up a level — they aren't lost.`}
         </p>
-        <div className="flex gap-2">
-          <Button
-            variant="danger"
-            full
-            onClick={() => {
-              const dest = crumbs.length ? `/item/${crumbs[crumbs.length - 1].id}` : area ? `/life/${area.id}` : "/life";
-              deleteItem(item.id);
-              router.push(dest);
-            }}
-          >
-            Delete
-          </Button>
-          <Button variant="ghost" full onClick={() => setConfirmDelete(false)}>Keep</Button>
-        </div>
       </Sheet>
     </div>
   );
@@ -323,7 +327,13 @@ function MoveSheet({
   const parent = item.parentId ? db.items.find((i) => i.id === item.parentId) : null;
 
   return (
-    <Sheet open={open} onClose={onClose} title="Move">
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Move"
+      cancelLabel="Close"
+      primary={{ label: "Done", onClick: onClose }}
+    >
       <Field label="Life area">
         <div className="flex flex-wrap gap-1.5">
           <Chip active={item.areaId === null} onClick={() => onMove(item.id, { areaId: null })}>
@@ -394,7 +404,13 @@ function ScheduleSheet({
   onSave: (patch: Partial<Item>) => void;
 }) {
   return (
-    <Sheet open={open} onClose={onClose} title="When?">
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="When?"
+      cancelLabel="Close"
+      primary={{ label: "Done", onClick: onClose }}
+    >
       <Field label="Planning horizon">
         <div className="flex flex-wrap gap-1.5">
           <Chip active={item.horizon === null} onClick={() => onSave({ horizon: null })}>None</Chip>
@@ -433,7 +449,6 @@ function ScheduleSheet({
         />
       </Field>
 
-      <Button full variant="soft" onClick={onClose}>Done</Button>
     </Sheet>
   );
 }

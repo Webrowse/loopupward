@@ -84,13 +84,21 @@ export default function LifePage() {
         </section>
       )}
 
+      <LabelsSection />
+
       <div className="mt-10 text-sm">
         <Link href="/space" className="text-ink-3 hover:text-ink-2">
           Quotes, principles, memories → your quiet space
         </Link>
       </div>
 
-      <Sheet open={adding} onClose={() => setAdding(false)} title="A new room in your life" onSubmit={save}>
+      <Sheet
+        open={adding}
+        onClose={() => setAdding(false)}
+        title="A new room in your life"
+        primary={{ label: "Create", onClick: save }}
+        primaryDisabled={!name.trim()}
+      >
         <Field label="Name">
           <input
             className={inputCls}
@@ -134,7 +142,6 @@ export default function LifePage() {
             ))}
           </div>
         </Field>
-        <Button full onClick={save} disabled={!name.trim()}>Create</Button>
       </Sheet>
     </div>
   );
@@ -169,5 +176,143 @@ function AreaCard({ areaId }: { areaId: string }) {
         </div>
       )}
     </Link>
+  );
+}
+
+/* ————— labels: user-created tags, independent of areas ————— */
+
+function LabelsSection() {
+  const { db, addLabel, updateLabel, deleteLabel, theme } = useLife();
+  const [managing, setManaging] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newEmoji, setNewEmoji] = useState("🏷️");
+  const [newColor, setNewColor] = useState(AREA_COLORS[0].key);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const labels = [...db.labels].sort((a, b) => a.position - b.position);
+  const dark = theme === "dark";
+
+  const create = () => {
+    if (!newName.trim()) return;
+    addLabel(newName, newEmoji, newColor);
+    setNewName("");
+    setNewEmoji("🏷️");
+  };
+
+  return (
+    <section className="mt-10">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-xs font-medium uppercase tracking-wide text-ink-3">Labels</h2>
+        <Button small variant="ghost" onClick={() => setManaging(true)}>
+          {labels.length === 0 ? "+ Create labels" : "Manage"}
+        </Button>
+      </div>
+      {labels.length === 0 ? (
+        <p className="text-sm text-ink-3">
+          Tags that cut across areas: Rust, Family, French B2, Confidence…
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {labels.map((l) => {
+            const c = areaColor(l.color);
+            const count = db.items.filter((i) => i.labels.includes(l.id) && i.status !== "archived").length;
+            return (
+              <Link
+                key={l.id}
+                href={`/label/${l.id}`}
+                className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-soft px-3 py-1.5 text-sm text-ink"
+                style={{ background: dark ? c.bgDark : c.bg }}
+              >
+                {l.emoji} {l.name}
+                {count > 0 && <span className="text-xs text-ink-2">{count}</span>}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      <Sheet
+        open={managing}
+        onClose={() => { setManaging(false); setConfirmDelete(null); }}
+        title="Labels"
+        cancelLabel="Close"
+        primary={{ label: "Done", onClick: () => { setManaging(false); setConfirmDelete(null); } }}
+      >
+        <Field label="New label">
+          <div className="flex gap-2">
+            <input
+              className={`${inputCls} w-14 text-center`}
+              value={newEmoji}
+              onChange={(e) => setNewEmoji(e.target.value.slice(0, 4))}
+              aria-label="Label emoji"
+            />
+            <input
+              className={inputCls}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && create()}
+              placeholder="Rust, Family, French B2…"
+            />
+            <Button small onClick={create} disabled={!newName.trim()}>Add</Button>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {AREA_COLORS.map((c) => (
+              <button
+                key={c.key}
+                onClick={() => setNewColor(c.key)}
+                aria-label={c.label}
+                className={`h-6 w-6 rounded-full border-2 ${newColor === c.key ? "border-ink" : "border-transparent"}`}
+                style={{ background: c.fg }}
+              />
+            ))}
+          </div>
+        </Field>
+
+        {labels.length > 0 && (
+          <Field label="Your labels">
+            <div className="space-y-2">
+              {labels.map((l) => (
+                <div key={l.id} className="rounded-xl border border-line px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="w-10 bg-transparent text-center text-base outline-none"
+                      defaultValue={l.emoji}
+                      onBlur={(e) => updateLabel(l.id, { emoji: e.target.value.slice(0, 4) || "🏷️" })}
+                      aria-label="Emoji"
+                    />
+                    <input
+                      className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none"
+                      defaultValue={l.name}
+                      onBlur={(e) => e.target.value.trim() && updateLabel(l.id, { name: e.target.value.trim() })}
+                      aria-label="Name"
+                    />
+                    {confirmDelete === l.id ? (
+                      <span className="flex shrink-0 items-center gap-2 text-xs">
+                        <button className="text-danger font-medium" onClick={() => { deleteLabel(l.id); setConfirmDelete(null); }}>
+                          confirm
+                        </button>
+                        <button className="text-ink-3" onClick={() => setConfirmDelete(null)}>keep</button>
+                      </span>
+                    ) : (
+                      <button
+                        className="shrink-0 text-xs text-ink-3 hover:text-danger"
+                        onClick={() => setConfirmDelete(l.id)}
+                      >
+                        delete
+                      </button>
+                    )}
+                  </div>
+                  {confirmDelete === l.id && (
+                    <p className="mt-1.5 text-xs text-ink-3">
+                      Items keep living — they just lose this tag.
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Field>
+        )}
+      </Sheet>
+    </section>
   );
 }

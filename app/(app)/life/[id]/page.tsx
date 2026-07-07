@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
 import { areaColor, AREA_COLORS } from "@/lib/palette";
 import { ItemCard, ItemSheet } from "@/components/items";
-import { Button, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
+import { BackLink, Button, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
 export default function AreaPage() {
   const { id } = useParams<{ id: string }>();
@@ -33,8 +33,11 @@ export default function AreaPage() {
 
   return (
     <div className="rise-in">
+      <div className="pt-2">
+        <BackLink fallback="/life" label="Your life" />
+      </div>
       <header
-        className="mt-4 rounded-(--radius-card) p-5 border border-line-soft"
+        className="mt-3 rounded-(--radius-card) p-5 border border-line-soft"
         style={{ background: dark ? c.bgDark : c.bg }}
       >
         <div className="flex items-start justify-between">
@@ -73,7 +76,13 @@ export default function AreaPage() {
         defaultAreaId={area.id}
       />
 
-      <Sheet open={editing} onClose={() => { setEditing(false); setConfirmDelete(false); }} title="Edit area">
+      <Sheet
+        open={editing}
+        onClose={() => { setEditing(false); setConfirmDelete(false); }}
+        title="Edit area"
+        cancelLabel="Close"
+        primary={{ label: "Done", onClick: () => { setEditing(false); setConfirmDelete(false); } }}
+      >
         <Field label="Name">
           <input
             className={inputCls}

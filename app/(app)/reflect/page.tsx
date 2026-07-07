@@ -188,6 +188,34 @@ export default function ReflectPage() {
             </section>
           )}
 
+          {/* the human record: journal, mood, words */}
+          {review.journal.daysWritten > 0 && (
+            <section className="rounded-(--radius-card) border border-line-soft bg-surface p-5 shadow-(--shadow-card) mb-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-3 mb-3">
+                In your own words
+              </p>
+              <p className="font-display text-lg text-ink leading-snug">
+                You wrote on {review.journal.daysWritten}{" "}
+                {review.journal.daysWritten === 1 ? "day" : "days"}
+                {review.journal.topWords.length > 0 && (
+                  <> — your notes most often mentioned{" "}
+                    <span className="text-accent-deep">{review.journal.topWords.join(", ")}</span>.
+                  </>
+                )}
+              </p>
+              {(review.journal.avgMood !== null || review.journal.avgEnergy !== null) && (
+                <div className="mt-3 flex gap-5 text-sm text-ink-2">
+                  {review.journal.avgMood !== null && (
+                    <span>Mood {["😞", "😕", "😐", "🙂", "😄"][Math.round(review.journal.avgMood) - 1]} {review.journal.avgMood.toFixed(1)}/5</span>
+                  )}
+                  {review.journal.avgEnergy !== null && (
+                    <span>Energy ⚡ {review.journal.avgEnergy.toFixed(1)}/5</span>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
           {/* activity heatmap */}
           <section className="rounded-(--radius-card) border border-line-soft bg-surface p-5 shadow-(--shadow-card) mb-3">
             <p className="text-xs font-medium uppercase tracking-wide text-ink-3 mb-3">
