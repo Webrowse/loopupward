@@ -99,23 +99,34 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.48 0 0 0 0 0.42 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* Entry reveal used across screens */
+/* Entry reveal used across screens.
+   No "forwards"/"both" fill mode: once an animation holds its end keyframe,
+   getComputedStyle reports the *interpolated matrix*, not the literal
+   keyword `none`, even when the keyframe itself says `transform: none` —
+   and any non-`none` computed transform, including an identity matrix,
+   makes the element a new containing block for position:fixed descendants.
+   A page wrapped in .rise-in would otherwise silently confine any Sheet
+   modal opened inside it to the page's own content height instead of the
+   real viewport, clipping the sheet's header/footer. Letting the animation
+   end without a fill mode reverts the element to its true, unanimated
+   `transform: none` — visually identical here since every end keyframe is a
+   no-op transform anyway. */
 @keyframes rise-in {
   from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: none; }
 }
 .rise-in {
-  animation: rise-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rise-in 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Check bloom on completing an action */
 @keyframes bloom {
   0% { transform: scale(0.6); }
   55% { transform: scale(1.15); }
-  100% { transform: scale(1); }
+  100% { transform: none; }
 }
 .bloom {
-  animation: bloom 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: bloom 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Progress bar fill ease */
@@ -126,10 +137,10 @@ body {
 /* Sheet slide-up */
 @keyframes sheet-up {
   from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+  to { transform: none; }
 }
 .sheet-up {
-  animation: sheet-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: sheet-up 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes fade-in {
   from { opacity: 0; }

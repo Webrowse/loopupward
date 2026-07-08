@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useLife } from "@/lib/data/provider";
 import { addDays, prettyDay, shortDay, startOfWeek, today } from "@/lib/dates";
+import { areaColor } from "@/lib/palette";
 import { todayEntries, TodayEntry } from "@/lib/progress";
 import { Cadence } from "@/lib/types";
 import { DailyJournal } from "@/components/journal";
 import { ScheduleEditor, ScheduleValue } from "@/components/items";
 import { Ring } from "@/components/progress";
-import { Button, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
+import { EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
 const DOW_LETTER = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -169,16 +170,23 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
   const [schedule, setSchedule] = useState<ScheduleValue>({ cadence: null, cadenceDays: null, cadenceCount: null });
   const [priority, setPriority] = useState(0);
   const [note, setNote] = useState("");
+  const [titleError, setTitleError] = useState(false);
+  const titleRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setTitle("");
     setSchedule({ cadence: null, cadenceDays: null, cadenceCount: null });
     setPriority(0);
     setNote("");
+    setTitleError(false);
   };
 
   const save = () => {
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      setTitleError(true);
+      titleRef.current?.focus();
+      return;
+    }
     if (schedule.cadence === null) {
       // one time
       addAction(title, day, null, 1, { priority, note });
@@ -204,16 +212,20 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
       onClose={() => { reset(); onClose(); }}
       title="Plan something"
       primary={{ label: schedule.cadence === null ? "Add" : "Create routine", onClick: save }}
-      primaryDisabled={!title.trim()}
     >
       <Field label="What?">
         <input
-          className={inputCls}
+          ref={titleRef}
+          className={`${inputCls} ${titleError ? "border-danger focus:border-danger" : ""}`}
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => { setTitle(e.target.value); if (titleError) setTitleError(false); }}
           placeholder="Call someone, 20 pushups, pay bills…"
           autoFocus
+          aria-invalid={titleError}
         />
+        {titleError && (
+          <p className="mt-1.5 text-xs text-danger">This needs a name before it can go on your day.</p>
+        )}
       </Field>
 
       <Field label="How often?">
@@ -261,8 +273,11 @@ function PriorityChip({ label, active, onClick }: { label: string; active: boole
 function ActionRow({
   entry, onToggle, onDelete,
 }: { entry: TodayEntry; onToggle: () => void; onDelete?: () => void }) {
+  const { db, theme } = useLife();
   const { action, item, carriedFrom, virtualHabit, dayValue, dayTarget, scheduleLabel } = entry;
   const multi = dayTarget > 1;
+  const dark = theme === "dark";
+  const itemLabels = item ? [...new Set(item.labels)] : [];
   return (
     <div
       className={`group flex items-center gap-3 rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3 shadow-(--shadow-card) transition-opacity ${
@@ -319,6 +334,20 @@ function ActionRow({
             </span>
           )}
           {action.note && <span className="truncate">{action.note}</span>}
+          {itemLabels.slice(0, 2).map((lid) => {
+            const l = db.labels.find((x) => x.id === lid);
+            if (!l) return null;
+            const c = areaColor(l.color);
+            return (
+              <span
+                key={lid}
+                className="shrink-0 rounded-full px-1.5 py-px"
+                style={{ background: dark ? c.bgDark : c.bg, color: dark ? c.fgDark : c.fg }}
+              >
+                {l.emoji} {l.name}
+              </span>
+            );
+          })}
           {scheduleLabel && <span className="shrink-0">{scheduleLabel}</span>}
           {virtualHabit && !scheduleLabel && <span>habit</span>}
           {carriedFrom && <span className="shrink-0 text-amber">carried from {shortDay(carriedFrom)}</span>}

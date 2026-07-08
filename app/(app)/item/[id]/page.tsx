@@ -6,11 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
 import { HORIZON_META, Item, KIND_META } from "@/lib/types";
 import {
-  ancestors, bestStreak, children as childrenOf, currentStreak, descendants,
+  ancestors, bestStreak, children as childrenOf, currentStreak, dayLogged, descendants,
   formatValue, habitDailyTarget, habitDays, itemProgress, scheduleLabel,
 } from "@/lib/progress";
 import { areaColor } from "@/lib/palette";
-import { shortDay, today } from "@/lib/dates";
+import { dayFromMs, shortDay, today } from "@/lib/dates";
 import { ItemCard, ItemSheet, ScheduleEditor, TrackerControls } from "@/components/items";
 import { Bar, Heatmap, Ring, StatTile } from "@/components/progress";
 import { BackLink, Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
@@ -20,12 +20,14 @@ export default function ItemPage() {
   const router = useRouter();
   const {
     db, theme, updateItem, moveItem, deleteItem, completeItem, reopenItem, addAction, premium,
+    toggleHabitDay,
   } = useLife();
   const [addingChild, setAddingChild] = useState(false);
   const [editing, setEditing] = useState(false);
   const [moving, setMoving] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmRetire, setConfirmRetire] = useState(false);
   const [todayPiece, setTodayPiece] = useState("");
 
   const item = db.items.find((i) => i.id === id);
@@ -151,6 +153,7 @@ export default function ItemPage() {
       {/* habit heatmap & streaks */}
       {isHabit && (
         <div className="mb-4 space-y-3">
+          <HabitTodayControl item={item} onToggle={toggleHabitDay} />
           <div className="grid grid-cols-2 gap-3">
             <StatTile label="Current streak" value={`${currentStreak(days)}`} sub="days" accent />
             <StatTile label="Best streak" value={`${bestStreak(days)}`} sub="days" />
@@ -159,7 +162,11 @@ export default function ItemPage() {
             <p className="text-xs font-medium uppercase tracking-wide text-ink-3 mb-3">
               Last {premium ? 16 : 8} weeks
             </p>
-            <Heatmap counts={new Map([...days].map((d) => [d, 1]))} weeks={premium ? 16 : 8} />
+            <Heatmap
+              counts={new Map([...days].map((d) => [d, 1]))}
+              weeks={premium ? 16 : 8}
+              sinceDay={dayFromMs(item.createdAt)}
+            />
             {!premium && (
               <p className="text-xs text-ink-3 mt-2">
                 <Link href="/pricing" className="text-accent-deep font-medium">Premium</Link> keeps your full history.
@@ -240,7 +247,11 @@ export default function ItemPage() {
       {/* actions */}
       <div className="flex flex-wrap gap-2 border-t border-line-soft pt-4">
         {item.status === "active" ? (
-          <Button small variant="soft" onClick={() => completeItem(item.id)}>Mark complete</Button>
+          isHabit ? (
+            <Button small variant="ghost" onClick={() => setConfirmRetire(true)}>Retire habit</Button>
+          ) : (
+            <Button small variant="soft" onClick={() => completeItem(item.id)}>Mark complete</Button>
+          )
         ) : (
           <Button small variant="soft" onClick={() => reopenItem(item.id)}>Reopen</Button>
         )}
@@ -290,6 +301,56 @@ export default function ItemPage() {
           {kids.length > 0 && ` The ${kids.length} things inside move up a level — they aren't lost.`}
         </p>
       </Sheet>
+
+      {isHabit && (
+        <Sheet
+          open={confirmRetire}
+          onClose={() => setConfirmRetire(false)}
+          title="Retire this habit?"
+          cancelLabel="Keep going"
+          primary={{
+            label: "Retire habit",
+            danger: true,
+            onClick: () => { completeItem(item.id); setConfirmRetire(false); },
+          }}
+        >
+          <p className="text-sm text-ink-2 leading-relaxed">
+            “{item.title}” will stop appearing on Today and its streak ends here. This is
+            different from logging today — if you just did it today, close this and use
+            “Done today” instead. You can bring the habit back anytime with Reopen.
+          </p>
+        </Sheet>
+      )}
+    </div>
+  );
+}
+
+/** Log today's occurrence, kept distinct from retiring the habit for good. */
+function HabitTodayControl({
+  item, onToggle,
+}: { item: Item; onToggle: (item: Item, day: string, currentlyDone: boolean) => void }) {
+  const { db } = useLife();
+  const day = today();
+  const dayTarget = habitDailyTarget(item);
+  const dayValue = dayLogged(db.logs, item.id, day);
+  const done = dayValue >= dayTarget;
+  const multi = dayTarget > 1;
+
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-(--radius-card) border border-line-soft bg-surface p-4 shadow-(--shadow-card)">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-ink">
+          {done ? "Done today ✓" : multi ? `${dayValue}/${dayTarget} today` : "Not done today"}
+        </p>
+        {multi && (
+          <div className="mt-1.5">
+            <Bar value={dayValue / dayTarget} height={5} />
+          </div>
+        )}
+      </div>
+      <Button small variant={done ? "soft" : "primary"} onClick={() => onToggle(item, day, done)}>
+        {done ? "Undo" : multi ? "Log one" : "Mark done today"}
+      </Button>
     </div>
   );
 }

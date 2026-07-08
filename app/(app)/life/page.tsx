@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useLife } from "@/lib/data/provider";
 import { AREA_COLORS, areaColor } from "@/lib/palette";
@@ -16,18 +16,29 @@ export default function LifePage() {
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("🌿");
   const [color, setColor] = useState(AREA_COLORS[0].key);
+  const [nameError, setNameError] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const areas = [...db.areas].sort((a, b) => a.position - b.position);
   const unfiled = db.items.filter(
     (i) => !i.areaId && !i.parentId && i.status === "active"
   );
 
-  const save = () => {
-    if (!name.trim()) return;
-    addArea(name, emoji, color);
+  const closeAdding = () => {
+    setAdding(false);
     setName("");
     setEmoji("🌿");
-    setAdding(false);
+    setNameError(false);
+  };
+
+  const save = () => {
+    if (!name.trim()) {
+      setNameError(true);
+      nameRef.current?.focus();
+      return;
+    }
+    addArea(name, emoji, color);
+    closeAdding();
   };
 
   return (
@@ -94,19 +105,23 @@ export default function LifePage() {
 
       <Sheet
         open={adding}
-        onClose={() => setAdding(false)}
+        onClose={closeAdding}
         title="A new room in your life"
         primary={{ label: "Create", onClick: save }}
-        primaryDisabled={!name.trim()}
       >
         <Field label="Name">
           <input
-            className={inputCls}
+            ref={nameRef}
+            className={`${inputCls} ${nameError ? "border-danger focus:border-danger" : ""}`}
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => { setName(e.target.value); if (nameError) setNameError(false); }}
             placeholder="Health, Money, French…"
             autoFocus
+            aria-invalid={nameError}
           />
+          {nameError && (
+            <p className="mt-1.5 text-xs text-danger">Give this room a name.</p>
+          )}
         </Field>
         <Field label="Symbol">
           <div className="flex flex-wrap gap-1.5">
@@ -188,15 +203,22 @@ function LabelsSection() {
   const [newEmoji, setNewEmoji] = useState("🏷️");
   const [newColor, setNewColor] = useState(AREA_COLORS[0].key);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [newNameError, setNewNameError] = useState(false);
+  const newNameRef = useRef<HTMLInputElement>(null);
 
   const labels = [...db.labels].sort((a, b) => a.position - b.position);
   const dark = theme === "dark";
 
   const create = () => {
-    if (!newName.trim()) return;
+    if (!newName.trim()) {
+      setNewNameError(true);
+      newNameRef.current?.focus();
+      return;
+    }
     addLabel(newName, newEmoji, newColor);
     setNewName("");
     setNewEmoji("🏷️");
+    setNewNameError(false);
   };
 
   return (
@@ -247,14 +269,19 @@ function LabelsSection() {
               aria-label="Label emoji"
             />
             <input
-              className={inputCls}
+              ref={newNameRef}
+              className={`${inputCls} ${newNameError ? "border-danger focus:border-danger" : ""}`}
               value={newName}
-              onChange={(e) => setNewName(e.target.value)}
+              onChange={(e) => { setNewName(e.target.value); if (newNameError) setNewNameError(false); }}
               onKeyDown={(e) => e.key === "Enter" && create()}
               placeholder="Rust, Family, French B2…"
+              aria-invalid={newNameError}
             />
-            <Button small onClick={create} disabled={!newName.trim()}>Add</Button>
+            <Button small onClick={create}>Add</Button>
           </div>
+          {newNameError && (
+            <p className="mt-1.5 text-xs text-danger">Give the label a name first.</p>
+          )}
           <div className="mt-2 flex flex-wrap gap-2">
             {AREA_COLORS.map((c) => (
               <button

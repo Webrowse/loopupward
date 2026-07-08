@@ -32,6 +32,9 @@ export default function HomePage() {
   const resting = db.seeds
     .filter((s) => s.status === "later" && !s.itemId)
     .sort((a, b) => b.createdAt - a.createdAt);
+  const archived = db.seeds
+    .filter((s) => s.status === "archived" && !s.itemId)
+    .sort((a, b) => b.createdAt - a.createdAt);
 
   const capture = () => {
     if (!text.trim()) return;
@@ -104,6 +107,7 @@ export default function HomePage() {
 
           {inbox.length > 0 && <SeedInbox seeds={inbox} />}
           {resting.length > 0 && <RestingSeeds seeds={resting} />}
+          {archived.length > 0 && <ArchivedSeeds seeds={archived} />}
 
           <div className="mt-8 flex items-center justify-between text-sm lg:hidden">
             <Link href="/space" className="text-ink-3 hover:text-ink-2">Your quiet space →</Link>
@@ -175,7 +179,7 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
               <TriageChip onClick={() => setSeedStatus(seed.id, "later")} title="Rests below — nothing is lost">
                 🌙 Later
               </TriageChip>
-              <TriageChip onClick={() => setSeedStatus(seed.id, "archived")} title="Kept forever, out of sight">
+              <TriageChip onClick={() => setSeedStatus(seed.id, "archived")} title="Tucked away in Archived — never gone">
                 🫙 Archive
               </TriageChip>
               <button
@@ -214,7 +218,7 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
       >
         <p className="text-sm text-ink-2 leading-relaxed">
           “{confirming?.text}” will be gone for good. If you just want it out of the way,
-          Archive keeps it safe and hidden instead.
+          Archive keeps it safe — you can always find it again below.
         </p>
       </Sheet>
     </section>
@@ -253,6 +257,70 @@ function RestingSeeds({ seeds }: { seeds: Seed[] }) {
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+/** Archived seeds — kept safe, not hidden forever. Always viewable and restorable. */
+function ArchivedSeeds({ seeds }: { seeds: Seed[] }) {
+  const { setSeedStatus, deleteSeed } = useLife();
+  const [openList, setOpenList] = useState(false);
+  const [confirming, setConfirming] = useState<Seed | null>(null);
+
+  return (
+    <section className="mt-6">
+      <button
+        onClick={() => setOpenList((v) => !v)}
+        className="pressable flex w-full items-center justify-between text-xs font-medium uppercase tracking-wide text-ink-3"
+      >
+        <span>🫙 Archived — {seeds.length}</span>
+        <span>{openList ? "hide" : "show"}</span>
+      </button>
+      {openList && (
+        <div className="mt-3 space-y-2">
+          {seeds.map((seed) => (
+            <div
+              key={seed.id}
+              className="flex items-center justify-between gap-3 rounded-xl border border-line-soft bg-surface px-4 py-2.5"
+            >
+              <p className="min-w-0 truncate text-sm text-ink-2">{seed.text}</p>
+              <div className="flex shrink-0 items-center gap-3 text-xs">
+                <button
+                  onClick={() => setSeedStatus(seed.id, "inbox")}
+                  className="pressable font-medium text-accent-deep"
+                >
+                  restore
+                </button>
+                <button
+                  onClick={() => setConfirming(seed)}
+                  className="pressable text-ink-3 hover:text-danger"
+                >
+                  delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Sheet
+        open={confirming !== null}
+        onClose={() => setConfirming(null)}
+        title="Delete this thought?"
+        cancelLabel="Keep it"
+        primary={{
+          label: "Delete forever",
+          danger: true,
+          onClick: () => {
+            if (confirming) deleteSeed(confirming.id);
+            setConfirming(null);
+          },
+        }}
+      >
+        <p className="text-sm text-ink-2 leading-relaxed">
+          “{confirming?.text}” will be gone for good.
+        </p>
+      </Sheet>
     </section>
   );
 }

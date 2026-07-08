@@ -52,7 +52,7 @@ export default function LabelPage() {
       ) : (
         <div className="mt-5 space-y-2">
           {items.map((i) => (
-            <ItemCard key={i.id} item={i} />
+            <ItemCard key={i.id} item={i} hideLabelIds={[label.id]} />
           ))}
         </div>
       )}

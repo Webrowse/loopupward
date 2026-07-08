@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 export function Button({
@@ -119,16 +119,29 @@ export function Sheet({
   primaryDisabled?: boolean;
   cancelLabel?: string;
 }) {
+  // onClose is usually a fresh inline closure every render (e.g. from a parent
+  // that re-renders whenever unrelated app data changes, such as the journal
+  // autosaving in the background). Reading it through a ref keeps the escape
+  // listener/scroll-lock effect below keyed only on `open`, so it never tears
+  // down and rebuilds while the sheet stays open — which previously could
+  // momentarily unlock body scroll behind an open sheet. The ref itself is
+  // synced in its own effect (never mutated during render) so it stays
+  // compatible with concurrent rendering.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCloseRef.current();
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   const submit = onSubmit ?? primary?.onClick;

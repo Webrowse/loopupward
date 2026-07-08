@@ -11,6 +11,11 @@ export function today(): string {
   return toDay(new Date());
 }
 
+/** Local-day string for a stored epoch-millisecond timestamp (e.g. item.createdAt). */
+export function dayFromMs(ms: number): string {
+  return toDay(new Date(ms));
+}
+
 export function fromDay(day: string): Date {
   const [y, m, d] = day.split("-").map(Number);
   return new Date(y, m - 1, d);

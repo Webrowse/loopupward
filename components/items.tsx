@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
 import { Cadence, Horizon, HORIZON_META, Item, ItemKind, KIND_META, TrackerType } from "@/lib/types";
@@ -14,7 +14,7 @@ import { Button, Chip, Field, Sheet, inputCls } from "./ui";
 
 /* ————— Item card ————— */
 
-export function ItemCard({ item }: { item: Item }) {
+export function ItemCard({ item, hideLabelIds }: { item: Item; hideLabelIds?: string[] }) {
   const { db, theme } = useLife();
   const router = useRouter();
   const progress = itemProgress(db, item);
@@ -24,6 +24,8 @@ export function ItemCard({ item }: { item: Item }) {
   const color = theme === "dark" ? c.fgDark : c.fg;
   const streak =
     item.kind === "habit" ? currentStreak(habitDays(db.logs, item.id, habitDailyTarget(item))) : 0;
+  // defensive dedupe: a label id should never repeat, but never show it twice if it does
+  const visibleLabels = [...new Set(item.labels)].filter((lid) => !hideLabelIds?.includes(lid));
 
   return (
     <button
@@ -48,7 +50,7 @@ export function ItemCard({ item }: { item: Item }) {
               <span className="text-amber font-medium">{streak} day streak</span>
             )}
             {trackerCaption(item)}
-            {item.labels.slice(0, 3).map((lid) => {
+            {visibleLabels.slice(0, 3).map((lid) => {
               const l = db.labels.find((x) => x.id === lid);
               return l ? <span key={lid}>{l.emoji} {l.name}</span> : null;
             })}
@@ -231,9 +233,11 @@ export function ScheduleEditor({
   );
 }
 
-const KIND_ORDER: ItemKind[] = [
-  "goal", "habit", "project", "book", "dream", "idea", "note", "quote",
-  "milestone", "principle", "promise", "lesson", "memory",
+/** The four kinds that cover most captures — shown first so the common path
+ *  stays a single tap. Everything else lives behind "More". */
+const COMMON_KINDS: ItemKind[] = ["goal", "habit", "project", "note"];
+const MORE_KINDS: ItemKind[] = [
+  "book", "dream", "idea", "quote", "milestone", "principle", "promise", "lesson", "memory",
 ];
 
 const KIND_DEFAULT_TRACKER: Partial<Record<ItemKind, TrackerType>> = {
@@ -273,6 +277,9 @@ export function ItemSheet({
   const [labelIds, setLabelIds] = useState<string[]>(editing?.labels ?? []);
   const [note, setNote] = useState(editing?.note ?? "");
   const [touchedTracker, setTouchedTracker] = useState(Boolean(editing));
+  const [showMore, setShowMore] = useState(Boolean(editing && MORE_KINDS.includes(editing.kind)));
+  const [titleError, setTitleError] = useState(false);
+  const titleRef = useRef<HTMLInputElement>(null);
 
   // reset when reopened for a different subject
   const subject = `${open}:${editing?.id ?? ""}:${initial ?? ""}`;
@@ -294,6 +301,8 @@ export function ItemSheet({
     setLabelIds(editing?.labels ?? []);
     setNote(editing?.note ?? "");
     setTouchedTracker(Boolean(editing));
+    setShowMore(Boolean(editing && MORE_KINDS.includes(editing.kind)));
+    setTitleError(false);
   }
 
   const pickKind = (k: ItemKind) => {
@@ -306,10 +315,17 @@ export function ItemSheet({
 
   const needsTarget = ["counter", "money", "book", "percent"].includes(tracker);
   const isHabit = tracker === "habit";
-  const canSave = title.trim().length > 0 && (editing ? true : limits.canAddItem);
+  // the free-plan cap is a hard block worth disabling for; an empty title is
+  // validated on submit instead, so the button is never silently inert
+  const atLimit = !editing && !limits.canAddItem;
 
   const save = () => {
-    if (!canSave) return;
+    if (atLimit) return;
+    if (!title.trim()) {
+      setTitleError(true);
+      titleRef.current?.focus();
+      return;
+    }
     const t = target.trim() === "" ? (tracker === "percent" ? 100 : null) : parseFloat(target);
     const patch = {
       title: title.trim(),
@@ -342,26 +358,43 @@ export function ItemSheet({
       onClose={onClose}
       title={editing ? "Edit" : "Give it a shape"}
       primary={{ label: editing ? "Save" : "Plant it", onClick: save }}
-      primaryDisabled={!canSave}
+      primaryDisabled={atLimit}
     >
       <Field label="What is it?">
         <input
-          className={inputCls}
+          ref={titleRef}
+          className={`${inputCls} ${titleError ? "border-danger focus:border-danger" : ""}`}
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => { setTitle(e.target.value); if (titleError) setTitleError(false); }}
           placeholder="Run a marathon"
           autoFocus={!initial}
+          aria-invalid={titleError}
         />
+        {titleError && (
+          <p className="mt-1.5 text-xs text-danger">Give it a name first — that&apos;s the only thing it needs.</p>
+        )}
       </Field>
 
       <Field label="It's a…">
         <div className="flex flex-wrap gap-1.5">
-          {KIND_ORDER.map((k) => (
+          {COMMON_KINDS.map((k) => (
             <Chip key={k} active={kind === k} onClick={() => pickKind(k)}>
               {KIND_META[k].emoji} {KIND_META[k].label}
             </Chip>
           ))}
+          {!showMore && (
+            <Chip onClick={() => setShowMore(true)}>More…</Chip>
+          )}
         </div>
+        {showMore && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {MORE_KINDS.map((k) => (
+              <Chip key={k} active={kind === k} onClick={() => pickKind(k)}>
+                {KIND_META[k].emoji} {KIND_META[k].label}
+              </Chip>
+            ))}
+          </div>
+        )}
       </Field>
 
       <Field label="How do you want to track it?">
@@ -457,19 +490,24 @@ export function ItemSheet({
       {db.labels.length > 0 && (
         <Field label="Labels">
           <div className="flex flex-wrap gap-1.5">
-            {[...db.labels].sort((a, b) => a.position - b.position).map((l) => (
-              <Chip
-                key={l.id}
-                active={labelIds.includes(l.id)}
-                onClick={() =>
-                  setLabelIds((prev) =>
-                    prev.includes(l.id) ? prev.filter((x) => x !== l.id) : [...prev, l.id]
-                  )
-                }
-              >
-                {l.emoji} {l.name}
-              </Chip>
-            ))}
+            {[...db.labels].sort((a, b) => a.position - b.position).map((l) => {
+              const c = areaColor(l.color);
+              const active = labelIds.includes(l.id);
+              return (
+                <Chip
+                  key={l.id}
+                  active={active}
+                  style={active ? { background: c.fg, borderColor: c.fg, color: "#fff" } : undefined}
+                  onClick={() =>
+                    setLabelIds((prev) =>
+                      prev.includes(l.id) ? prev.filter((x) => x !== l.id) : [...prev, l.id]
+                    )
+                  }
+                >
+                  {l.emoji} {l.name}
+                </Chip>
+              );
+            })}
           </div>
         </Field>
       )}
@@ -483,7 +521,7 @@ export function ItemSheet({
         />
       </Field>
 
-      {!editing && !limits.canAddItem && (
+      {atLimit && (
         <p className="text-sm text-amber mb-3">
           You&apos;ve reached the free plan&apos;s active items. Upgrade for unlimited.
         </p>

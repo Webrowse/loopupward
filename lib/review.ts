@@ -1,5 +1,5 @@
 import { DB, Item } from "./types";
-import { Period, periodRange, previousAnchor } from "./dates";
+import { dayFromMs, Period, periodRange, previousAnchor } from "./dates";
 import { areaOfItem, bestStreak, completionsInRange, habitDailyTarget, habitDays } from "./progress";
 
 export interface AreaScore {
@@ -82,6 +82,16 @@ function daysInRangeUpTo(start: string, end: string, todayStr: string): number {
   return Math.round((b - a) / 86400000) + 1;
 }
 
+/** Days a habit could possibly have been logged in [start, end] — a habit
+ *  created mid-period was never "due" before it existed, so those days must
+ *  not count as missed. */
+function possibleDays(item: Item, start: string, end: string, todayStr: string): number {
+  const createdDay = dayFromMs(item.createdAt);
+  const effectiveStart = createdDay > start ? createdDay : start;
+  if (effectiveStart > end) return 0;
+  return daysInRangeUpTo(effectiveStart, end, todayStr);
+}
+
 export function computeReview(db: DB, period: Period, anchor: string, todayStr: string): ReviewData {
   const { start, end } = periodRange(period, anchor);
   const prev = periodRange(period, previousAnchor(period, anchor));
@@ -104,17 +114,17 @@ export function computeReview(db: DB, period: Period, anchor: string, todayStr: 
 
   /* habits */
   const habitItems = db.items.filter((i) => i.kind === "habit" && i.status !== "archived");
-  const possible = daysInRangeUpTo(start, end, todayStr);
   const habits: HabitScore[] = habitItems.map((h) => {
     const all = habitDays(db.logs, h.id, habitDailyTarget(h));
     const inRange = [...all].filter((d) => d >= start && d <= end);
+    const possibleForHabit = possibleDays(h, start, end, todayStr);
     // habits count toward their area's score too
     const areaId = areaOfItem(db, h);
     const rec = areaMap.get(areaId) ?? { done: 0, planned: 0 };
-    rec.planned += possible;
+    rec.planned += possibleForHabit;
     rec.done += inRange.length;
     areaMap.set(areaId, rec);
-    return { item: h, daysDone: inRange.length, daysPossible: possible, bestStreak: bestStreak(all) };
+    return { item: h, daysDone: inRange.length, daysPossible: possibleForHabit, bestStreak: bestStreak(all) };
   });
 
   const areaScores: AreaScore[] = [...areaMap.entries()]
@@ -178,15 +188,16 @@ export function computeReview(db: DB, period: Period, anchor: string, todayStr: 
   const consistency = planned ? completed / planned : 0;
 
   /* previous period comparisons */
-  const prevPossible = daysInRangeUpTo(prev.start, prev.end, todayStr);
   const prevHabitDays: Record<string, number> = {};
   let prevHabitDone = 0;
+  let prevHabitPossible = 0;
   for (const h of habitItems) {
     const n = db.logs.filter(
       (l) => l.itemId === h.id && l.value > 0 && l.date >= prev.start && l.date <= prev.end
     ).length;
     prevHabitDays[h.id] = n;
     prevHabitDone += n;
+    prevHabitPossible += possibleDays(h, prev.start, prev.end, todayStr);
   }
   const prevTrackerAdded: Record<string, number> = {};
   for (const t of trackerItems) {
@@ -194,7 +205,7 @@ export function computeReview(db: DB, period: Period, anchor: string, todayStr: 
       .filter((l) => l.itemId === t.id && l.op === "add" && l.date >= prev.start && l.date <= prev.end)
       .reduce((s, l) => s + l.value, 0);
   }
-  const prevPlanned = prevC.planned.length + habitItems.length * prevPossible;
+  const prevPlanned = prevC.planned.length + prevHabitPossible;
   const prevCompleted = prevC.planned.filter((a) => a.done).length + prevHabitDone;
 
   return {

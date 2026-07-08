@@ -53,10 +53,14 @@ export function Bar({
   );
 }
 
-/** GitHub-style consistency heatmap. Sequential moss ramp, hairline cell borders. */
+/**
+ * GitHub-style consistency heatmap. Sequential moss ramp, hairline cell borders.
+ * Days before `sinceDay` (e.g. a habit's creation date) render blank like
+ * future days — a habit can't have "missed" a day that didn't exist yet.
+ */
 export function Heatmap({
-  counts, weeks = 16,
-}: { counts: Map<string, number>; weeks?: number }) {
+  counts, weeks = 16, sinceDay,
+}: { counts: Map<string, number>; weeks?: number; sinceDay?: string }) {
   const { theme } = useLife();
   const dark = theme === "dark";
   const { grid, max } = useMemo(() => {
@@ -69,13 +73,13 @@ export function Heatmap({
       for (let d = 0; d < 7; d++) {
         const day = addDays(firstWeek, w * 7 + d);
         const v = counts.get(day) ?? 0;
-        if (day <= end) max = Math.max(max, v);
+        if (day <= end && (!sinceDay || day >= sinceDay)) max = Math.max(max, v);
         col.push({ day, v });
       }
       cols.push(col);
     }
     return { grid: cols, max };
-  }, [counts, weeks]);
+  }, [counts, weeks, sinceDay]);
 
   const end = today();
   return (
@@ -83,17 +87,20 @@ export function Heatmap({
       <div className="flex gap-1 w-max">
         {grid.map((col, i) => (
           <div key={i} className="flex flex-col gap-1">
-            {col.map((cell) => (
-              <div
-                key={cell.day}
-                title={`${cell.day}: ${cell.v}`}
-                className="h-3 w-3 rounded-[3px] border"
-                style={{
-                  background: cell.day > end ? "transparent" : heatColor(cell.v, max, dark),
-                  borderColor: cell.day > end ? "transparent" : "var(--line-soft)",
-                }}
-              />
-            ))}
+            {col.map((cell) => {
+              const inRange = cell.day <= end && (!sinceDay || cell.day >= sinceDay);
+              return (
+                <div
+                  key={cell.day}
+                  title={inRange ? `${cell.day}: ${cell.v}` : undefined}
+                  className="h-3 w-3 rounded-[3px] border"
+                  style={{
+                    background: inRange ? heatColor(cell.v, max, dark) : "transparent",
+                    borderColor: inRange ? "var(--line-soft)" : "transparent",
+                  }}
+                />
+              );
+            })}
           </div>
         ))}
       </div>

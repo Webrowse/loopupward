@@ -64,6 +64,9 @@ interface LifeContextValue {
   ) => void;
   deleteAction: (id: string) => void;
   toggleEntry: (entry: TodayEntry, day?: string) => void;
+  /** Log or unlog one habit occurrence for a single day — distinct from
+   *  completeItem, which retires the habit for good. */
+  toggleHabitDay: (item: Item, day: string, currentlyDone: boolean) => void;
 
   saveReflection: (period: Reflection["period"], periodKey: string, text: string) => void;
 
@@ -395,20 +398,24 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
 
   const deleteAction = useCallback((id: string) => removeRows("actions", [id]), [removeRows]);
 
+  /** Log or unlog one habit occurrence for a single day. This only ever
+   *  touches the log history — it never changes the habit's own status,
+   *  so "done today" can never accidentally retire the habit. */
+  const toggleHabitDay = useCallback((item: Item, day: string, currentlyDone: boolean) => {
+    if (currentlyDone) {
+      const existing = db.logs.filter((l) => l.itemId === item.id && l.date === day && l.op === "add");
+      if (existing.length) removeRows("logs", existing.map((l) => l.id));
+    } else {
+      upsertRows("logs", [{
+        id: uid(), itemId: item.id, date: day, op: "add", value: 1, createdAt: Date.now(),
+      }]);
+    }
+  }, [db.logs, upsertRows, removeRows]);
+
   const toggleEntry = useCallback((entry: TodayEntry, forDay?: string) => {
     const day = forDay ?? today();
     if (entry.virtualHabit && entry.item) {
-      // scheduled item: log one unit toward today's target, or undo the day
-      if (entry.action.done) {
-        const existing = db.logs.filter(
-          (l) => l.itemId === entry.item!.id && l.date === day && l.op === "add"
-        );
-        if (existing.length) removeRows("logs", existing.map((l) => l.id));
-      } else {
-        upsertRows("logs", [{
-          id: uid(), itemId: entry.item.id, date: day, op: "add", value: 1, createdAt: Date.now(),
-        }]);
-      }
+      toggleHabitDay(entry.item, day, entry.action.done);
       return;
     }
     const a = entry.action;
@@ -433,7 +440,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       // check-tracked items are completed deliberately from their own page,
       // never as a side effect of finishing one small piece
     }
-  }, [db.logs, db.items, upsertRows, removeRows]);
+  }, [db.items, upsertRows, removeRows, toggleHabitDay]);
 
   /* ————— reflections ————— */
   const saveReflection = useCallback((period: Reflection["period"], periodKey: string, text: string) => {
@@ -477,7 +484,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     addLabel, updateLabel, deleteLabel,
     addArea, updateArea, deleteArea,
     addItem, updateItem, moveItem, deleteItem, completeItem, reopenItem, bumpTracker, setTracker,
-    addAction, deleteAction, toggleEntry,
+    addAction, deleteAction, toggleEntry, toggleHabitDay,
     saveReflection,
     signOut, exportJSON,
   };
