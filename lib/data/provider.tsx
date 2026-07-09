@@ -53,7 +53,6 @@ interface LifeContextValue {
   deleteItem: (id: string) => void;
   completeItem: (id: string) => void;
   reopenItem: (id: string) => void;
-  bumpTracker: (item: Item, delta: number) => void;
   setTracker: (item: Item, value: number) => void;
 
   addAction: (
@@ -299,7 +298,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   const addItem = useCallback((partial: Partial<Item> & { title: string }): Item | null => {
     const item: Item = {
       id: uid(), areaId: null, parentId: null, kind: "note", tracker: "none",
-      note: "", target: null, current: 0, unit: null, horizon: null,
+      note: "", target: null, current: 0, unit: null, horizon: null, horizonPeriod: null,
       status: "active", cadence: null, cadenceDays: null, cadenceCount: null,
       labels: [], pinned: false,
       position: db.items.length, createdAt: Date.now(), completedAt: null,
@@ -366,25 +365,24 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     if (item) upsertRows("items", [{ ...item, status: "active", completedAt: null }]);
   }, [db.items, upsertRows]);
 
-  const bumpTracker = useCallback((item: Item, delta: number) => {
-    const next = Math.max(0, item.current + delta);
-    const reachedTarget = item.target != null && next >= item.target && item.current < item.target;
-    upsertRows("items", [{
-      ...item,
-      current: next,
-      ...(reachedTarget ? { status: "done" as const, completedAt: Date.now() } : {}),
-    }]);
-    // progress history: every bump is an event, never just a mutated counter
-    upsertRows("logs", [{
-      id: uid(), itemId: item.id, date: today(), op: "add", value: delta, createdAt: Date.now(),
-    }]);
-  }, [upsertRows]);
-
   const setTracker = useCallback((item: Item, value: number) => {
     const v = Math.max(0, value);
-    upsertRows("items", [{ ...item, current: v }]);
+    const reachedTarget = item.target != null && v >= item.target && item.current < item.target;
+    upsertRows("items", [{
+      ...item,
+      current: v,
+      ...(reachedTarget ? { status: "done" as const, completedAt: Date.now() } : {}),
+    }]);
+    // counter/book are cumulative counts — Reflect's period movement only
+    // sums "add" deltas for them, so a net change must log as one, not a
+    // "set" snapshot (which would make it invisible to any period review).
+    // money/percent are point-in-time values, so "set" is correct there.
+    const isCumulative = item.tracker === "counter" || item.tracker === "book";
     upsertRows("logs", [{
-      id: uid(), itemId: item.id, date: today(), op: "set", value: v, createdAt: Date.now(),
+      id: uid(), itemId: item.id, date: today(),
+      op: isCumulative ? "add" : "set",
+      value: isCumulative ? v - item.current : v,
+      createdAt: Date.now(),
     }]);
   }, [upsertRows]);
 
@@ -495,7 +493,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     saveJournal,
     addLabel, updateLabel, deleteLabel,
     addArea, updateArea, deleteArea,
-    addItem, updateItem, moveItem, deleteItem, completeItem, reopenItem, bumpTracker, setTracker,
+    addItem, updateItem, moveItem, deleteItem, completeItem, reopenItem, setTracker,
     addAction, deleteAction, toggleEntry, toggleHabitDay,
     saveReflection,
     signOut, exportJSON,

@@ -124,7 +124,7 @@ export default function AreaPage() {
                 <Button
                   variant="danger"
                   full
-                  onClick={() => { deleteArea(area.id); router.push("/life"); }}
+                  onClick={() => { deleteArea(area.id); router.replace("/life"); }}
                 >
                   Yes, delete
                 </Button>

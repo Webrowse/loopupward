@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
 import {
-  addDays, Period, periodKey, periodRange, prettyPeriod, previousAnchor, today,
+  addDays, isPeriod, nextAnchor, Period, periodKey, periodRange, prettyPeriod, previousAnchor, today,
 } from "@/lib/dates";
 import { computeReview } from "@/lib/review";
 import { FREE_LIMITS } from "@/lib/limits";
@@ -21,9 +22,22 @@ const PERIODS: { value: Period; label: string }[] = [
 ];
 
 export default function ReflectPage() {
+  return (
+    <Suspense fallback={null}>
+      <Reflect />
+    </Suspense>
+  );
+}
+
+function Reflect() {
   const { db, premium, saveReflection, theme } = useLife();
-  const [period, setPeriod] = useState<Period>("week");
-  const [anchor, setAnchor] = useState(today());
+  const params = useSearchParams();
+  // arriving from "Reflect on this period" (Today's Week/Month/Quarter/Year
+  // tabs) lands on that exact period, instead of always resetting to Week
+  const paramPeriod = params.get("period");
+  const paramDate = params.get("date");
+  const [period, setPeriod] = useState<Period>(isPeriod(paramPeriod) ? paramPeriod : "week");
+  const [anchor, setAnchor] = useState(paramDate || today());
 
   const locked = !premium && !FREE_LIMITS.periods.includes(period as "week" | "month");
   const review = useMemo(
@@ -35,9 +49,7 @@ export default function ReflectPage() {
 
   const historyFloor = addDays(today(), -FREE_LIMITS.historyDays);
   const prevBlocked = !premium && periodRange(period, previousAnchor(period, anchor)).start < historyFloor;
-  const { end } = periodRange(period, anchor);
-  const nextAnchor = addDays(end, 1);
-  const atPresent = nextAnchor > today();
+  const atPresent = nextAnchor(period, anchor) > today();
 
   const heatCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -57,6 +69,9 @@ export default function ReflectPage() {
 
       <div className="flex items-center justify-between gap-2 mb-4">
         <Segmented options={PERIODS} value={period} onChange={(p) => { setPeriod(p); setAnchor(today()); }} />
+        <Link href={`/today?view=${period}&date=${anchor}`} className="text-sm font-medium text-accent-deep">
+          Plan ahead →
+        </Link>
       </div>
 
       {locked ? (
@@ -90,7 +105,7 @@ export default function ReflectPage() {
             <button
               className="pressable px-3 py-1 text-ink-2 disabled:opacity-30"
               disabled={atPresent}
-              onClick={() => setAnchor(nextAnchor)}
+              onClick={() => setAnchor(nextAnchor(period, anchor))}
             >
               ›
             </button>

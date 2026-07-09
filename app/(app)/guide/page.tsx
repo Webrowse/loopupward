@@ -24,7 +24,7 @@ const STEPS = [
     emoji: "☀️",
     title: "Today — small actions",
     body:
-      "Schedules put things on Today automatically — every day, Mon/Wed/Fri, 4× a week, monthly. Completing a small action updates the habit's streak and the goal it belongs to. Progress flows upward.",
+      "Schedules put things on Today automatically — every day, Mon/Wed/Fri, 4× a week, monthly. Completing a small action updates the habit's streak and the goal it belongs to. Progress flows upward. The Week, Month, Quarter, and Year tabs hold the same view for anything planned further out — pull any of them into Today when you're ready to act on it.",
     href: "/today",
     link: "Open Today",
   },

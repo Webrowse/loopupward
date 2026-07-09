@@ -1,5 +1,5 @@
-import { Action, Cadence, DB, Horizon, Item, Log } from "./types";
-import { addDays, dayFromMs, daysBetween, startOfWeek, today } from "./dates";
+import { Action, Cadence, DB, Item, Log } from "./types";
+import { addDays, dayFromMs, daysBetween, Period, periodKey, startOfWeek, today } from "./dates";
 
 /**
  * Progress flows upward: an item's progress is its own tracker progress,
@@ -30,10 +30,15 @@ export function ownProgress(item: Item): number | null {
 }
 
 export function itemProgress(db: DB, item: Item, depth = 0): number | null {
-  const own = ownProgress(item);
-  if (own !== null) return own;
   if (depth > 12) return null; // guard against pathological cycles
   const kids = children(db, item.id);
+  // a "done/not done" goal that has things nested inside derives its
+  // percentage from what's inside, not its own untouched checkbox — unless
+  // it was explicitly completed itself, which always wins
+  const own = item.tracker === "check" && kids.length > 0 && item.status !== "done"
+    ? null
+    : ownProgress(item);
+  if (own !== null) return own;
   const kidVals = kids
     .map((k) => itemProgress(db, k, depth + 1))
     .filter((v): v is number => v !== null);
@@ -41,12 +46,22 @@ export function itemProgress(db: DB, item: Item, depth = 0): number | null {
   return kidVals.reduce((a, b) => a + b, 0) / kidVals.length;
 }
 
-/** Everything carrying a given planning horizon — the checklist for
- *  "this week" / "this month" / etc., independent of which day it is. */
-export function horizonEntries(db: DB, horizon: Exclude<Horizon, null>): Item[] {
+/** Everything carrying a given planning horizon, anchored to one specific
+ *  instance of it (the week of Jul 6, August, Q3, 2026…) so Week/Month/
+ *  Quarter/Year lists can be navigated like a real calendar. `horizonPeriod`
+ *  stores any day inside that instance (not a formatted key) so the prev/next
+ *  steppers are plain date arithmetic — comparison goes through periodKey.
+ *  Items from before this existed have no anchor — they fall back to
+ *  "whichever instance is current right now" so nothing old silently
+ *  disappears. */
+export function horizonEntries(db: DB, period: Period, anchor: string): Item[] {
+  const key = periodKey(period, anchor);
+  const isCurrent = key === periodKey(period, today());
+  const doneRank = (item: Item) => (item.status === "done" ? 1 : 0);
   return db.items
-    .filter((i) => i.horizon === horizon && i.status === "active")
-    .sort((a, b) => a.position - b.position);
+    .filter((i) => i.horizon === period && (i.status === "active" || i.status === "done"))
+    .filter((i) => (i.horizonPeriod ? periodKey(period, i.horizonPeriod) === key : isCurrent))
+    .sort((a, b) => doneRank(a) - doneRank(b) || a.position - b.position);
 }
 
 export function ancestors(db: DB, item: Item): Item[] {

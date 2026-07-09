@@ -78,6 +78,10 @@ export interface Item {
   /** display unit: "₹", "$", "pages", "chapters", "times", "km" … */
   unit: string | null;
   horizon: Horizon;
+  /** any day (YYYY-MM-DD) inside the specific week/month/quarter/year
+   *  instance this horizon points at — compare via dates.periodKey(horizon,
+   *  this). Null for someday/today/none, or items not yet anchored. */
+  horizonPeriod: string | null;
   status: ItemStatus;
   /** schedule — anything with a cadence appears on Today automatically */
   cadence: Cadence;

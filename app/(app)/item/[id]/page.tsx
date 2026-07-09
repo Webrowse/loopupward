@@ -4,13 +4,15 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
-import { HORIZON_META, Item, KIND_META } from "@/lib/types";
+import { Horizon, HORIZON_META, Item, KIND_META } from "@/lib/types";
 import {
   ancestors, bestStreak, children as childrenOf, currentStreak, dayLogged, descendants,
   formatValue, habitDailyTarget, habitDays, itemProgress, scheduleLabel,
 } from "@/lib/progress";
 import { areaColor } from "@/lib/palette";
-import { dayFromMs, shortDay, today } from "@/lib/dates";
+import {
+  dayFromMs, nextAnchor, Period, previousAnchor, prettyPeriod, shortDay, today,
+} from "@/lib/dates";
 import { ItemCard, ItemSheet, ScheduleEditor, TrackerControls } from "@/components/items";
 import { Bar, Heatmap, Ring, StatTile } from "@/components/progress";
 import { BackLink, Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
@@ -29,6 +31,7 @@ export default function ItemPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmRetire, setConfirmRetire] = useState(false);
   const [todayPiece, setTodayPiece] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
 
   const item = db.items.find((i) => i.id === id);
   const kids = useMemo(() => (item ? childrenOf(db, item.id) : []), [db, item]);
@@ -223,24 +226,32 @@ export default function ItemPage() {
         )}
       </section>
 
-      {/* history */}
+      {/* history — collapsed by default, nobody needs a wall of +1s on open */}
       {history.length > 0 && (
         <section className="mb-6">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-3 mb-2">History</p>
-          <div className="rounded-(--radius-card) border border-line-soft bg-surface px-4 py-2 shadow-(--shadow-card) divide-y divide-line-soft">
-            {history.map((h) => (
-              <div key={h.key} className="flex items-baseline justify-between gap-3 py-2 text-sm">
-                <span className="min-w-0 truncate text-ink-2">
-                  {h.kind === "action" && <>✓ {h.text}</>}
-                  {h.kind === "log" && (
-                    <>+{h.value === 1 && habitDailyTarget(item) === 1 ? "1 day" : formatValue(item, h.value)}</>
-                  )}
-                  {h.kind === "set" && <>→ {formatValue(item, h.value)}</>}
-                </span>
-                <span className="shrink-0 text-xs text-ink-3 tabular-nums">{shortDay(h.date)}</span>
-              </div>
-            ))}
-          </div>
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className="pressable flex w-full items-center justify-between text-xs font-medium uppercase tracking-wide text-ink-3 mb-2"
+          >
+            <span>History — {history.length}</span>
+            <span>{showHistory ? "hide" : "show"}</span>
+          </button>
+          {showHistory && (
+            <div className="rounded-(--radius-card) border border-line-soft bg-surface px-4 py-2 shadow-(--shadow-card) divide-y divide-line-soft">
+              {history.map((h) => (
+                <div key={h.key} className="flex items-baseline justify-between gap-3 py-2 text-sm">
+                  <span className="min-w-0 truncate text-ink-2">
+                    {h.kind === "action" && <>✓ {h.text}</>}
+                    {h.kind === "log" && (
+                      <>+{h.value === 1 && habitDailyTarget(item) === 1 ? "1 day" : formatValue(item, h.value)}</>
+                    )}
+                    {h.kind === "set" && <>→ {formatValue(item, h.value)}</>}
+                  </span>
+                  <span className="shrink-0 text-xs text-ink-3 tabular-nums">{shortDay(h.date)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -292,7 +303,9 @@ export default function ItemPage() {
           onClick: () => {
             const dest = crumbs.length ? `/item/${crumbs[crumbs.length - 1].id}` : area ? `/life/${area.id}` : "/life";
             deleteItem(item.id);
-            router.push(dest);
+            // replace, not push — this item's URL is now dead, so a later
+            // "back" (BackLink) must skip straight past it, not land on it
+            router.replace(dest);
           },
         }}
       >
@@ -456,6 +469,9 @@ function MoveSheet({
 
 /* ————— Schedule & horizon ————— */
 
+const PERIOD_HORIZONS: Horizon[] = ["week", "month", "quarter", "year"];
+const isPeriodHorizon = (h: Horizon): h is Period => (PERIOD_HORIZONS as string[]).includes(h ?? "");
+
 function ScheduleSheet({
   open, onClose, item, onSave,
 }: {
@@ -474,7 +490,7 @@ function ScheduleSheet({
     >
       <Field label="Planning horizon">
         <div className="flex flex-wrap gap-1.5">
-          <Chip active={item.horizon === null} onClick={() => onSave({ horizon: null })}>None</Chip>
+          <Chip active={item.horizon === null} onClick={() => onSave({ horizon: null, horizonPeriod: null })}>None</Chip>
           {HORIZON_META.map((h) => (
             <Chip
               key={h.value}
@@ -482,6 +498,12 @@ function ScheduleSheet({
               onClick={() =>
                 onSave({
                   horizon: h.value,
+                  // keep the existing anchor when re-confirming the same
+                  // horizon; otherwise land on "now" — adjust with the
+                  // stepper below
+                  horizonPeriod: isPeriodHorizon(h.value)
+                    ? (item.horizon === h.value && item.horizonPeriod) || today()
+                    : null,
                   // this picker only ever labels a timeframe; shelving (status)
                   // stays a separate, deliberate action via the Someday/Make
                   // active buttons — otherwise a cadence on a "someday" item
@@ -497,6 +519,27 @@ function ScheduleSheet({
         <p className="mt-2 text-xs text-ink-3">
           The same thing moves through time: someday → year → month → week → today.
         </p>
+        {isPeriodHorizon(item.horizon) && (
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              onClick={() => onSave({ horizonPeriod: previousAnchor(item.horizon as Period, item.horizonPeriod ?? today()) })}
+              aria-label={`Previous ${item.horizon}`}
+              className="pressable grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-3 hover:bg-surface-2"
+            >
+              ‹
+            </button>
+            <span className="flex-1 text-center text-sm font-medium text-ink">
+              {prettyPeriod(item.horizon as Period, item.horizonPeriod ?? today())}
+            </span>
+            <button
+              onClick={() => onSave({ horizonPeriod: nextAnchor(item.horizon as Period, item.horizonPeriod ?? today()) })}
+              aria-label={`Next ${item.horizon}`}
+              className="pressable grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-3 hover:bg-surface-2"
+            >
+              ›
+            </button>
+          </div>
+        )}
       </Field>
 
       <Field label="Repeats">

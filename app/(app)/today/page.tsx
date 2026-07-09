@@ -1,20 +1,24 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
-import { addDays, prettyDay, shortDay, startOfWeek, today } from "@/lib/dates";
+import {
+  addDays, isPeriod, nextAnchor, Period, periodKey, prettyDay, prettyPeriod, previousAnchor,
+  shortDay, startOfWeek, today,
+} from "@/lib/dates";
 import { areaColor } from "@/lib/palette";
 import { todayEntries, TodayEntry } from "@/lib/progress";
 import { Cadence, HORIZON_META } from "@/lib/types";
 import { DailyJournal } from "@/components/journal";
 import { HorizonList, ScheduleEditor, ScheduleValue } from "@/components/items";
 import { Ring } from "@/components/progress";
-import { EmptyState, Field, Sheet, inputCls } from "@/components/ui";
+import { EmptyState, Field, Segmented, Sheet, inputCls } from "@/components/ui";
 
 const DOW_LETTER = ["S", "M", "T", "W", "T", "F", "S"];
 
-type ViewTab = "today" | "week" | "month" | "quarter" | "year";
+type ViewTab = "today" | Period;
 const VIEW_TABS: { value: ViewTab; label: string }[] = [
   { value: "today", label: "Today" },
   { value: "week", label: "Week" },
@@ -24,11 +28,28 @@ const VIEW_TABS: { value: ViewTab; label: string }[] = [
 ];
 
 export default function TodayPage() {
+  return (
+    <Suspense fallback={null}>
+      <Today />
+    </Suspense>
+  );
+}
+
+function Today() {
   const { db, toggleEntry, deleteAction } = useLife();
+  const params = useSearchParams();
+  // arriving from Reflect's "Plan ahead" link lands on that exact period,
+  // instead of always resetting to the Today tab
+  const paramView = params.get("view");
+  const paramDate = params.get("date");
   const realToday = today();
   const [day, setDay] = useState(realToday);
   const [planning, setPlanning] = useState(false);
-  const [view, setView] = useState<ViewTab>("today");
+  const [view, setView] = useState<ViewTab>(isPeriod(paramView) ? paramView : "today");
+  const [anchors, setAnchors] = useState<Record<Period, string>>({
+    week: realToday, month: realToday, quarter: realToday, year: realToday,
+    ...(isPeriod(paramView) && paramDate ? { [paramView]: paramDate } : {}),
+  });
 
   const entries = useMemo(() => todayEntries(db, day), [db, day]);
   const done = entries.filter((e) => e.action.done).length;
@@ -59,23 +80,23 @@ export default function TodayPage() {
       </header>
 
       {/* horizon switcher: today's actions, or the standing week/month/quarter/year lists */}
-      <div className="mb-6 flex gap-1.5 lg:max-w-2xl">
-        {VIEW_TABS.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setView(t.value)}
-            className={`pressable rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-              view === t.value ? "bg-accent text-white dark:text-[#10160f]" : "bg-surface-2 text-ink-2"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="mb-6 lg:max-w-2xl">
+        <Segmented options={VIEW_TABS} value={view} onChange={setView} />
       </div>
 
       {view !== "today" && (
         <div className="lg:max-w-2xl">
-          <HorizonList horizon={view} />
+          <PeriodNav
+            period={view}
+            anchor={anchors[view]}
+            onChange={(a) => setAnchors((prev) => ({ ...prev, [view]: a }))}
+          />
+          <HorizonList period={view} anchor={anchors[view]} />
+          <p className="mt-6 text-sm">
+            <Link href={`/reflect?period=${view}&date=${anchors[view]}`} className="text-accent-deep font-medium">
+              Reflect on this {view} →
+            </Link>
+          </p>
         </div>
       )}
 
@@ -172,17 +193,38 @@ export default function TodayPage() {
   );
 }
 
-function NavArrow({ dir, onClick }: { dir: "prev" | "next"; onClick: () => void }) {
+function NavArrow({ dir, onClick, label }: { dir: "prev" | "next"; onClick: () => void; label?: string }) {
   return (
     <button
       onClick={onClick}
-      aria-label={dir === "prev" ? "Previous week" : "Next week"}
+      aria-label={label ?? (dir === "prev" ? "Previous week" : "Next week")}
       className="pressable grid h-8 w-6 shrink-0 place-items-center rounded-lg text-ink-3 hover:bg-surface-2"
     >
       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
         {dir === "prev" ? <path d="M6.5 1 2.5 5l4 4" /> : <path d="M3.5 1 7.5 5l-4 4" />}
       </svg>
     </button>
+  );
+}
+
+/** Calendar header for the Week/Month/Quarter/Year lists — same prev/current/next
+ *  shape for all four, only the label format (prettyPeriod) differs. */
+function PeriodNav({
+  period, anchor, onChange,
+}: { period: Period; anchor: string; onChange: (anchor: string) => void }) {
+  const isCurrent = periodKey(period, anchor) === periodKey(period, today());
+  return (
+    <div className="mb-6 flex items-center gap-1.5">
+      <NavArrow dir="prev" label={`Previous ${period}`} onClick={() => onChange(previousAnchor(period, anchor))} />
+      <button
+        onClick={() => onChange(today())}
+        className="pressable flex-1 rounded-lg py-1.5 text-center text-sm font-medium text-ink hover:bg-surface-2"
+      >
+        {prettyPeriod(period, anchor)}
+        {!isCurrent && <span className="ml-2 text-xs font-normal text-accent-deep">jump to now</span>}
+      </button>
+      <NavArrow dir="next" label={`Next ${period}`} onClick={() => onChange(nextAnchor(period, anchor))} />
+    </div>
   );
 }
 

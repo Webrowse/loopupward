@@ -55,6 +55,12 @@ export function startOfYear(day: string): string {
 
 export type Period = "week" | "month" | "quarter" | "year";
 
+/** Narrows a URL search param (e.g. deep-linking between Today and Reflect)
+ *  into a valid Period, so a stray/missing query string never crashes. */
+export function isPeriod(v: string | null): v is Period {
+  return v === "week" || v === "month" || v === "quarter" || v === "year";
+}
+
 export function periodRange(period: Period, anchor: string): { start: string; end: string } {
   const d = fromDay(anchor);
   switch (period) {
@@ -82,6 +88,12 @@ export function periodRange(period: Period, anchor: string): { start: string; en
 export function previousAnchor(period: Period, anchor: string): string {
   const { start } = periodRange(period, anchor);
   return addDays(start, -1);
+}
+
+/** Anchor day for the next period of the same length. */
+export function nextAnchor(period: Period, anchor: string): string {
+  const { end } = periodRange(period, anchor);
+  return addDays(end, 1);
 }
 
 export function isoWeek(day: string): { year: number; week: number } {

@@ -9,6 +9,7 @@ import {
   children as childrenOf, currentStreak, formatValue, habitDailyTarget, habitDays,
   horizonEntries, itemProgress, ownProgress, scheduleLabel,
 } from "@/lib/progress";
+import { Period, today } from "@/lib/dates";
 import { areaColor } from "@/lib/palette";
 import { Bar } from "./progress";
 import { Button, Chip, EmptyState, Field, Sheet, inputCls } from "./ui";
@@ -80,11 +81,11 @@ export function ItemCard({ item, hideLabelIds }: { item: Item; hideLabelIds?: st
 
 /* ————— Horizon lists: "this week / month / quarter / year" ————— */
 
-export function HorizonList({ horizon }: { horizon: Exclude<Horizon, null> }) {
+export function HorizonList({ period, anchor }: { period: Period; anchor: string }) {
   const { db } = useLife();
   const [adding, setAdding] = useState(false);
-  const entries = useMemo(() => horizonEntries(db, horizon), [db, horizon]);
-  const label = HORIZON_META.find((h) => h.value === horizon)?.label ?? horizon;
+  const entries = useMemo(() => horizonEntries(db, period, anchor), [db, period, anchor]);
+  const label = HORIZON_META.find((h) => h.value === period)?.label ?? period;
 
   return (
     <div>
@@ -109,28 +110,44 @@ export function HorizonList({ horizon }: { horizon: Exclude<Horizon, null> }) {
         </div>
       )}
 
-      <ItemSheet open={adding} onClose={() => setAdding(false)} defaultHorizon={horizon} />
+      <ItemSheet
+        open={adding}
+        onClose={() => setAdding(false)}
+        defaultHorizon={period}
+        defaultHorizonPeriod={anchor}
+      />
     </div>
   );
 }
 
 function HorizonRow({ item }: { item: Item }) {
-  const { db, theme, completeItem, updateItem } = useLife();
+  const { db, theme, completeItem, reopenItem, updateItem } = useLife();
   const progress = itemProgress(db, item);
   const kids = childrenOf(db, item.id);
   const area = db.areas.find((a) => a.id === item.areaId);
   const c = areaColor(area?.color);
   const color = theme === "dark" ? c.fgDark : c.fg;
+  const done = item.status === "done";
 
   return (
-    <div className="flex items-center gap-3 rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3 shadow-(--shadow-card)">
+    <div className={`flex items-center gap-3 rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3 shadow-(--shadow-card) transition-opacity ${done ? "opacity-60" : ""}`}>
       <button
-        onClick={() => completeItem(item.id)}
-        aria-label="Mark done"
-        className="pressable grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 border-line hover:border-accent"
-      />
+        onClick={() => (done ? reopenItem(item.id) : completeItem(item.id))}
+        aria-label={done ? "Undo" : "Mark done"}
+        className={`pressable relative grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition-colors ${
+          done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
+        }`}
+      >
+        {done && (
+          <svg className="bloom" width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
       <Link href={`/item/${item.id}`} className="min-w-0 flex-1">
-        <div className="truncate text-[0.95rem] leading-snug text-ink">{item.title}</div>
+        <div className={`truncate text-[0.95rem] leading-snug ${done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}>
+          {item.title}
+        </div>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-ink-3">
           {area && (
             <span className="inline-flex items-center gap-1">
@@ -144,12 +161,14 @@ function HorizonRow({ item }: { item: Item }) {
           {scheduleLabel(item) && <span>{scheduleLabel(item)}</span>}
         </div>
       </Link>
-      <button
-        onClick={() => updateItem(item.id, { horizon: "today" })}
-        className="pressable shrink-0 text-xs font-medium text-accent-deep"
-      >
-        → Today
-      </button>
+      {!done && (
+        <button
+          onClick={() => updateItem(item.id, { horizon: "today", horizonPeriod: null })}
+          className="pressable shrink-0 text-xs font-medium text-accent-deep"
+        >
+          → Today
+        </button>
+      )}
     </div>
   );
 }
@@ -170,42 +189,63 @@ function trackerCaption(item: Item) {
 /* ————— Tracker controls (item page) ————— */
 
 export function TrackerControls({ item }: { item: Item }) {
-  const { bumpTracker, setTracker } = useLife();
+  const { setTracker } = useLife();
   const [editValue, setEditValue] = useState<string | null>(null);
+  // +/- only adjusts this local draft; nothing is written until Save, so
+  // tapping it ten times doesn't leave ten entries in History
+  const [pending, setPending] = useState<number | null>(null);
 
   if (item.tracker === "none" || item.tracker === "check" || item.tracker === "habit") return null;
 
   const step = item.tracker === "money" ? Math.max(1, Math.round((item.target ?? 1000) / 100)) : 1;
+  const value = pending ?? item.current;
+  const dirty = pending !== null && pending !== item.current;
+
+  const save = () => {
+    if (pending !== null) setTracker(item, pending);
+    setPending(null);
+  };
 
   return (
-    <div className="flex items-center gap-3">
-      <Button small variant="soft" onClick={() => bumpTracker(item, -step)}>−{step > 1 ? step.toLocaleString() : ""}</Button>
-      {editValue === null ? (
-        <button
-          className="font-display text-2xl text-ink tabular-nums flex-1 text-center"
-          onClick={() => setEditValue(String(item.current))}
-        >
-          {formatValue(item, item.current)}
-          {item.target != null && (
-            <span className="text-ink-3 text-lg"> / {formatValue(item, item.target)}</span>
-          )}
-        </button>
-      ) : (
-        <input
-          autoFocus
-          type="number"
-          className={`${inputCls} text-center flex-1`}
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={() => {
-            const v = parseFloat(editValue);
-            if (!Number.isNaN(v)) setTracker(item, v);
-            setEditValue(null);
-          }}
-          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-        />
+    <div>
+      <div className="flex items-center gap-3">
+        <Button small variant="soft" onClick={() => setPending(Math.max(0, value - step))}>
+          −{step > 1 ? step.toLocaleString() : ""}
+        </Button>
+        {editValue === null ? (
+          <button
+            className="font-display text-2xl text-ink tabular-nums flex-1 text-center"
+            onClick={() => setEditValue(String(value))}
+          >
+            {formatValue(item, value)}
+            {item.target != null && (
+              <span className="text-ink-3 text-lg"> / {formatValue(item, item.target)}</span>
+            )}
+          </button>
+        ) : (
+          <input
+            autoFocus
+            type="number"
+            className={`${inputCls} text-center flex-1`}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={() => {
+              const v = parseFloat(editValue);
+              if (!Number.isNaN(v)) setPending(Math.max(0, v));
+              setEditValue(null);
+            }}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          />
+        )}
+        <Button small variant="soft" onClick={() => setPending(value + step)}>
+          +{step > 1 ? step.toLocaleString() : ""}
+        </Button>
+      </div>
+      {dirty && (
+        <div className="mt-2.5 flex justify-end">
+          <Button small onClick={save}>Save</Button>
+        </div>
       )}
-      <Button small variant="soft" onClick={() => bumpTracker(item, step)}>+{step > 1 ? step.toLocaleString() : ""}</Button>
     </div>
   );
 }
@@ -325,8 +365,11 @@ const KIND_DEFAULT_TRACKER: Partial<Record<ItemKind, TrackerType>> = {
   milestone: "check",
 };
 
+const PERIOD_HORIZONS: Horizon[] = ["week", "month", "quarter", "year"];
+
 export function ItemSheet({
-  open, onClose, initial, editing, defaultAreaId, defaultParentId, defaultHorizon, onCreated,
+  open, onClose, initial, editing, defaultAreaId, defaultParentId, defaultHorizon,
+  defaultHorizonPeriod, onCreated,
 }: {
   open: boolean;
   onClose: () => void;
@@ -338,6 +381,8 @@ export function ItemSheet({
   defaultParentId?: string | null;
   /** prefill planning horizon, e.g. adding straight from a "This week" list */
   defaultHorizon?: Horizon;
+  /** which specific week/month/quarter/year instance, paired with defaultHorizon */
+  defaultHorizonPeriod?: string | null;
   onCreated?: (item: Item) => void;
 }) {
   const { db, addItem, updateItem, limits } = useLife();
@@ -346,6 +391,9 @@ export function ItemSheet({
   const [tracker, setTracker] = useState<TrackerType>(editing?.tracker ?? "check");
   const [areaId, setAreaId] = useState<string | null>(editing?.areaId ?? defaultAreaId ?? null);
   const [horizon, setHorizon] = useState<Horizon>(editing?.horizon ?? defaultHorizon ?? null);
+  const [horizonPeriod, setHorizonPeriod] = useState<string | null>(
+    editing?.horizonPeriod ?? defaultHorizonPeriod ?? null
+  );
   const [schedule, setSchedule] = useState<ScheduleValue>({
     cadence: editing?.cadence ?? null,
     cadenceDays: editing?.cadenceDays ?? null,
@@ -370,6 +418,7 @@ export function ItemSheet({
     setTracker(editing?.tracker ?? "check");
     setAreaId(editing?.areaId ?? defaultAreaId ?? null);
     setHorizon(editing?.horizon ?? defaultHorizon ?? null);
+    setHorizonPeriod(editing?.horizonPeriod ?? defaultHorizonPeriod ?? null);
     setSchedule({
       cadence: editing?.cadence ?? null,
       cadenceDays: editing?.cadenceDays ?? null,
@@ -389,6 +438,19 @@ export function ItemSheet({
     if (!touchedTracker) setTracker(KIND_DEFAULT_TRACKER[k] ?? "none");
     if (k === "habit" && !schedule.cadence) {
       setSchedule({ cadence: "daily", cadenceDays: null, cadenceCount: null });
+    }
+  };
+
+  // picking a horizon here has no period-navigator of its own, so a
+  // week/month/quarter/year choice always anchors to whichever instance is
+  // current right now — unless it's the exact one this sheet was opened for
+  // (e.g. "+ Add" from an already-navigated "next month" list)
+  const pickHorizon = (h: Horizon) => {
+    setHorizon(h);
+    if (h && (PERIOD_HORIZONS as string[]).includes(h)) {
+      setHorizonPeriod(h === defaultHorizon && defaultHorizonPeriod ? defaultHorizonPeriod : today());
+    } else {
+      setHorizonPeriod(null);
     }
   };
 
@@ -412,6 +474,7 @@ export function ItemSheet({
       tracker,
       areaId,
       horizon,
+      horizonPeriod,
       cadence: schedule.cadence,
       cadenceDays: schedule.cadence === "days" ? schedule.cadenceDays : null,
       cadenceCount: schedule.cadence === "weekly" ? schedule.cadenceCount : null,
@@ -544,9 +607,9 @@ export function ItemSheet({
 
       <Field label="Planning horizon">
         <div className="flex flex-wrap gap-1.5">
-          <Chip active={horizon === null} onClick={() => setHorizon(null)}>None</Chip>
+          <Chip active={horizon === null} onClick={() => pickHorizon(null)}>None</Chip>
           {HORIZON_META.map((h) => (
-            <Chip key={h.value} active={horizon === h.value} onClick={() => setHorizon(h.value)}>
+            <Chip key={h.value} active={horizon === h.value} onClick={() => pickHorizon(h.value)}>
               {h.label}
             </Chip>
           ))}
