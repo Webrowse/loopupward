@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useLife } from "@/lib/data/provider";
-import { greeting, today } from "@/lib/dates";
+import { greeting, prettyDay, today } from "@/lib/dates";
 import { Seed, SPACE_KINDS } from "@/lib/types";
 import { itemProgress, todayEntries } from "@/lib/progress";
 import { areaColor } from "@/lib/palette";
@@ -53,7 +53,7 @@ export default function HomePage() {
       <header className="pt-6 pb-8 lg:pb-6">
         <p className="text-sm text-ink-3">{greeting()}{name ? `, ${name}` : ""}.</p>
         <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">
-          What is on your mind?
+          {prettyDay(today())}
         </h1>
       </header>
 
