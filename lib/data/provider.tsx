@@ -425,6 +425,11 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       toggleHabitDay(entry.item, day, entry.action.done);
       return;
     }
+    if (entry.virtualItemTask && entry.item) {
+      if (entry.action.done) reopenItem(entry.item.id);
+      else completeItem(entry.item.id);
+      return;
+    }
     const a = entry.action;
     const nowDone = !a.done;
     upsertRows("actions", [{ ...a, done: nowDone, doneAt: nowDone ? Date.now() : null }]);
@@ -447,7 +452,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       // check-tracked items are completed deliberately from their own page,
       // never as a side effect of finishing one small piece
     }
-  }, [db.items, upsertRows, removeRows, toggleHabitDay]);
+  }, [db.items, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem]);
 
   /* ————— reflections ————— */
   const saveReflection = useCallback((period: Reflection["period"], periodKey: string, text: string) => {

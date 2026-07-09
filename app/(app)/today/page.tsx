@@ -6,19 +6,29 @@ import { useLife } from "@/lib/data/provider";
 import { addDays, prettyDay, shortDay, startOfWeek, today } from "@/lib/dates";
 import { areaColor } from "@/lib/palette";
 import { todayEntries, TodayEntry } from "@/lib/progress";
-import { Cadence } from "@/lib/types";
+import { Cadence, HORIZON_META } from "@/lib/types";
 import { DailyJournal } from "@/components/journal";
-import { ScheduleEditor, ScheduleValue } from "@/components/items";
+import { HorizonList, ScheduleEditor, ScheduleValue } from "@/components/items";
 import { Ring } from "@/components/progress";
 import { EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
 const DOW_LETTER = ["S", "M", "T", "W", "T", "F", "S"];
+
+type ViewTab = "today" | "week" | "month" | "quarter" | "year";
+const VIEW_TABS: { value: ViewTab; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "week", label: "Week" },
+  { value: "month", label: "Month" },
+  { value: "quarter", label: "Quarter" },
+  { value: "year", label: "Year" },
+];
 
 export default function TodayPage() {
   const { db, toggleEntry, deleteAction } = useLife();
   const realToday = today();
   const [day, setDay] = useState(realToday);
   const [planning, setPlanning] = useState(false);
+  const [view, setView] = useState<ViewTab>("today");
 
   const entries = useMemo(() => todayEntries(db, day), [db, day]);
   const done = entries.filter((e) => e.action.done).length;
@@ -29,11 +39,13 @@ export default function TodayPage() {
     <div className="rise-in lg:max-w-none">
       <header className="pt-6 pb-4 flex items-start justify-between gap-4 lg:max-w-2xl">
         <div>
-          <p className="text-sm text-ink-3">{prettyDay(day)}</p>
+          <p className="text-sm text-ink-3">{view === "today" ? prettyDay(day) : "The shape of your time"}</p>
           <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">
-            {isToday ? "Today" : day < realToday ? "Looking back" : "Planning ahead"}
+            {view === "today"
+              ? isToday ? "Today" : day < realToday ? "Looking back" : "Planning ahead"
+              : HORIZON_META.find((h) => h.value === view)?.label ?? view}
           </h1>
-          {total > 0 && isToday && (
+          {total > 0 && isToday && view === "today" && (
             <p className="text-sm text-ink-2 mt-2">
               {done === total
                 ? "Everything done. Rest well."
@@ -41,11 +53,34 @@ export default function TodayPage() {
             </p>
           )}
         </div>
-        {total > 0 && (
+        {total > 0 && view === "today" && (
           <Ring value={done / total} size={92} stroke={8} label={`${done}/${total}`} />
         )}
       </header>
 
+      {/* horizon switcher: today's actions, or the standing week/month/quarter/year lists */}
+      <div className="mb-6 flex gap-1.5 lg:max-w-2xl">
+        {VIEW_TABS.map((t) => (
+          <button
+            key={t.value}
+            onClick={() => setView(t.value)}
+            className={`pressable rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+              view === t.value ? "bg-accent text-white dark:text-[#10160f]" : "bg-surface-2 text-ink-2"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {view !== "today" && (
+        <div className="lg:max-w-2xl">
+          <HorizonList horizon={view} />
+        </div>
+      )}
+
+      {view === "today" && (
+      <>
       {/* day navigation: week strip + quick jumps */}
       <div className="mb-6 lg:max-w-2xl">
         <div className="flex items-center gap-1.5">
@@ -111,7 +146,7 @@ export default function TodayPage() {
                   key={e.action.id}
                   entry={e}
                   onToggle={() => toggleEntry(e, day)}
-                  onDelete={e.virtualHabit ? undefined : () => deleteAction(e.action.id)}
+                  onDelete={e.virtualHabit || e.virtualItemTask ? undefined : () => deleteAction(e.action.id)}
                 />
               ))}
             </div>
@@ -129,6 +164,8 @@ export default function TodayPage() {
           <DailyJournal date={day} />
         </div>
       </div>
+      </>
+      )}
 
       <PlanSheet open={planning} onClose={() => setPlanning(false)} day={day} />
     </div>
@@ -274,7 +311,7 @@ function ActionRow({
   entry, onToggle, onDelete,
 }: { entry: TodayEntry; onToggle: () => void; onDelete?: () => void }) {
   const { db, theme } = useLife();
-  const { action, item, carriedFrom, virtualHabit, dayValue, dayTarget, scheduleLabel } = entry;
+  const { action, item, carriedFrom, virtualHabit, virtualItemTask, dayValue, dayTarget, scheduleLabel } = entry;
   const multi = dayTarget > 1;
   const dark = theme === "dark";
   const itemLabels = item ? [...new Set(item.labels)] : [];
@@ -350,6 +387,7 @@ function ActionRow({
           })}
           {scheduleLabel && <span className="shrink-0">{scheduleLabel}</span>}
           {virtualHabit && !scheduleLabel && <span>habit</span>}
+          {virtualItemTask && <span>🎯 today</span>}
           {carriedFrom && <span className="shrink-0 text-amber">carried from {shortDay(carriedFrom)}</span>}
         </div>
       </div>

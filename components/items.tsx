@@ -1,16 +1,17 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
 import { Cadence, Horizon, HORIZON_META, Item, ItemKind, KIND_META, TrackerType } from "@/lib/types";
 import {
   children as childrenOf, currentStreak, formatValue, habitDailyTarget, habitDays,
-  itemProgress, ownProgress, scheduleLabel,
+  horizonEntries, itemProgress, ownProgress, scheduleLabel,
 } from "@/lib/progress";
 import { areaColor } from "@/lib/palette";
 import { Bar } from "./progress";
-import { Button, Chip, Field, Sheet, inputCls } from "./ui";
+import { Button, Chip, EmptyState, Field, Sheet, inputCls } from "./ui";
 
 /* ————— Item card ————— */
 
@@ -74,6 +75,82 @@ export function ItemCard({ item, hideLabelIds }: { item: Item; hideLabelIds?: st
         </div>
       )}
     </button>
+  );
+}
+
+/* ————— Horizon lists: "this week / month / quarter / year" ————— */
+
+export function HorizonList({ horizon }: { horizon: Exclude<Horizon, null> }) {
+  const { db } = useLife();
+  const [adding, setAdding] = useState(false);
+  const entries = useMemo(() => horizonEntries(db, horizon), [db, horizon]);
+  const label = HORIZON_META.find((h) => h.value === horizon)?.label ?? horizon;
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-sm text-ink-2">
+          {entries.length === 0 ? `Nothing planned for ${label.toLowerCase()}` : `${entries.length} for ${label.toLowerCase()}`}
+        </p>
+        <Button small variant="ghost" onClick={() => setAdding(true)}>+ Add</Button>
+      </div>
+
+      {entries.length === 0 ? (
+        <EmptyState
+          emoji="🗓"
+          title={`Nothing tagged "${label}"`}
+          body={`Add something here, or open any goal and set its planning horizon to ${label.toLowerCase()}.`}
+        />
+      ) : (
+        <div className="space-y-2">
+          {entries.map((item) => (
+            <HorizonRow key={item.id} item={item} />
+          ))}
+        </div>
+      )}
+
+      <ItemSheet open={adding} onClose={() => setAdding(false)} defaultHorizon={horizon} />
+    </div>
+  );
+}
+
+function HorizonRow({ item }: { item: Item }) {
+  const { db, theme, completeItem, updateItem } = useLife();
+  const progress = itemProgress(db, item);
+  const kids = childrenOf(db, item.id);
+  const area = db.areas.find((a) => a.id === item.areaId);
+  const c = areaColor(area?.color);
+  const color = theme === "dark" ? c.fgDark : c.fg;
+
+  return (
+    <div className="flex items-center gap-3 rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3 shadow-(--shadow-card)">
+      <button
+        onClick={() => completeItem(item.id)}
+        aria-label="Mark done"
+        className="pressable grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 border-line hover:border-accent"
+      />
+      <Link href={`/item/${item.id}`} className="min-w-0 flex-1">
+        <div className="truncate text-[0.95rem] leading-snug text-ink">{item.title}</div>
+        <div className="mt-0.5 flex items-center gap-2 text-xs text-ink-3">
+          {area && (
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+              {area.name}
+            </span>
+          )}
+          {kids.length > 0 && progress !== null && (
+            <span className="tabular-nums">{Math.round(progress * 100)}% · {kids.length} inside</span>
+          )}
+          {scheduleLabel(item) && <span>{scheduleLabel(item)}</span>}
+        </div>
+      </Link>
+      <button
+        onClick={() => updateItem(item.id, { horizon: "today" })}
+        className="pressable shrink-0 text-xs font-medium text-accent-deep"
+      >
+        → Today
+      </button>
+    </div>
   );
 }
 
@@ -249,7 +326,7 @@ const KIND_DEFAULT_TRACKER: Partial<Record<ItemKind, TrackerType>> = {
 };
 
 export function ItemSheet({
-  open, onClose, initial, editing, defaultAreaId, defaultParentId, onCreated,
+  open, onClose, initial, editing, defaultAreaId, defaultParentId, defaultHorizon, onCreated,
 }: {
   open: boolean;
   onClose: () => void;
@@ -259,6 +336,8 @@ export function ItemSheet({
   editing?: Item | null;
   defaultAreaId?: string | null;
   defaultParentId?: string | null;
+  /** prefill planning horizon, e.g. adding straight from a "This week" list */
+  defaultHorizon?: Horizon;
   onCreated?: (item: Item) => void;
 }) {
   const { db, addItem, updateItem, limits } = useLife();
@@ -266,7 +345,7 @@ export function ItemSheet({
   const [kind, setKind] = useState<ItemKind>(editing?.kind ?? "goal");
   const [tracker, setTracker] = useState<TrackerType>(editing?.tracker ?? "check");
   const [areaId, setAreaId] = useState<string | null>(editing?.areaId ?? defaultAreaId ?? null);
-  const [horizon, setHorizon] = useState<Horizon>(editing?.horizon ?? null);
+  const [horizon, setHorizon] = useState<Horizon>(editing?.horizon ?? defaultHorizon ?? null);
   const [schedule, setSchedule] = useState<ScheduleValue>({
     cadence: editing?.cadence ?? null,
     cadenceDays: editing?.cadenceDays ?? null,
@@ -290,7 +369,7 @@ export function ItemSheet({
     setKind(editing?.kind ?? "goal");
     setTracker(editing?.tracker ?? "check");
     setAreaId(editing?.areaId ?? defaultAreaId ?? null);
-    setHorizon(editing?.horizon ?? null);
+    setHorizon(editing?.horizon ?? defaultHorizon ?? null);
     setSchedule({
       cadence: editing?.cadence ?? null,
       cadenceDays: editing?.cadenceDays ?? null,

@@ -482,9 +482,11 @@ function ScheduleSheet({
               onClick={() =>
                 onSave({
                   horizon: h.value,
-                  // moving out of someday makes it active again
+                  // this picker only ever labels a timeframe; shelving (status)
+                  // stays a separate, deliberate action via the Someday/Make
+                  // active buttons — otherwise a cadence on a "someday" item
+                  // would silently stop appearing on Today
                   ...(item.status === "someday" && h.value !== "someday" ? { status: "active" as const } : {}),
-                  ...(h.value === "someday" ? { status: "someday" as const } : {}),
                 })
               }
             >
