@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useLife } from "@/lib/data/provider";
 import { greeting, prettyDay, today } from "@/lib/dates";
@@ -148,6 +148,7 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
   const { addItem, plantSeed, setSeedStatus, deleteSeed } = useLife();
   const [shaping, setShaping] = useState<Seed | null>(null);
   const [confirming, setConfirming] = useState<Seed | null>(null);
+  const [editing, setEditing] = useState<Seed | null>(null);
 
   const quick = (seed: Seed, kind: "goal" | "habit" | "note") => {
     const title = seed.text.replace(/^quote:\s*/i, "").trim();
@@ -171,7 +172,12 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
             key={seed.id}
             className="rise-in rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3 shadow-(--shadow-card)"
           >
-            <p className="text-[0.95rem] text-ink leading-snug">{seed.text}</p>
+            <button
+              onClick={() => setEditing(seed)}
+              className="pressable block w-full text-left text-[0.95rem] text-ink leading-snug"
+            >
+              {seed.text}
+            </button>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-sm">
               <TriageChip onClick={() => setShaping(seed)}>🪴 Organize</TriageChip>
               <TriageChip onClick={() => quick(seed, "goal")}>🎯 Goal</TriageChip>
@@ -202,6 +208,8 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
         }}
       />
 
+      <SeedEditSheet seed={editing} onClose={() => setEditing(null)} />
+
       <Sheet
         open={confirming !== null}
         onClose={() => setConfirming(null)}
@@ -229,6 +237,7 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
 function RestingSeeds({ seeds }: { seeds: Seed[] }) {
   const { setSeedStatus } = useLife();
   const [openList, setOpenList] = useState(false);
+  const [editing, setEditing] = useState<Seed | null>(null);
 
   return (
     <section className="mt-6">
@@ -246,7 +255,12 @@ function RestingSeeds({ seeds }: { seeds: Seed[] }) {
               key={seed.id}
               className="flex items-center justify-between gap-3 rounded-xl border border-line-soft bg-surface px-4 py-2.5"
             >
-              <p className="min-w-0 truncate text-sm text-ink-2">{seed.text}</p>
+              <button
+                onClick={() => setEditing(seed)}
+                className="pressable min-w-0 truncate text-left text-sm text-ink-2"
+              >
+                {seed.text}
+              </button>
               <button
                 onClick={() => setSeedStatus(seed.id, "inbox")}
                 className="pressable shrink-0 text-xs font-medium text-accent-deep"
@@ -257,6 +271,8 @@ function RestingSeeds({ seeds }: { seeds: Seed[] }) {
           ))}
         </div>
       )}
+
+      <SeedEditSheet seed={editing} onClose={() => setEditing(null)} />
     </section>
   );
 }
@@ -266,6 +282,7 @@ function ArchivedSeeds({ seeds }: { seeds: Seed[] }) {
   const { setSeedStatus, deleteSeed } = useLife();
   const [openList, setOpenList] = useState(false);
   const [confirming, setConfirming] = useState<Seed | null>(null);
+  const [editing, setEditing] = useState<Seed | null>(null);
 
   return (
     <section className="mt-6">
@@ -283,7 +300,12 @@ function ArchivedSeeds({ seeds }: { seeds: Seed[] }) {
               key={seed.id}
               className="flex items-center justify-between gap-3 rounded-xl border border-line-soft bg-surface px-4 py-2.5"
             >
-              <p className="min-w-0 truncate text-sm text-ink-2">{seed.text}</p>
+              <button
+                onClick={() => setEditing(seed)}
+                className="pressable min-w-0 truncate text-left text-sm text-ink-2"
+              >
+                {seed.text}
+              </button>
               <div className="flex shrink-0 items-center gap-3 text-xs">
                 <button
                   onClick={() => setSeedStatus(seed.id, "inbox")}
@@ -321,6 +343,8 @@ function ArchivedSeeds({ seeds }: { seeds: Seed[] }) {
           “{confirming?.text}” will be gone for good.
         </p>
       </Sheet>
+
+      <SeedEditSheet seed={editing} onClose={() => setEditing(null)} />
     </section>
   );
 }
@@ -336,6 +360,39 @@ function TriageChip({
     >
       {children}
     </button>
+  );
+}
+
+/** Edit a seed's own text — stays a seed, no plant/organize step. */
+function SeedEditSheet({ seed, onClose }: { seed: Seed | null; onClose: () => void }) {
+  const { updateSeed } = useLife();
+  const [text, setText] = useState("");
+
+  useEffect(() => {
+    if (seed) setText(seed.text);
+  }, [seed]);
+
+  const save = () => {
+    if (seed && text.trim()) updateSeed(seed.id, text.trim());
+    onClose();
+  };
+
+  return (
+    <Sheet
+      open={seed !== null}
+      onClose={onClose}
+      title="Edit thought"
+      primary={{ label: "Save", onClick: save }}
+      primaryDisabled={!text.trim()}
+    >
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={4}
+        autoFocus
+        className="w-full resize-none rounded-(--radius-card) border border-line bg-bg px-3 py-2.5 text-[0.95rem] text-ink placeholder:text-ink-3 outline-none focus:border-accent"
+      />
+    </Sheet>
   );
 }
 

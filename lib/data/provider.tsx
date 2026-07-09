@@ -32,6 +32,7 @@ interface LifeContextValue {
   setTheme: (t: "light" | "dark") => void;
 
   addSeed: (text: string) => Seed;
+  updateSeed: (id: string, text: string) => void;
   setSeedStatus: (id: string, status: SeedStatus) => void;
   deleteSeed: (id: string) => void;
   plantSeed: (seed: Seed, item: Item) => void;
@@ -211,6 +212,12 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     upsertRows("seeds", [seed]);
     return seed;
   }, [upsertRows]);
+
+  const updateSeed = useCallback((id: string, text: string) => {
+    const seed = db.seeds.find((s) => s.id === id);
+    if (!seed) return;
+    upsertRows("seeds", [{ ...seed, text: text.trim() }]);
+  }, [db.seeds, upsertRows]);
 
   const setSeedStatus = useCallback((id: string, status: SeedStatus) => {
     const seed = db.seeds.find((s) => s.id === id);
@@ -479,7 +486,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     ready, db, mode, cloudAvailable, user, premium, owner, limits,
     syncError, dismissSyncError,
     theme, setTheme,
-    addSeed, setSeedStatus, deleteSeed, plantSeed,
+    addSeed, updateSeed, setSeedStatus, deleteSeed, plantSeed,
     saveJournal,
     addLabel, updateLabel, deleteLabel,
     addArea, updateArea, deleteArea,
