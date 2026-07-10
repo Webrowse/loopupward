@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useLife } from "@/lib/data/provider";
-import { Button } from "./ui";
+import { prettyDay } from "@/lib/dates";
+import { Button, Sheet } from "./ui";
 
 export const MOODS = ["😞", "😕", "😐", "🙂", "😄"];
 export const ENERGY = ["🪫", "🌘", "🌗", "🌖", "⚡"];
@@ -15,6 +16,8 @@ const DEFAULT_EOD_MAX = 3000;
  * Mood/energy save instantly (one tap = one write); the two text areas
  * only save when Save is pressed, so composing a long entry doesn't fire
  * a request per pause — one deliberate write for both fields together.
+ * An "expand" button reopens the exact same fields in a wide dialog for
+ * more writing room, rather than only relying on drag-to-resize.
  */
 export function DailyJournal({ date }: { date: string }) {
   const { db, user, saveJournal } = useLife();
@@ -23,6 +26,7 @@ export function DailyJournal({ date }: { date: string }) {
   const [eod, setEod] = useState(entry?.endOfDay ?? "");
   const [showEod, setShowEod] = useState(Boolean(entry?.endOfDay));
   const [justSaved, setJustSaved] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const roughMax = user?.limits?.journalRoughChars ?? DEFAULT_ROUGH_MAX;
   const eodMax = user?.limits?.journalEodChars ?? DEFAULT_EOD_MAX;
@@ -35,6 +39,7 @@ export function DailyJournal({ date }: { date: string }) {
     setEod(entry?.endOfDay ?? "");
     setShowEod(Boolean(entry?.endOfDay));
     setJustSaved(false);
+    setExpanded(false);
   }
 
   const dirty = rough !== (entry?.roughNotes ?? "") || eod !== (entry?.endOfDay ?? "");
@@ -49,23 +54,77 @@ export function DailyJournal({ date }: { date: string }) {
     setTimeout(() => setJustSaved(false), 1800);
   };
 
+  const fieldsProps = {
+    rough, setRough, eod, setEod, showEod, setShowEod, roughMax, eodMax,
+    mood: entry?.mood ?? null,
+    energy: entry?.energy ?? null,
+    onMood: (v: number | null) => saveJournal(date, { mood: v }),
+    onEnergy: (v: number | null) => saveJournal(date, { energy: v }),
+  };
+
   return (
     <section className="rounded-(--radius-card) border border-line-soft bg-surface p-5 shadow-(--shadow-card)">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xs font-medium uppercase tracking-wide text-ink-3">Daily notes</h2>
-        {dirty ? (
-          <Button small onClick={save}>Save</Button>
-        ) : justSaved ? (
-          <span className="text-xs text-accent-deep">✓ saved</span>
-        ) : null}
+        <div className="flex items-center gap-3">
+          {dirty ? (
+            <Button small onClick={save}>Save</Button>
+          ) : justSaved ? (
+            <span className="text-xs text-accent-deep">✓ saved</span>
+          ) : null}
+          <button
+            onClick={() => setExpanded(true)}
+            aria-label="Expand to write"
+            className="pressable text-ink-3 hover:text-ink-2"
+          >
+            <ExpandIcon />
+          </button>
+        </div>
       </div>
 
+      <JournalFields {...fieldsProps} compact />
+
+      <Sheet
+        open={expanded}
+        onClose={() => setExpanded(false)}
+        title={`Daily notes — ${prettyDay(date)}`}
+        wide
+        cancelLabel="Close"
+        primary={{ label: dirty ? "Save" : "Done", onClick: () => { if (dirty) save(); setExpanded(false); } }}
+      >
+        <JournalFields {...fieldsProps} compact={false} />
+      </Sheet>
+    </section>
+  );
+}
+
+function JournalFields({
+  rough, setRough, eod, setEod, showEod, setShowEod, roughMax, eodMax, mood, energy, onMood, onEnergy, compact,
+}: {
+  rough: string;
+  setRough: (v: string) => void;
+  eod: string;
+  setEod: (v: string) => void;
+  showEod: boolean;
+  setShowEod: (v: boolean) => void;
+  roughMax: number;
+  eodMax: number;
+  mood: number | null;
+  energy: number | null;
+  onMood: (v: number | null) => void;
+  onEnergy: (v: number | null) => void;
+  compact: boolean;
+}) {
+  return (
+    <div className={compact ? "mt-3" : ""}>
       <textarea
         value={rough}
         maxLength={roughMax}
         onChange={(e) => setRough(e.target.value)}
         placeholder="Today I'm thinking about…"
-        className="mt-3 min-h-32 w-full resize-y rounded-xl border border-line bg-bg px-3.5 py-3 text-[0.95rem] leading-relaxed text-ink placeholder:text-ink-3 outline-none focus:border-accent"
+        className={`w-full resize-y rounded-xl border border-line bg-bg px-3.5 py-3 text-[0.95rem] leading-relaxed text-ink placeholder:text-ink-3 outline-none focus:border-accent ${
+          compact ? "min-h-32" : "min-h-64"
+        }`}
       />
       {rough.length > roughMax * 0.9 && (
         <p className="mt-1 text-right text-xs text-ink-3 tabular-nums">{rough.length}/{roughMax}</p>
@@ -73,18 +132,8 @@ export function DailyJournal({ date }: { date: string }) {
 
       {/* mood & energy */}
       <div className="mt-4 space-y-2.5">
-        <ScaleRow
-          label="Mood"
-          icons={MOODS}
-          value={entry?.mood ?? null}
-          onChange={(v) => saveJournal(date, { mood: v })}
-        />
-        <ScaleRow
-          label="Energy"
-          icons={ENERGY}
-          value={entry?.energy ?? null}
-          onChange={(v) => saveJournal(date, { energy: v })}
-        />
+        <ScaleRow label="Mood" icons={MOODS} value={mood} onChange={onMood} />
+        <ScaleRow label="Energy" icons={ENERGY} value={energy} onChange={onEnergy} />
       </div>
 
       {/* end-of-day reflection — optional, gently offered */}
@@ -109,7 +158,9 @@ export function DailyJournal({ date }: { date: string }) {
               maxLength={eodMax}
               onChange={(e) => setEod(e.target.value)}
               placeholder="Honest, short, yours…"
-              className="mt-2 min-h-24 w-full resize-y rounded-xl border border-line bg-bg px-3.5 py-3 text-[0.95rem] leading-relaxed text-ink placeholder:text-ink-3 outline-none focus:border-accent"
+              className={`mt-2 w-full resize-y rounded-xl border border-line bg-bg px-3.5 py-3 text-[0.95rem] leading-relaxed text-ink placeholder:text-ink-3 outline-none focus:border-accent ${
+                compact ? "min-h-24" : "min-h-48"
+              }`}
             />
             {eod.length > eodMax * 0.9 && (
               <p className="mt-1 text-right text-xs text-ink-3 tabular-nums">{eod.length}/{eodMax}</p>
@@ -117,7 +168,7 @@ export function DailyJournal({ date }: { date: string }) {
           </>
         )}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -151,5 +202,13 @@ function ScaleRow({
         })}
       </div>
     </div>
+  );
+}
+
+function ExpandIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 2H2v4M10 14h4v-4M2 14l5-5M14 2l-5 5" />
+    </svg>
   );
 }
