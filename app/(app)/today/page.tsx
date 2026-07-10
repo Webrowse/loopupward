@@ -89,13 +89,6 @@ function Today() {
             ? isToday ? "Today" : day < realToday ? "Looking back" : "Planning ahead"
             : HORIZON_META.find((h) => h.value === view)?.label ?? view}
         </h1>
-        {total > 0 && isToday && view === "today" && (
-          <p className="text-sm text-ink-2 mt-2">
-            {done === total
-              ? "Everything done. Rest well."
-              : `${total - done} small ${total - done === 1 ? "action" : "actions"} between you and a good day.`}
-          </p>
-        )}
       </header>
 
       {/* horizon switcher: today's actions, or the standing week/month/quarter/year lists */}
@@ -156,6 +149,18 @@ function Today() {
           <DayJump label="Tomorrow" onClick={() => setDay(addDays(realToday, 1))} active={day === addDays(realToday, 1)} />
         </div>
       </div>
+
+      {/* this only ever applies to the real today, so its presence
+          shouldn't shift the nav above it — it sits below both the tab
+          bar and the day strip instead, where appearing/disappearing
+          doesn't move anything the user might currently be clicking */}
+      {total > 0 && isToday && (
+        <p className="mb-4 text-sm text-ink-2 lg:max-w-2xl">
+          {done === total
+            ? "Everything done. Rest well."
+            : `${total - done} small ${total - done === 1 ? "action" : "actions"} between you and a good day.`}
+        </p>
+      )}
 
       {/* main: tasks left, journal right (stacked on mobile) */}
       <div className="lg:grid lg:grid-cols-[minmax(0,42rem)_minmax(18rem,24rem)] lg:items-start lg:gap-8">
