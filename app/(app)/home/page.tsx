@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
 import { greeting, prettyDay, today } from "@/lib/dates";
 import { Seed, SPACE_KINDS } from "@/lib/types";
 import { itemProgress, todayEntries } from "@/lib/progress";
 import { areaColor } from "@/lib/palette";
-import { ItemSheet } from "@/components/items";
+import { deriveNoteFields, ItemSheet } from "@/components/items";
 import { Bar, Ring } from "@/components/progress";
 import { Button, Sheet } from "@/components/ui";
 
@@ -151,19 +152,18 @@ export default function HomePage() {
 
 function SeedInbox({ seeds }: { seeds: Seed[] }) {
   const { addItem, plantSeed, setSeedStatus, deleteSeed } = useLife();
+  const router = useRouter();
   const [shaping, setShaping] = useState<Seed | null>(null);
   const [confirming, setConfirming] = useState<Seed | null>(null);
   const [editing, setEditing] = useState<Seed | null>(null);
 
-  const quick = (seed: Seed, kind: "goal" | "habit" | "note") => {
-    const title = seed.text.replace(/^quote:\s*/i, "").trim();
-    const item = addItem({
-      title,
-      kind,
-      tracker: kind === "goal" ? "check" : kind === "habit" ? "habit" : "none",
-      cadence: kind === "habit" ? "daily" : null,
-    });
-    if (item) plantSeed(seed, item);
+  const quickNote = (seed: Seed) => {
+    const { title, richBody } = deriveNoteFields(seed.text.replace(/^quote:\s*/i, ""));
+    const item = addItem({ title, richBody, kind: "note", tracker: "none" });
+    if (item) {
+      plantSeed(seed, item);
+      router.push(`/notes/${item.id}`);
+    }
   };
 
   return (
@@ -185,8 +185,7 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
             </button>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-sm">
               <TriageChip onClick={() => setShaping(seed)}>🪴 Organize</TriageChip>
-              <TriageChip onClick={() => quick(seed, "goal")}>🎯 Goal</TriageChip>
-              <TriageChip onClick={() => quick(seed, "habit")}>🔁 Habit</TriageChip>
+              <TriageChip onClick={() => quickNote(seed)}>📝 Notes</TriageChip>
               <TriageChip onClick={() => setSeedStatus(seed.id, "later")} title="Rests below — nothing is lost">
                 🌙 Later
               </TriageChip>
