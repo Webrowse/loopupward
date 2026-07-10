@@ -71,6 +71,9 @@ interface LifeContextValue {
 
   saveReflection: (period: Reflection["period"], periodKey: string, text: string) => void;
 
+  /** empty text removes the day's plan entirely */
+  setHabitDayNote: (itemId: string, date: string, text: string) => void;
+
   signOut: () => Promise<void>;
   exportJSON: () => string;
 }
@@ -471,6 +474,23 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [db.reflections, upsertRows]);
 
+  /* ————— habit day notes ————— */
+  const setHabitDayNote = useCallback((itemId: string, date: string, text: string) => {
+    const existing = db.habitDayNotes.find((n) => n.itemId === itemId && n.date === date);
+    const trimmed = text.trim();
+    if (!trimmed) {
+      if (existing) removeRows("habitDayNotes", [existing.id]);
+      return;
+    }
+    if (existing) {
+      upsertRows("habitDayNotes", [{ ...existing, text: trimmed, updatedAt: Date.now() }]);
+    } else {
+      upsertRows("habitDayNotes", [{
+        id: uid(), itemId, date, text: trimmed, createdAt: Date.now(), updatedAt: Date.now(),
+      }]);
+    }
+  }, [db.habitDayNotes, upsertRows, removeRows]);
+
   /* ————— auth & export ————— */
   const signOut = useCallback(async () => {
     try {
@@ -503,6 +523,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     addItem, updateItem, moveItem, deleteItem, completeItem, reopenItem, setTracker,
     addAction, updateAction, deleteAction, toggleEntry, toggleHabitDay,
     saveReflection,
+    setHabitDayNote,
     signOut, exportJSON,
   };
 

@@ -10,7 +10,7 @@ import {
 } from "@/lib/dates";
 import { areaColor } from "@/lib/palette";
 import { todayEntries, TodayEntry } from "@/lib/progress";
-import { Action, Cadence, HORIZON_META } from "@/lib/types";
+import { Action, Cadence, HORIZON_META, Item } from "@/lib/types";
 import { DailyJournal } from "@/components/journal";
 import { HorizonList, ScheduleEditor, ScheduleValue } from "@/components/items";
 import { Ring } from "@/components/progress";
@@ -46,6 +46,7 @@ function Today() {
   const [day, setDay] = useState(realToday);
   const [planning, setPlanning] = useState(false);
   const [editingAction, setEditingAction] = useState<Action | null>(null);
+  const [planningHabit, setPlanningHabit] = useState<{ item: Item; date: string } | null>(null);
   const [view, setView] = useState<ViewTab>(isPeriod(paramView) ? paramView : "today");
   const [anchors, setAnchors] = useState<Record<Period, string>>({
     week: realToday, month: realToday, quarter: realToday, year: realToday,
@@ -172,6 +173,9 @@ function Today() {
                   onEdit={
                     e.item || e.virtualHabit || e.virtualItemTask ? undefined : () => setEditingAction(e.action)
                   }
+                  onPlanDay={
+                    e.virtualHabit && e.item ? () => setPlanningHabit({ item: e.item!, date: day }) : undefined
+                  }
                 />
               ))}
             </div>
@@ -194,6 +198,7 @@ function Today() {
 
       <PlanSheet open={planning} onClose={() => setPlanning(false)} day={day} />
       <EditActionSheet action={editingAction} onClose={() => setEditingAction(null)} />
+      <HabitDayNoteSheet planning={planningHabit} onClose={() => setPlanningHabit(null)} />
     </div>
   );
 }
@@ -251,14 +256,24 @@ function DayJump({ label, onClick, active }: { label: string; onClick: () => voi
 function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void; day: string }) {
   const { addAction, addItem } = useLife();
   const [title, setTitle] = useState("");
+  const [taskDate, setTaskDate] = useState(day);
+  const [dateTouched, setDateTouched] = useState(false);
   const [schedule, setSchedule] = useState<ScheduleValue>({ cadence: null, cadenceDays: null, cadenceCount: null });
   const [priority, setPriority] = useState(0);
   const [note, setNote] = useState("");
   const [titleError, setTitleError] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
+  // jump to whatever day is on screen each time the sheet opens fresh,
+  // but leave a date the user picked mid-session alone
+  if (open && !dateTouched && taskDate !== day) {
+    setTaskDate(day);
+  }
+
   const reset = () => {
     setTitle("");
+    setTaskDate(day);
+    setDateTouched(false);
     setSchedule({ cadence: null, cadenceDays: null, cadenceCount: null });
     setPriority(0);
     setNote("");
@@ -272,8 +287,8 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
       return;
     }
     if (schedule.cadence === null) {
-      // one time
-      addAction(title, day, null, 1, { priority, note });
+      // one time — on whichever date was chosen, not necessarily today's view
+      addAction(title, taskDate, null, 1, { priority, note });
     } else {
       // recurring: becomes a scheduled life node that feeds Today automatically
       addItem({
@@ -314,10 +329,22 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
 
       <Field label="How often?">
         <ScheduleEditor value={schedule} onChange={setSchedule} noneLabel="Just once" />
-        {schedule.cadence === null && (
-          <p className="mt-2 text-xs text-ink-3">One-time task for {shortDay(day)}.</p>
-        )}
       </Field>
+
+      {schedule.cadence === null && (
+        <Field label="On which day?">
+          <input
+            type="date"
+            className={inputCls}
+            value={taskDate}
+            onChange={(e) => { if (e.target.value) { setTaskDate(e.target.value); setDateTouched(true); } }}
+          />
+          <p className="mt-1.5 text-xs text-ink-3">
+            {taskDate === today() ? "Today" : prettyDay(taskDate)} — jump ahead to plant a task on any future day,
+            like a birthday or a deadline, without paging through the day strip.
+          </p>
+        </Field>
+      )}
 
       <Field label="Priority">
         <div className="flex gap-1.5">
@@ -445,11 +472,75 @@ function EditActionSheet({ action, onClose }: { action: Action | null; onClose: 
   );
 }
 
+/* ————— planning what a habit means on a specific day ————— */
+
+function HabitDayNoteSheet({
+  planning, onClose,
+}: { planning: { item: Item; date: string } | null; onClose: () => void }) {
+  const { db, setHabitDayNote } = useLife();
+  const [date, setDate] = useState("");
+  const [text, setText] = useState("");
+  const [lastKey, setLastKey] = useState<string | null>(null);
+
+  const key = planning ? `${planning.item.id}:${planning.date}` : null;
+  if (planning && key !== lastKey) {
+    setLastKey(key);
+    setDate(planning.date);
+    const existing = db.habitDayNotes.find((n) => n.itemId === planning.item.id && n.date === planning.date);
+    setText(existing?.text ?? "");
+  }
+
+  const changeDate = (d: string) => {
+    setDate(d);
+    if (!planning) return;
+    const existing = db.habitDayNotes.find((n) => n.itemId === planning.item.id && n.date === d);
+    setText(existing?.text ?? "");
+  };
+
+  const save = () => {
+    if (!planning) return;
+    setHabitDayNote(planning.item.id, date, text);
+    onClose();
+  };
+
+  return (
+    <Sheet
+      open={!!planning}
+      onClose={onClose}
+      title={planning ? `Plan "${planning.item.title}"` : "Plan"}
+      primary={{ label: "Save", onClick: save }}
+    >
+      <Field label="Which day?">
+        <input
+          type="date"
+          className={inputCls}
+          value={date}
+          onChange={(e) => e.target.value && changeDate(e.target.value)}
+        />
+      </Field>
+      <Field label="What does this day mean?">
+        <input
+          className={inputCls}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="clean desk, side desk, top drawer…"
+          autoFocus
+        />
+        <p className="mt-1.5 text-xs text-ink-3">
+          Leave blank to just show &ldquo;{planning?.item.title}&rdquo; on this day.
+        </p>
+      </Field>
+    </Sheet>
+  );
+}
+
 /* ————— a single row on the day ————— */
 
 function ActionRow({
-  entry, onToggle, onDelete, onEdit,
-}: { entry: TodayEntry; onToggle: () => void; onDelete?: () => void; onEdit?: () => void }) {
+  entry, onToggle, onDelete, onEdit, onPlanDay,
+}: {
+  entry: TodayEntry; onToggle: () => void; onDelete?: () => void; onEdit?: () => void; onPlanDay?: () => void;
+}) {
   const { db, theme } = useLife();
   const { action, item, carriedFrom, virtualHabit, virtualItemTask, dayValue, dayTarget, scheduleLabel } = entry;
   const multi = dayTarget > 1;
@@ -539,6 +630,18 @@ function ActionRow({
           {carriedFrom && <span className="shrink-0 text-amber">carried from {shortDay(carriedFrom)}</span>}
         </div>
       </div>
+
+      {onPlanDay && (
+        <button
+          onClick={onPlanDay}
+          aria-label="Plan what this day means"
+          className="shrink-0 text-ink-3 hover:text-ink px-1"
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+            <path d="M14.5 3.5 16.5 5.5 6 16H4v-2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
 
       {onDelete && (
         <button

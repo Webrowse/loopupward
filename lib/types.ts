@@ -181,6 +181,19 @@ export interface Label {
   createdAt: number;
 }
 
+/** What a habit means to do on one specific day — "clean" → "clean desk"
+ *  today, "side desk" tomorrow. One per habit per day; the habit itself
+ *  still owns the single completion checkbox and streak. */
+export interface HabitDayNote {
+  id: string;
+  itemId: string;
+  /** ISO date YYYY-MM-DD */
+  date: string;
+  text: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface DB {
   areas: Area[];
   items: Item[];
@@ -190,6 +203,7 @@ export interface DB {
   reflections: Reflection[];
   journal: JournalEntry[];
   labels: Label[];
+  habitDayNotes: HabitDayNote[];
 }
 
 export const EMPTY_DB: DB = {
@@ -201,6 +215,7 @@ export const EMPTY_DB: DB = {
   reflections: [],
   journal: [],
   labels: [],
+  habitDayNotes: [],
 };
 
 export type TableName = keyof DB;

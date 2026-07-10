@@ -295,6 +295,8 @@ export function todayEntries(db: DB, day = today(), includeCarried = day === tod
     if (!state || !state.due) continue;
     const hasRealAction = entries.some((e) => e.action.itemId === item.id);
     if (hasRealAction) continue;
+    // what this specific day means for this habit, e.g. "clean" → "clean desk"
+    const dayNote = db.habitDayNotes.find((n) => n.itemId === item.id && n.date === day);
     entries.push({
       action: {
         id: `habit:${item.id}:${day}`,
@@ -305,7 +307,7 @@ export function todayEntries(db: DB, day = today(), includeCarried = day === tod
         doneAt: null,
         amount: 1,
         priority: 0,
-        note: "",
+        note: dayNote?.text ?? "",
         createdAt: item.createdAt,
       },
       item,
