@@ -14,6 +14,7 @@ pub struct Caps {
     pub journal: i64,
     pub labels: i64,
     pub habit_day_notes: i64,
+    pub day_order: i64,
 }
 
 pub fn caps(premium: bool) -> Caps {
@@ -29,6 +30,7 @@ pub fn caps(premium: bool) -> Caps {
             journal: 50_000,
             labels: 500,
             habit_day_notes: 100_000,
+            day_order: 50_000,
         }
     } else {
         Caps {
@@ -42,6 +44,7 @@ pub fn caps(premium: bool) -> Caps {
             journal: 1_000,
             labels: 10,
             habit_day_notes: 5_000,
+            day_order: 2_000,
         }
     }
 }
@@ -59,6 +62,7 @@ pub fn caps_json(premium: bool) -> Value {
         "journal": c.journal,
         "labels": c.labels,
         "habitDayNotes": c.habit_day_notes,
+        "dayOrder": c.day_order,
         "journalRoughChars": if premium { MAX_JOURNAL_ROUGH_PREMIUM } else { MAX_JOURNAL_ROUGH_FREE },
         "journalEodChars": if premium { MAX_JOURNAL_EOD_PREMIUM } else { MAX_JOURNAL_EOD_FREE },
     })
@@ -73,6 +77,8 @@ pub const MAX_SEED_TEXT: usize = 2_000;
 pub const MAX_REFLECTION_TEXT: usize = 20_000;
 /* a day's plan for a habit is a short label, not a note */
 pub const MAX_HABIT_DAY_NOTE: usize = 500;
+/* a day's manual task order is a plain id list, not user text */
+pub const MAX_DAY_ORDER_ENTRIES: usize = 500;
 pub const MAX_NAME: usize = 120;
 /* journal walls — the human loop stays human-sized */
 pub const MAX_JOURNAL_ROUGH_FREE: usize = 5_000;

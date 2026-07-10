@@ -9,10 +9,10 @@ import {
 import {
   Action, Area, DB, EMPTY_DB, Item, JournalEntry, Label, Reflection, Seed, SeedStatus, TableName,
 } from "../types";
+import { uid } from "../uid";
 import { CloudRepo } from "./cloud";
 import { LocalRepo, clearLocalDB, localHasData, readLocalDB } from "./local";
 import { Repo } from "./repo";
-import { uid } from "../uid";
 import { today } from "../dates";
 import { TodayEntry } from "../progress";
 import { FREE_LIMITS } from "../limits";
@@ -68,6 +68,9 @@ interface LifeContextValue {
   /** Log or unlog one habit occurrence for a single day — distinct from
    *  completeItem, which retires the habit for good. */
   toggleHabitDay: (item: Item, day: string, currentlyDone: boolean) => void;
+  /** Persist a manual drag order for one day's Today list. Completing a
+   *  task never calls this — only dragging, or the "Sort" tidy-up, does. */
+  reorderDay: (day: string, orderedEntryIds: string[]) => void;
 
   saveReflection: (period: Reflection["period"], periodKey: string, text: string) => void;
 
@@ -462,6 +465,15 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [db.items, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem]);
 
+  const reorderDay = useCallback((day: string, orderedEntryIds: string[]) => {
+    const existing = db.dayOrder.find((d) => d.date === day);
+    upsertRows("dayOrder", [
+      existing
+        ? { ...existing, order: orderedEntryIds, updatedAt: Date.now() }
+        : { id: uid(), date: day, order: orderedEntryIds, updatedAt: Date.now() },
+    ]);
+  }, [db.dayOrder, upsertRows]);
+
   /* ————— reflections ————— */
   const saveReflection = useCallback((period: Reflection["period"], periodKey: string, text: string) => {
     const existing = db.reflections.find((r) => r.period === period && r.periodKey === periodKey);
@@ -521,7 +533,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     addLabel, updateLabel, deleteLabel,
     addArea, updateArea, deleteArea,
     addItem, updateItem, moveItem, deleteItem, completeItem, reopenItem, setTracker,
-    addAction, updateAction, deleteAction, toggleEntry, toggleHabitDay,
+    addAction, updateAction, deleteAction, toggleEntry, toggleHabitDay, reorderDay,
     saveReflection,
     setHabitDayNote,
     signOut, exportJSON,

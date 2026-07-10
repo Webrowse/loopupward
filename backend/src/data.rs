@@ -168,6 +168,20 @@ pub struct HabitDayNote {
     pub updated_at: i64,
 }
 
+/// Manual drag order for one day's Today list (Postgres table: day_order).
+/// `order` holds entry ids in display order — real action ids, or virtual
+/// "habit:<itemId>:<date>" / "today-item:<itemId>" ids — so it's plain text,
+/// not uuid, and one row covers the whole day.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DayOrder {
+    pub id: Uuid,
+    pub date: String,
+    #[serde(default)]
+    pub order: Vec<String>,
+    pub updated_at: i64,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DbPayload {
@@ -180,6 +194,7 @@ pub struct DbPayload {
     pub journal: Vec<JournalEntry>,
     pub labels: Vec<Label>,
     pub habit_day_notes: Vec<HabitDayNote>,
+    pub day_order: Vec<DayOrder>,
 }
 
 /* ————— validation ————— */
@@ -358,6 +373,19 @@ impl HabitDayNote {
     fn validate(&self) -> ApiResult<()> {
         ck_date(&self.date)?;
         ck_len("text", &self.text, MAX_HABIT_DAY_NOTE)
+    }
+}
+
+impl DayOrder {
+    fn validate(&self) -> ApiResult<()> {
+        ck_date(&self.date)?;
+        if self.order.len() > MAX_DAY_ORDER_ENTRIES {
+            return Err(bad(format!("order is too long (max {MAX_DAY_ORDER_ENTRIES} entries)")));
+        }
+        for entry_id in &self.order {
+            ck_len("order entry", entry_id, MAX_TITLE)?;
+        }
+        Ok(())
     }
 }
 
@@ -561,6 +589,23 @@ async fn upsert_habit_day_notes(
     Ok(())
 }
 
+async fn upsert_day_order(conn: &mut PgConnection, user: Uuid, rows: &[DayOrder]) -> ApiResult<()> {
+    for r in rows {
+        r.validate()?;
+        // one row per day: a second device dragging the same day merges into it
+        sqlx::query(
+            "insert into day_order (id, user_id, date, entry_order, updated_at_ms)
+             values ($1,$2,$3,$4,$5)
+             on conflict (user_id, date) do update set
+               entry_order = excluded.entry_order, updated_at_ms = excluded.updated_at_ms",
+        )
+        .bind(r.id).bind(user).bind(&r.date).bind(&r.order).bind(r.updated_at)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
 /* ————— caps enforcement (checked inside the transaction, then commit) ————— */
 
 /// Client table name → Postgres table name.
@@ -568,6 +613,7 @@ fn sql_table(table: &str) -> &str {
     match table {
         "journal" => "daily_entries",
         "habitDayNotes" => "habit_day_notes",
+        "dayOrder" => "day_order",
         other => other,
     }
 }
@@ -596,6 +642,7 @@ async fn enforce_caps(
             "journal" => c.journal,
             "labels" => c.labels,
             "habitDayNotes" => c.habit_day_notes,
+            "dayOrder" => c.day_order,
             _ => i64::MAX,
         };
         if n > cap {
@@ -704,8 +751,14 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             id: r.get("id"), item_id: r.get("item_id"), date: r.get("date"),
             text: r.get("text"), created_at: r.get("created_at_ms"), updated_at: r.get("updated_at_ms"),
         }).collect();
+    let day_order = sqlx::query("select * from day_order where user_id = $1")
+        .bind(user).fetch_all(&state.pool).await?
+        .iter().map(|r| DayOrder {
+            id: r.get("id"), date: r.get("date"), order: r.get("entry_order"),
+            updated_at: r.get("updated_at_ms"),
+        }).collect();
 
-    Ok(DbPayload { areas, items, seeds, actions, logs, reflections, journal, labels, habit_day_notes })
+    Ok(DbPayload { areas, items, seeds, actions, logs, reflections, journal, labels, habit_day_notes, day_order })
 }
 
 #[derive(Deserialize)]
@@ -754,6 +807,7 @@ async fn apply_upsert(
         "habitDayNotes" => {
             upsert_habit_day_notes(tx.as_mut(), user.id, &parse::<HabitDayNote>(rows)?).await
         }
+        "dayOrder" => upsert_day_order(tx.as_mut(), user.id, &parse::<DayOrder>(rows)?).await,
         _ => Err(ApiError::NotFound),
     }
 }
@@ -771,7 +825,7 @@ pub async fn remove(
 ) -> ApiResult<Json<Value>> {
     const TABLES: &[&str] = &[
         "areas", "items", "seeds", "actions", "logs", "reflections", "journal", "labels",
-        "habitDayNotes",
+        "habitDayNotes", "dayOrder",
     ];
     if !TABLES.contains(&table.as_str()) {
         return Err(ApiError::NotFound);
@@ -799,7 +853,8 @@ pub async fn import(
 ) -> ApiResult<Json<Value>> {
     let total = body.areas.len() + body.items.len() + body.seeds.len()
         + body.actions.len() + body.logs.len() + body.reflections.len()
-        + body.journal.len() + body.labels.len() + body.habit_day_notes.len();
+        + body.journal.len() + body.labels.len() + body.habit_day_notes.len()
+        + body.day_order.len();
     if total > MAX_IMPORT_ROWS {
         return Err(ApiError::BadRequest(format!("Import too large (max {MAX_IMPORT_ROWS} rows)")));
     }
@@ -813,12 +868,13 @@ pub async fn import(
     upsert_journal(tx.as_mut(), user.id, &body.journal, user.premium()).await?;
     upsert_labels(tx.as_mut(), user.id, &body.labels).await?;
     upsert_habit_day_notes(tx.as_mut(), user.id, &body.habit_day_notes).await?;
+    upsert_day_order(tx.as_mut(), user.id, &body.day_order).await?;
     enforce_caps(
         &mut tx,
         &user,
         &[
             "areas", "items", "seeds", "actions", "logs", "reflections", "journal", "labels",
-            "habitDayNotes",
+            "habitDayNotes", "dayOrder",
         ],
     )
     .await?;

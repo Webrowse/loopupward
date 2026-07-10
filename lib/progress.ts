@@ -355,7 +355,24 @@ export function todayEntries(db: DB, day = today(), includeCarried = day === tod
     }
   }
 
+  // completing a task never moves it — position only changes by dragging,
+  // or by the explicit "Sort" tidy-up, both of which persist here
+  const manualOrder = db.dayOrder.find((o) => o.date === day)?.order;
   return entries.sort((a, b) => {
+    const pa = manualOrder ? manualOrder.indexOf(a.action.id) : -1;
+    const pb = manualOrder ? manualOrder.indexOf(b.action.id) : -1;
+    const ra = pa === -1 ? Infinity : pa;
+    const rb = pb === -1 ? Infinity : pb;
+    if (ra !== rb) return ra - rb;
+    if (a.action.priority !== b.action.priority) return b.action.priority - a.action.priority;
+    return a.action.createdAt - b.action.createdAt;
+  });
+}
+
+/** The "tidy up" order: undone first, done last — same shape Today used to
+ *  auto-apply on every toggle. Used only by the explicit Sort button. */
+export function sortedByDone(entries: TodayEntry[]): TodayEntry[] {
+  return [...entries].sort((a, b) => {
     if (a.action.done !== b.action.done) return a.action.done ? 1 : -1;
     if (a.action.priority !== b.action.priority) return b.action.priority - a.action.priority;
     return a.action.createdAt - b.action.createdAt;

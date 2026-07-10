@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useRef, useState } from "react";
+import { ReactNode, Suspense, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
@@ -9,7 +9,7 @@ import {
   shortDay, startOfWeek, today,
 } from "@/lib/dates";
 import { areaColor } from "@/lib/palette";
-import { todayEntries, TodayEntry } from "@/lib/progress";
+import { sortedByDone, todayEntries, TodayEntry } from "@/lib/progress";
 import { Action, Cadence, HORIZON_META, Item } from "@/lib/types";
 import { DailyJournal } from "@/components/journal";
 import { FocusTimer } from "@/components/focustimer";
@@ -37,7 +37,7 @@ export default function TodayPage() {
 }
 
 function Today() {
-  const { db, toggleEntry, deleteAction } = useLife();
+  const { db, toggleEntry, deleteAction, reorderDay } = useLife();
   const params = useSearchParams();
   // arriving from Reflect's "Plan ahead" link lands on that exact period,
   // instead of always resetting to the Today tab
@@ -153,7 +153,16 @@ function Today() {
             <div className="mb-4">
               <div className="mb-1.5 flex items-center justify-between">
                 <p className="text-xs font-medium uppercase tracking-wide text-ink-3">Progress</p>
-                <p className="text-xs font-semibold text-ink-3 tabular-nums">{done}/{total}</p>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={() => reorderDay(day, sortedByDone(entries).map((e) => e.action.id))}
+                    className="pressable text-xs font-medium text-ink-3 hover:text-ink-2"
+                    title="Move done tasks to the bottom"
+                  >
+                    Sort
+                  </button>
+                  <p className="text-xs font-semibold text-ink-3 tabular-nums">{done}/{total}</p>
+                </div>
               </div>
               <Bar value={done / total} height={4} />
             </div>
@@ -170,23 +179,19 @@ function Today() {
               </Link>
             </EmptyState>
           ) : (
-            <div className="space-y-2">
-              {entries.map((e) => (
-                <ActionRow
-                  key={e.action.id}
-                  entry={e}
-                  onToggle={() => toggleEntry(e, day)}
-                  onDelete={e.virtualHabit || e.virtualItemTask ? undefined : () => deleteAction(e.action.id)}
-                  onEdit={
-                    e.item || e.virtualHabit || e.virtualItemTask ? undefined : () => setEditingAction(e.action)
-                  }
-                  onPlanDay={
-                    e.virtualHabit && e.item ? () => setPlanningHabit({ item: e.item!, date: day }) : undefined
-                  }
-                  onFocus={() => setFocusing(e)}
-                />
-              ))}
-            </div>
+            <TaskList
+              day={day}
+              rows={entries.map((e) => ({
+                entry: e,
+                onToggle: () => toggleEntry(e, day),
+                onDelete: e.virtualHabit || e.virtualItemTask ? undefined : () => deleteAction(e.action.id),
+                onEdit:
+                  e.item || e.virtualHabit || e.virtualItemTask ? undefined : () => setEditingAction(e.action),
+                onPlanDay:
+                  e.virtualHabit && e.item ? () => setPlanningHabit({ item: e.item!, date: day }) : undefined,
+                onFocus: () => setFocusing(e),
+              }))}
+            />
           )}
 
           {done > 0 && done === total && total > 0 && isToday && (
@@ -557,10 +562,148 @@ function HabitDayNoteSheet({
   );
 }
 
+/* ————— the day's list: freely draggable, completion never moves a row ————— */
+
+interface TaskRowConfig {
+  entry: TodayEntry;
+  onToggle: () => void;
+  onDelete?: () => void;
+  onEdit?: () => void;
+  onPlanDay?: () => void;
+  onFocus?: () => void;
+}
+
+// matches the list's own space-y-2 gap, so the drag math lines up with the
+// actual pixel gap between rows
+const ROW_GAP = 8;
+
+function TaskList({ rows, day }: { rows: TaskRowConfig[]; day: string }) {
+  const { reorderDay } = useLife();
+  const byId = useMemo(() => new Map(rows.map((r) => [r.entry.action.id, r] as const)), [rows]);
+  const baseOrder = useMemo(() => rows.map((r) => r.entry.action.id), [rows]);
+
+  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const rowEls = useRef<Map<string, HTMLDivElement>>(new Map());
+  const startClientY = useRef(0);
+  const orderRef = useRef<string[]>(baseOrder);
+
+  const order = dragOrder ?? baseOrder;
+
+  const beginDrag = (id: string, clientY: number) => {
+    orderRef.current = order;
+    startClientY.current = clientY;
+    setDragOrder(order);
+    setDraggingId(id);
+  };
+
+  // as the dragged row's live (transformed) center crosses a neighbor's
+  // midpoint, swap places with it and rebase the pointer offset by that
+  // neighbor's height so the row keeps following the pointer with no jump
+  const moveDrag = (id: string, clientY: number) => {
+    const el = rowEls.current.get(id);
+    if (!el) return;
+    el.style.transform = `translateY(${clientY - startClientY.current}px)`;
+
+    const current = orderRef.current;
+    const idx = current.indexOf(id);
+    const draggedRect = el.getBoundingClientRect();
+    const draggedCenter = draggedRect.top + draggedRect.height / 2;
+
+    if (idx < current.length - 1) {
+      const nextId = current[idx + 1];
+      const nextEl = rowEls.current.get(nextId);
+      if (nextEl) {
+        const r = nextEl.getBoundingClientRect();
+        if (draggedCenter > r.top + r.height / 2) {
+          const next = [...current];
+          next[idx] = nextId;
+          next[idx + 1] = id;
+          orderRef.current = next;
+          setDragOrder(next);
+          startClientY.current += r.height + ROW_GAP;
+          return;
+        }
+      }
+    }
+    if (idx > 0) {
+      const prevId = current[idx - 1];
+      const prevEl = rowEls.current.get(prevId);
+      if (prevEl) {
+        const r = prevEl.getBoundingClientRect();
+        if (draggedCenter < r.top + r.height / 2) {
+          const next = [...current];
+          next[idx] = prevId;
+          next[idx - 1] = id;
+          orderRef.current = next;
+          setDragOrder(next);
+          startClientY.current -= r.height + ROW_GAP;
+        }
+      }
+    }
+  };
+
+  const endDrag = (id: string) => {
+    const el = rowEls.current.get(id);
+    if (el) el.style.transform = "";
+    setDraggingId(null);
+    setDragOrder(null);
+    reorderDay(day, orderRef.current);
+  };
+
+  return (
+    <div className="space-y-2">
+      {order.map((id) => {
+        const row = byId.get(id);
+        if (!row) return null;
+        const dragging = draggingId === id;
+        return (
+          <div
+            key={id}
+            ref={(el) => {
+              if (el) rowEls.current.set(id, el);
+              else rowEls.current.delete(id);
+            }}
+            className={`relative ${dragging ? "z-20" : ""}`}
+          >
+            <ActionRow
+              entry={row.entry}
+              onToggle={row.onToggle}
+              onDelete={row.onDelete}
+              onEdit={row.onEdit}
+              onPlanDay={row.onPlanDay}
+              onFocus={row.onFocus}
+              dragHandle={
+                <button
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    beginDrag(id, e.clientY);
+                  }}
+                  onPointerMove={(e) => draggingId === id && moveDrag(id, e.clientY)}
+                  onPointerUp={() => draggingId === id && endDrag(id)}
+                  onPointerCancel={() => draggingId === id && endDrag(id)}
+                  aria-label="Drag to reorder"
+                  className="shrink-0 touch-none cursor-grab px-1 text-ink-3 active:cursor-grabbing"
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                    <circle cx="4" cy="3" r="1.3" /><circle cx="10" cy="3" r="1.3" />
+                    <circle cx="4" cy="7" r="1.3" /><circle cx="10" cy="7" r="1.3" />
+                    <circle cx="4" cy="11" r="1.3" /><circle cx="10" cy="11" r="1.3" />
+                  </svg>
+                </button>
+              }
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ————— a single row on the day ————— */
 
 function ActionRow({
-  entry, onToggle, onDelete, onEdit, onPlanDay, onFocus,
+  entry, onToggle, onDelete, onEdit, onPlanDay, onFocus, dragHandle,
 }: {
   entry: TodayEntry;
   onToggle: () => void;
@@ -568,6 +711,7 @@ function ActionRow({
   onEdit?: () => void;
   onPlanDay?: () => void;
   onFocus?: () => void;
+  dragHandle?: ReactNode;
 }) {
   const { db, theme } = useLife();
   const { action, item, carriedFrom, virtualHabit, virtualItemTask, dayValue, dayTarget, scheduleLabel } = entry;
@@ -700,6 +844,8 @@ function ActionRow({
           ×
         </button>
       )}
+
+      {dragHandle}
     </div>
   );
 }

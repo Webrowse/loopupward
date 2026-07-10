@@ -195,6 +195,18 @@ export interface HabitDayNote {
   updatedAt: number;
 }
 
+/** Manual drag order for one day's Today list — entry ids (real action ids,
+ *  or virtual "habit:<itemId>:<date>" / "today-item:<itemId>" ids) in the
+ *  order the user arranged them. One row per day. Completing a task never
+ *  touches this — only dragging, or the explicit "Sort" tidy-up, does. */
+export interface DayOrder {
+  id: string;
+  /** ISO date YYYY-MM-DD */
+  date: string;
+  order: string[];
+  updatedAt: number;
+}
+
 export interface DB {
   areas: Area[];
   items: Item[];
@@ -205,6 +217,7 @@ export interface DB {
   journal: JournalEntry[];
   labels: Label[];
   habitDayNotes: HabitDayNote[];
+  dayOrder: DayOrder[];
 }
 
 export const EMPTY_DB: DB = {
@@ -217,6 +230,7 @@ export const EMPTY_DB: DB = {
   journal: [],
   labels: [],
   habitDayNotes: [],
+  dayOrder: [],
 };
 
 export type TableName = keyof DB;
