@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useLife } from "@/lib/data/provider";
+import { SPACE_KINDS } from "@/lib/types";
 import { AREA_COLORS, areaColor } from "@/lib/palette";
 import { itemProgress } from "@/lib/progress";
 import { Bar } from "@/components/progress";
@@ -20,8 +21,10 @@ export default function LifePage() {
   const nameRef = useRef<HTMLInputElement>(null);
 
   const areas = [...db.areas].sort((a, b) => a.position - b.position);
+  // quotes/principles/promises/etc already have a home in Quiet Space —
+  // they don't also need to hang loose in "not filed anywhere" here
   const unfiled = db.items.filter(
-    (i) => !i.areaId && !i.parentId && i.status === "active"
+    (i) => !i.areaId && !i.parentId && i.status === "active" && !SPACE_KINDS.includes(i.kind)
   );
 
   const closeAdding = () => {

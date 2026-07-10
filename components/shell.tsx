@@ -29,7 +29,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       {/* desktop: quiet left rail */}
-      <aside className="hidden lg:flex sticky top-0 h-dvh w-56 shrink-0 flex-col border-r border-line-soft px-4 py-8">
+      <aside className="no-print hidden lg:flex sticky top-0 h-dvh w-56 shrink-0 flex-col border-r border-line-soft px-4 py-8">
         <Link href="/home" className="px-3 font-display text-xl text-ink">
           LoopUpward
         </Link>
@@ -66,7 +66,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       {/* mobile: bottom tab bar */}
-      <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-lg -translate-x-1/2 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden">
+      <nav className="no-print fixed bottom-0 left-1/2 z-40 w-full max-w-lg -translate-x-1/2 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden">
         <div className="flex items-center justify-around rounded-3xl border border-line-soft bg-surface/90 px-2 py-2 shadow-(--shadow-float) backdrop-blur-xl">
           {TABS.map((tab) => {
             const active = pathname === tab.href || pathname.startsWith(tab.href + "/");

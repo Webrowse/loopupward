@@ -165,3 +165,26 @@ body {
 ::selection {
   background: var(--accent-soft);
 }
+
+/* Journal export: printed pages should read like ink on paper regardless
+   of the screen theme, and app chrome (nav, controls) has no place there. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  :root,
+  :root[data-theme="dark"] {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #f4f4f4;
+    --ink: #000000;
+    --ink-2: #333333;
+    --ink-3: #555555;
+    --line: #cccccc;
+    --line-soft: #dddddd;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+}

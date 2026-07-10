@@ -10,7 +10,7 @@ import {
   horizonEntries, itemProgress, ownProgress, scheduleLabel,
 } from "@/lib/progress";
 import { Period, today } from "@/lib/dates";
-import { areaColor } from "@/lib/palette";
+import { AREA_COLORS, areaColor } from "@/lib/palette";
 import { Bar } from "./progress";
 import { Button, Chip, EmptyState, Field, Sheet, inputCls } from "./ui";
 
@@ -385,7 +385,7 @@ export function ItemSheet({
   defaultHorizonPeriod?: string | null;
   onCreated?: (item: Item) => void;
 }) {
-  const { db, addItem, updateItem, limits } = useLife();
+  const { db, addItem, updateItem, limits, addArea, addLabel } = useLife();
   const [title, setTitle] = useState(editing?.title ?? initial ?? "");
   const [kind, setKind] = useState<ItemKind>(editing?.kind ?? "goal");
   const [tracker, setTracker] = useState<TrackerType>(editing?.tracker ?? "check");
@@ -406,6 +406,10 @@ export function ItemSheet({
   const [touchedTracker, setTouchedTracker] = useState(Boolean(editing));
   const [showMore, setShowMore] = useState(Boolean(editing && MORE_KINDS.includes(editing.kind)));
   const [titleError, setTitleError] = useState(false);
+  const [addingArea, setAddingArea] = useState(false);
+  const [newAreaName, setNewAreaName] = useState("");
+  const [addingLabel, setAddingLabel] = useState(false);
+  const [newLabelName, setNewLabelName] = useState("");
   const titleRef = useRef<HTMLInputElement>(null);
 
   // reset when reopened for a different subject
@@ -431,7 +435,31 @@ export function ItemSheet({
     setTouchedTracker(Boolean(editing));
     setShowMore(Boolean(editing && MORE_KINDS.includes(editing.kind)));
     setTitleError(false);
+    setAddingArea(false);
+    setNewAreaName("");
+    setAddingLabel(false);
+    setNewLabelName("");
   }
+
+  const createArea = () => {
+    if (!newAreaName.trim() || !limits.canAddArea) return;
+    const area = addArea(newAreaName, "🌿", AREA_COLORS[0].key);
+    if (area) {
+      setAreaId(area.id);
+      setNewAreaName("");
+      setAddingArea(false);
+    }
+  };
+
+  const createLabel = () => {
+    if (!newLabelName.trim()) return;
+    const label = addLabel(newLabelName, "🏷️", AREA_COLORS[0].key);
+    if (label) {
+      setLabelIds((prev) => [...prev, label.id]);
+      setNewLabelName("");
+      setAddingLabel(false);
+    }
+  };
 
   const pickKind = (k: ItemKind) => {
     setKind(k);
@@ -616,7 +644,7 @@ export function ItemSheet({
         </div>
       </Field>
 
-      {sortedAreas.length > 0 && !defaultParentId && (
+      {!defaultParentId && (
         <Field label="Life area">
           <div className="flex flex-wrap gap-1.5">
             <Chip active={areaId === null} onClick={() => setAreaId(null)}>None</Chip>
@@ -625,34 +653,68 @@ export function ItemSheet({
                 {a.emoji} {a.name}
               </Chip>
             ))}
+            {!addingArea && limits.canAddArea && (
+              <Chip onClick={() => setAddingArea(true)}>+ New</Chip>
+            )}
           </div>
+          {addingArea && (
+            <div className="mt-2 flex gap-2">
+              <input
+                autoFocus
+                className={inputCls}
+                value={newAreaName}
+                onChange={(e) => setNewAreaName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); createArea(); } }}
+                placeholder="Health, Money, French…"
+              />
+              <Button small onClick={createArea} disabled={!newAreaName.trim()}>Add</Button>
+            </div>
+          )}
+          {!limits.canAddArea && (
+            <p className="mt-1.5 text-xs text-ink-3">
+              Free plan is at its area limit.{" "}
+              <Link href="/pricing" className="text-accent-deep font-medium">Upgrade</Link> for more.
+            </p>
+          )}
         </Field>
       )}
 
-      {db.labels.length > 0 && (
-        <Field label="Labels">
-          <div className="flex flex-wrap gap-1.5">
-            {[...db.labels].sort((a, b) => a.position - b.position).map((l) => {
-              const c = areaColor(l.color);
-              const active = labelIds.includes(l.id);
-              return (
-                <Chip
-                  key={l.id}
-                  active={active}
-                  style={active ? { background: c.fg, borderColor: c.fg, color: "#fff" } : undefined}
-                  onClick={() =>
-                    setLabelIds((prev) =>
-                      prev.includes(l.id) ? prev.filter((x) => x !== l.id) : [...prev, l.id]
-                    )
-                  }
-                >
-                  {l.emoji} {l.name}
-                </Chip>
-              );
-            })}
+      <Field label="Labels">
+        <div className="flex flex-wrap gap-1.5">
+          {[...db.labels].sort((a, b) => a.position - b.position).map((l) => {
+            const c = areaColor(l.color);
+            const active = labelIds.includes(l.id);
+            return (
+              <Chip
+                key={l.id}
+                active={active}
+                style={active ? { background: c.fg, borderColor: c.fg, color: "#fff" } : undefined}
+                onClick={() =>
+                  setLabelIds((prev) =>
+                    prev.includes(l.id) ? prev.filter((x) => x !== l.id) : [...prev, l.id]
+                  )
+                }
+              >
+                {l.emoji} {l.name}
+              </Chip>
+            );
+          })}
+          {!addingLabel && <Chip onClick={() => setAddingLabel(true)}>+ New</Chip>}
+        </div>
+        {addingLabel && (
+          <div className="mt-2 flex gap-2">
+            <input
+              autoFocus
+              className={inputCls}
+              value={newLabelName}
+              onChange={(e) => setNewLabelName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); createLabel(); } }}
+              placeholder="Rust, Family, French B2…"
+            />
+            <Button small onClick={createLabel} disabled={!newLabelName.trim()}>Add</Button>
           </div>
-        </Field>
-      )}
+        )}
+      </Field>
 
       <Field label="Notes">
         <textarea

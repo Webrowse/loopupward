@@ -228,6 +228,12 @@ function Reflect() {
                   )}
                 </div>
               )}
+              <Link
+                href={`/reflect/journal?period=${period}&date=${anchor}`}
+                className="mt-3 inline-block text-sm font-medium text-accent-deep"
+              >
+                Read the entries →
+              </Link>
             </section>
           )}
 
