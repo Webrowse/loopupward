@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
 import { Item } from "@/lib/types";
 import { children as childrenOf } from "@/lib/progress";
@@ -28,6 +28,7 @@ export default function NotePage() {
 
 function FolderPage({ item }: { item: Item }) {
   const { db, updateItem, deleteItem } = useLife();
+  const router = useRouter();
   const [title, setTitle] = useState(item.title);
   const [justSaved, setJustSaved] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -115,7 +116,7 @@ function FolderPage({ item }: { item: Item }) {
           danger: true,
           onClick: () => {
             deleteItem(item.id);
-            setConfirmDelete(false);
+            router.replace("/notes");
           },
         }}
       >
@@ -130,6 +131,7 @@ function FolderPage({ item }: { item: Item }) {
 
 function NotePageBody({ item }: { item: Item }) {
   const { db, updateItem, deleteItem } = useLife();
+  const router = useRouter();
 
   const [title, setTitle] = useState(item.title);
   const [richBody, setRichBody] = useState(item.richBody ?? "");
@@ -229,7 +231,7 @@ function NotePageBody({ item }: { item: Item }) {
           danger: true,
           onClick: () => {
             deleteItem(item.id);
-            setConfirmDelete(false);
+            router.replace(folder ? `/notes/${folder.id}` : "/notes");
           },
         }}
       >
@@ -277,7 +279,6 @@ function NewChildSheet({
           className={`${inputCls} ${error ? "border-danger focus:border-danger" : ""}`}
           value={name}
           onChange={(e) => { setName(e.target.value); if (error) setError(false); }}
-          onKeyDown={(e) => e.key === "Enter" && create()}
           placeholder="A smaller thought that belongs here…"
           autoFocus
           aria-invalid={error}
@@ -327,7 +328,7 @@ function NoteMoveSheet({ open, onClose, item }: { open: boolean; onClose: () => 
               className={inputCls}
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && createAndMove()}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); createAndMove(); } }}
               placeholder="Recipes, July 2026…"
               autoFocus
             />

@@ -290,7 +290,7 @@ function LabelsSection() {
               className={`${inputCls} ${newNameError ? "border-danger focus:border-danger" : ""}`}
               value={newName}
               onChange={(e) => { setNewName(e.target.value); if (newNameError) setNewNameError(false); }}
-              onKeyDown={(e) => e.key === "Enter" && create()}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); create(); } }}
               placeholder="Rust, Family, French B2…"
               aria-invalid={newNameError}
             />

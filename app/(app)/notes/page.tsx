@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useLife } from "@/lib/data/provider";
 import { children as childrenOf } from "@/lib/progress";
+import { RichTextEditor } from "@/components/richtext";
 import { Button, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
 function preview(html: string | null): string {
@@ -15,9 +16,13 @@ export default function NotesRootPage() {
   const { db, addItem } = useLife();
   const [addingFolder, setAddingFolder] = useState(false);
   const [addingNote, setAddingNote] = useState(false);
-  const [name, setName] = useState("");
-  const [nameError, setNameError] = useState(false);
-  const nameRef = useRef<HTMLInputElement>(null);
+  const [folderName, setFolderName] = useState("");
+  const [folderNameError, setFolderNameError] = useState(false);
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteBody, setNoteBody] = useState("");
+  const [noteTitleError, setNoteTitleError] = useState(false);
+  const folderNameRef = useRef<HTMLInputElement>(null);
+  const noteTitleRef = useRef<HTMLInputElement>(null);
 
   const folders = db.items
     .filter((i) => i.kind === "folder" && i.status === "active")
@@ -26,21 +31,37 @@ export default function NotesRootPage() {
     .filter((i) => i.kind === "note" && !i.parentId && i.status === "active")
     .sort((a, b) => b.createdAt - a.createdAt);
 
-  const closeSheets = () => {
+  const closeFolderSheet = () => {
     setAddingFolder(false);
-    setAddingNote(false);
-    setName("");
-    setNameError(false);
+    setFolderName("");
+    setFolderNameError(false);
   };
 
-  const create = () => {
-    if (!name.trim()) {
-      setNameError(true);
-      nameRef.current?.focus();
+  const createFolder = () => {
+    if (!folderName.trim()) {
+      setFolderNameError(true);
+      folderNameRef.current?.focus();
       return;
     }
-    addItem({ title: name.trim(), kind: addingFolder ? "folder" : "note", tracker: "none" });
-    closeSheets();
+    addItem({ title: folderName.trim(), kind: "folder", tracker: "none" });
+    closeFolderSheet();
+  };
+
+  const closeNoteSheet = () => {
+    setAddingNote(false);
+    setNoteTitle("");
+    setNoteBody("");
+    setNoteTitleError(false);
+  };
+
+  const createNote = () => {
+    if (!noteTitle.trim()) {
+      setNoteTitleError(true);
+      noteTitleRef.current?.focus();
+      return;
+    }
+    addItem({ title: noteTitle.trim(), richBody: noteBody, kind: "note", tracker: "none" });
+    closeNoteSheet();
   };
 
   return (
@@ -105,22 +126,21 @@ export default function NotesRootPage() {
 
       <Sheet
         open={addingFolder}
-        onClose={closeSheets}
+        onClose={closeFolderSheet}
         title="New folder"
-        primary={{ label: "Create", onClick: create }}
+        primary={{ label: "Create", onClick: createFolder }}
       >
         <Field label="Name">
           <input
-            ref={nameRef}
-            className={`${inputCls} ${nameError ? "border-danger focus:border-danger" : ""}`}
-            value={name}
-            onChange={(e) => { setName(e.target.value); if (nameError) setNameError(false); }}
-            onKeyDown={(e) => e.key === "Enter" && create()}
+            ref={folderNameRef}
+            className={`${inputCls} ${folderNameError ? "border-danger focus:border-danger" : ""}`}
+            value={folderName}
+            onChange={(e) => { setFolderName(e.target.value); if (folderNameError) setFolderNameError(false); }}
             placeholder="July 2026, Rich shopping, Recipes…"
             autoFocus
-            aria-invalid={nameError}
+            aria-invalid={folderNameError}
           />
-          {nameError && (
+          {folderNameError && (
             <p className="mt-1.5 text-xs text-danger">Give it a name first.</p>
           )}
         </Field>
@@ -128,24 +148,27 @@ export default function NotesRootPage() {
 
       <Sheet
         open={addingNote}
-        onClose={closeSheets}
+        onClose={closeNoteSheet}
         title="New note"
-        primary={{ label: "Create", onClick: create }}
+        wide
+        primary={{ label: "Create", onClick: createNote }}
       >
         <Field label="Title">
           <input
-            ref={nameRef}
-            className={`${inputCls} ${nameError ? "border-danger focus:border-danger" : ""}`}
-            value={name}
-            onChange={(e) => { setName(e.target.value); if (nameError) setNameError(false); }}
-            onKeyDown={(e) => e.key === "Enter" && create()}
+            ref={noteTitleRef}
+            className={`${inputCls} ${noteTitleError ? "border-danger focus:border-danger" : ""}`}
+            value={noteTitle}
+            onChange={(e) => { setNoteTitle(e.target.value); if (noteTitleError) setNoteTitleError(false); }}
             placeholder="A quick thought…"
             autoFocus
-            aria-invalid={nameError}
+            aria-invalid={noteTitleError}
           />
-          {nameError && (
+          {noteTitleError && (
             <p className="mt-1.5 text-xs text-danger">Give it a name first.</p>
           )}
+        </Field>
+        <Field label="Note">
+          <RichTextEditor value={noteBody} onChange={setNoteBody} placeholder="Write it all here…" minHeightClass="min-h-40" />
         </Field>
         <p className="text-xs text-ink-3">
           It stays loose here until you drop it into a folder — or never do.

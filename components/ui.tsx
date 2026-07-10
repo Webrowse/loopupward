@@ -177,12 +177,14 @@ export function Sheet({
         role="dialog"
         aria-modal="true"
         onKeyDown={(e) => {
+          const target = e.target as HTMLElement;
           if (
             submit &&
             !primaryDisabled &&
             e.key === "Enter" &&
             !e.shiftKey &&
-            !(e.target instanceof HTMLTextAreaElement)
+            !(target instanceof HTMLTextAreaElement) &&
+            target.contentEditable !== "true"
           ) {
             e.preventDefault();
             submit();
