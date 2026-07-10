@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
-import { greeting, prettyDay, today } from "@/lib/dates";
+import { greeting, prettyDay } from "@/lib/dates";
+import { useToday } from "@/lib/useToday";
 import { Seed, SPACE_KINDS } from "@/lib/types";
 import { itemProgress, todayEntries } from "@/lib/progress";
 import { areaColor } from "@/lib/palette";
@@ -23,6 +24,7 @@ const WHISPERS = [
 
 export default function HomePage() {
   const { db, user, addSeed, mode, cloudAvailable } = useLife();
+  const today = useToday();
   const [text, setText] = useState("");
   const [justPlanted, setJustPlanted] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -55,7 +57,7 @@ export default function HomePage() {
         <div>
           <p className="text-sm text-ink-3">{greeting()}{name ? `, ${name}` : ""}.</p>
           <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">
-            {prettyDay(today())}
+            {prettyDay(today)}
           </h1>
         </div>
         <Link href="/notes">
@@ -416,7 +418,7 @@ function Panel({ title, href, children }: { title: string; href: string; childre
 
 function TodayPanel() {
   const { db, toggleEntry } = useLife();
-  const day = today();
+  const day = useToday();
   const entries = useMemo(() => todayEntries(db, day), [db, day]);
   const done = entries.filter((e) => e.action.done).length;
 

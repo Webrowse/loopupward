@@ -2,12 +2,13 @@
 
 import { ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
 import {
   addDays, isPeriod, nextAnchor, Period, periodKey, prettyDay, prettyPeriod, previousAnchor,
-  shortDay, startOfWeek, today,
+  shortDay, startOfWeek,
 } from "@/lib/dates";
+import { useToday } from "@/lib/useToday";
 import { areaColor } from "@/lib/palette";
 import { sortedByDone, todayEntries, TodayEntry } from "@/lib/progress";
 import { Action, Cadence, HORIZON_META, Item } from "@/lib/types";
@@ -45,23 +46,22 @@ export default function TodayPage() {
 function Today() {
   const { db, toggleEntry, deleteAction, reorderDay } = useLife();
   const params = useSearchParams();
-  // arriving from Reflect's "Plan ahead" link lands on that exact period,
-  // instead of always resetting to the Today tab
+  const router = useRouter();
+  const pathname = usePathname();
+  const realToday = useToday();
+
+  // the URL is the source of truth for which tab and which day/anchor is
+  // showing — not just local state — so leaving for an item page and
+  // pressing back restores exactly where you were instead of always
+  // resetting to today. Arriving from Reflect's "Plan ahead" link, or the
+  // sidebar calendar's ?day=YYYY-MM-DD, both land the same way.
   const paramView = params.get("view");
   const paramDate = params.get("date");
-  // the sidebar calendar jumps here with ?day=YYYY-MM-DD
   const paramDay = params.get("day");
-  const realToday = today();
-  const [day, setDay] = useState(isValidDay(paramDay) ? paramDay : realToday);
-  const [lastParamDay, setLastParamDay] = useState(paramDay);
+  const view: ViewTab = isPeriod(paramView) ? paramView : "today";
+  const day = isValidDay(paramDay) ? paramDay : realToday;
+  const isToday = day === realToday;
 
-  // the sidebar calendar can send a new ?day= while this page is already
-  // mounted — state only reads the query string once on its own, so notice
-  // later changes here too
-  if (paramDay !== lastParamDay) {
-    setLastParamDay(paramDay);
-    if (isValidDay(paramDay)) setDay(paramDay);
-  }
   const [planning, setPlanning] = useState(false);
   const [editingAction, setEditingAction] = useState<Action | null>(null);
   const [editingItemTitle, setEditingItemTitle] = useState<Item | null>(null);
@@ -69,16 +69,35 @@ function Today() {
   const [focusingId, setFocusingId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const [view, setView] = useState<ViewTab>(isPeriod(paramView) ? paramView : "today");
+  // each period tab remembers its own place for smooth in-session switching;
+  // only the currently active one also needs to live in the URL
   const [anchors, setAnchors] = useState<Record<Period, string>>({
     week: realToday, month: realToday, quarter: realToday, year: realToday,
     ...(isPeriod(paramView) && paramDate ? { [paramView]: paramDate } : {}),
   });
 
+  // updates the URL without pushing a new history entry, so switching tabs
+  // or days doesn't pile up a huge back-stack — but the CURRENT entry always
+  // reflects the current view, so navigating into an item and back lands
+  // exactly here again
+  const goTo = (next: { view?: ViewTab; day?: string; anchor?: string }) => {
+    const nextView = next.view ?? view;
+    const qs = new URLSearchParams();
+    qs.set("view", nextView);
+    if (nextView === "today") qs.set("day", next.day ?? day);
+    else qs.set("date", next.anchor ?? anchors[nextView]);
+    router.replace(`${pathname}?${qs.toString()}`, { scroll: false });
+  };
+  const setDay = (d: string) => goTo({ view: "today", day: d });
+  const setView = (v: ViewTab) => goTo({ view: v });
+  const setAnchor = (period: Period, a: string) => {
+    setAnchors((prev) => ({ ...prev, [period]: a }));
+    goTo({ view: period, anchor: a });
+  };
+
   const entries = useMemo(() => todayEntries(db, day), [db, day]);
   const done = entries.filter((e) => e.action.done).length;
   const total = entries.length;
-  const isToday = day === realToday;
 
   return (
     <div className="rise-in lg:max-w-none">
@@ -101,7 +120,7 @@ function Today() {
           <PeriodNav
             period={view}
             anchor={anchors[view]}
-            onChange={(a) => setAnchors((prev) => ({ ...prev, [view]: a }))}
+            onChange={(a) => setAnchor(view, a)}
           />
           <HorizonList period={view} anchor={anchors[view]} />
           <p className="mt-6 text-sm">
@@ -316,12 +335,13 @@ function NavArrow({ dir, onClick, label }: { dir: "prev" | "next"; onClick: () =
 function PeriodNav({
   period, anchor, onChange,
 }: { period: Period; anchor: string; onChange: (anchor: string) => void }) {
-  const isCurrent = periodKey(period, anchor) === periodKey(period, today());
+  const realToday = useToday();
+  const isCurrent = periodKey(period, anchor) === periodKey(period, realToday);
   return (
     <div className="mb-6 flex items-center gap-1.5">
       <NavArrow dir="prev" label={`Previous ${period}`} onClick={() => onChange(previousAnchor(period, anchor))} />
       <button
-        onClick={() => onChange(today())}
+        onClick={() => onChange(realToday)}
         className="pressable flex-1 rounded-lg py-1.5 text-center text-sm font-medium text-ink hover:bg-surface-2"
       >
         {prettyPeriod(period, anchor)}
@@ -349,6 +369,7 @@ function DayJump({ label, onClick, active }: { label: string; onClick: () => voi
 
 function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void; day: string }) {
   const { addAction, addItem } = useLife();
+  const realToday = useToday();
   const [title, setTitle] = useState("");
   const [taskDate, setTaskDate] = useState(day);
   const [dateTouched, setDateTouched] = useState(false);
@@ -434,7 +455,7 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
             onChange={(e) => { if (e.target.value) { setTaskDate(e.target.value); setDateTouched(true); } }}
           />
           <p className="mt-1.5 text-xs text-ink-3">
-            {taskDate === today() ? "Today" : prettyDay(taskDate)} — jump ahead to plant a task on any future day,
+            {taskDate === realToday ? "Today" : prettyDay(taskDate)} — jump ahead to plant a task on any future day,
             like a birthday or a deadline, without paging through the day strip.
           </p>
         </Field>

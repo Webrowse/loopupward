@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { addDays, addMonths, addYears, fromDay, startOfMonth, startOfWeek, today } from "@/lib/dates";
+import { addDays, addMonths, addYears, fromDay, startOfMonth, startOfWeek } from "@/lib/dates";
+import { useToday } from "@/lib/useToday";
 
 const MONTH_SHORT = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -37,8 +38,11 @@ function ArrowButton({ label, onClick, double }: { label: string; onClick: () =>
  *  future, without paging through Today's week strip one step at a time. */
 export function MiniCalendar() {
   const router = useRouter();
-  const realToday = today();
-  const [viewMonth, setViewMonth] = useState(startOfMonth(realToday));
+  const realToday = useToday();
+  // null = "not manually browsing" — tracks the current month on its own as
+  // realToday corrects itself (see useToday) or rolls over past midnight
+  const [manualViewMonth, setManualViewMonth] = useState<string | null>(null);
+  const viewMonth = manualViewMonth ?? startOfMonth(realToday);
 
   const d = fromDay(viewMonth);
   const year = d.getFullYear();
@@ -53,16 +57,16 @@ export function MiniCalendar() {
   return (
     <div className="mt-4 rounded-xl border border-line-soft bg-surface p-2.5">
       <div className="flex items-center justify-between mb-1.5">
-        <ArrowButton label="Previous year" double onClick={() => setViewMonth(addYears(viewMonth, -1))} />
-        <ArrowButton label="Previous month" onClick={() => setViewMonth(addMonths(viewMonth, -1))} />
+        <ArrowButton label="Previous year" double onClick={() => setManualViewMonth(addYears(viewMonth, -1))} />
+        <ArrowButton label="Previous month" onClick={() => setManualViewMonth(addMonths(viewMonth, -1))} />
         <button
-          onClick={() => setViewMonth(startOfMonth(realToday))}
+          onClick={() => setManualViewMonth(null)}
           className="pressable text-xs font-medium text-ink hover:text-accent-deep"
         >
           {MONTH_SHORT[monthIdx]} {year}
         </button>
-        <ArrowButton label="Next month" onClick={() => setViewMonth(addMonths(viewMonth, 1))} />
-        <ArrowButton label="Next year" double onClick={() => setViewMonth(addYears(viewMonth, 1))} />
+        <ArrowButton label="Next month" onClick={() => setManualViewMonth(addMonths(viewMonth, 1))} />
+        <ArrowButton label="Next year" double onClick={() => setManualViewMonth(addYears(viewMonth, 1))} />
       </div>
 
       <div className="grid grid-cols-7 gap-y-0.5">
