@@ -21,10 +21,16 @@ export default function LifePage() {
   const nameRef = useRef<HTMLInputElement>(null);
 
   const areas = [...db.areas].sort((a, b) => a.position - b.position);
-  // quotes/principles/promises/etc already have a home in Quiet Space —
-  // they don't also need to hang loose in "not filed anywhere" here
+  // quotes/principles/promises/etc already have a home in Quiet Space,
+  // and notes/folders already have a home in Notes — neither needs to
+  // also hang loose in "not filed anywhere" here
   const unfiled = db.items.filter(
-    (i) => !i.areaId && !i.parentId && i.status === "active" && !SPACE_KINDS.includes(i.kind)
+    (i) =>
+      !i.areaId &&
+      !i.parentId &&
+      i.status === "active" &&
+      !SPACE_KINDS.includes(i.kind) &&
+      i.kind !== "note"
   );
 
   const closeAdding = () => {
@@ -100,10 +106,17 @@ export default function LifePage() {
 
       <LabelsSection />
 
-      <div className="mt-10 text-sm">
-        <Link href="/space" className="text-ink-3 hover:text-ink-2">
-          Quotes, principles, memories → your quiet space
-        </Link>
+      <div className="mt-10 space-y-2 text-sm">
+        <div>
+          <Link href="/space" className="text-ink-3 hover:text-ink-2">
+            Quotes, principles, memories → your quiet space
+          </Link>
+        </div>
+        <div>
+          <Link href="/notes" className="text-ink-3 hover:text-ink-2">
+            Longer thoughts, folders of them → your notes
+          </Link>
+        </div>
       </div>
 
       <Sheet

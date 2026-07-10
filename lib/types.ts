@@ -82,6 +82,9 @@ export interface Item {
    *  instance this horizon points at — compare via dates.periodKey(horizon,
    *  this). Null for someday/today/none, or items not yet anchored. */
   horizonPeriod: string | null;
+  /** rich (HTML) content for note-kind items — the notes app's editor body.
+   *  Separate from `note` above, which stays a plain-text annotation. */
+  richBody: string | null;
   status: ItemStatus;
   /** schedule — anything with a cadence appears on Today automatically */
   cadence: Cadence;

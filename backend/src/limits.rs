@@ -63,6 +63,8 @@ pub fn caps_json(premium: bool) -> Value {
 /* text size walls — generous for humans, hostile to abuse */
 pub const MAX_TITLE: usize = 400;
 pub const MAX_NOTE: usize = 8_000;
+/* generous single tier — a note's rich HTML body isn't premium-gated */
+pub const MAX_RICH_BODY: usize = 50_000;
 pub const MAX_SEED_TEXT: usize = 2_000;
 pub const MAX_REFLECTION_TEXT: usize = 20_000;
 pub const MAX_NAME: usize = 120;
