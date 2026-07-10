@@ -256,8 +256,8 @@ function ToolButton({
       aria-pressed={active}
       title={label}
       onMouseDown={(e) => { e.preventDefault(); onAction(); }}
-      className={`pressable grid h-7 w-7 shrink-0 place-items-center rounded-lg text-sm font-medium transition-colors ${
-        active ? "bg-accent-soft text-accent-deep" : "text-ink-2 hover:bg-surface-2"
+      className={`pressable grid h-7 w-7 shrink-0 place-items-center rounded-lg border text-sm font-medium transition-colors ${
+        active ? "border-accent bg-accent-soft text-accent-deep" : "border-transparent text-ink-2 hover:bg-surface-2"
       }`}
     >
       {children}
