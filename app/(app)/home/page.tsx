@@ -50,11 +50,16 @@ export default function HomePage() {
 
   return (
     <div className="rise-in">
-      <header className="pt-6 pb-8 lg:pb-6">
-        <p className="text-sm text-ink-3">{greeting()}{name ? `, ${name}` : ""}.</p>
-        <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">
-          {prettyDay(today())}
-        </h1>
+      <header className="pt-6 pb-8 lg:pb-6 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-ink-3">{greeting()}{name ? `, ${name}` : ""}.</p>
+          <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">
+            {prettyDay(today())}
+          </h1>
+        </div>
+        <Link href="/notes">
+          <Button small variant="soft">🗒 Notes</Button>
+        </Link>
       </header>
 
       {/* desktop: three quiet columns; mobile: single flow */}
