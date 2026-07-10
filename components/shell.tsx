@@ -30,8 +30,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* desktop: quiet left rail */}
       <aside className="no-print hidden lg:flex sticky top-0 h-dvh w-56 shrink-0 flex-col border-r border-line-soft px-4 py-8">
-        <Link href="/home" className="px-3 font-display text-xl text-ink">
-          LoopUpward
+        <Link href="/home" className="flex items-center gap-2.5 px-3">
+          <span
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] text-white"
+            style={{ background: "linear-gradient(135deg, var(--accent), var(--accent-deep))" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 20c-4-1-7-5-6-11 6-1 10 2 11 6 1 4-1 5-5 5Z" />
+              <path d="M6 9c3 3 5 7 6 11" />
+            </svg>
+          </span>
+          <span className="font-display text-xl text-ink">LoopUpward</span>
         </Link>
         <nav className="mt-8 flex flex-col gap-1">
           {TABS.map((tab) => {

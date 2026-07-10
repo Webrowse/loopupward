@@ -142,7 +142,7 @@ export function FocusTimer({
       <button
         onClick={check}
         aria-label={done ? "Undo" : "Mark done"}
-        className={`pressable relative grid h-24 w-24 sm:h-28 sm:w-28 shrink-0 place-items-center rounded-full border-4 transition-colors ${
+        className={`pressable relative grid h-24 w-24 sm:h-28 sm:w-28 shrink-0 place-items-center rounded-[28px] border-4 transition-colors ${
           done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
         }`}
       >

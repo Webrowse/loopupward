@@ -134,7 +134,7 @@ function HorizonRow({ item }: { item: Item }) {
       <button
         onClick={() => (done ? reopenItem(item.id) : completeItem(item.id))}
         aria-label={done ? "Undo" : "Mark done"}
-        className={`pressable relative grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition-colors ${
+        className={`pressable relative grid h-6 w-6 shrink-0 place-items-center rounded-lg border-2 transition-colors ${
           done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
         }`}
       >

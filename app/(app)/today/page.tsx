@@ -14,7 +14,7 @@ import { Action, Cadence, HORIZON_META, Item } from "@/lib/types";
 import { DailyJournal } from "@/components/journal";
 import { FocusTimer } from "@/components/focustimer";
 import { HorizonList, ScheduleEditor, ScheduleValue } from "@/components/items";
-import { Ring } from "@/components/progress";
+import { Bar } from "@/components/progress";
 import { EmptyState, Field, Segmented, Sheet, inputCls } from "@/components/ui";
 
 const DOW_LETTER = ["S", "M", "T", "W", "T", "F", "S"];
@@ -62,24 +62,19 @@ function Today() {
 
   return (
     <div className="rise-in lg:max-w-none">
-      <header className="pt-6 pb-4 flex items-start justify-between gap-4 lg:max-w-2xl">
-        <div>
-          <p className="text-sm text-ink-3">{view === "today" ? prettyDay(day) : "The shape of your time"}</p>
-          <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">
-            {view === "today"
-              ? isToday ? "Today" : day < realToday ? "Looking back" : "Planning ahead"
-              : HORIZON_META.find((h) => h.value === view)?.label ?? view}
-          </h1>
-          {total > 0 && isToday && view === "today" && (
-            <p className="text-sm text-ink-2 mt-2">
-              {done === total
-                ? "Everything done. Rest well."
-                : `${total - done} small ${total - done === 1 ? "action" : "actions"} between you and a good day.`}
-            </p>
-          )}
-        </div>
-        {total > 0 && view === "today" && (
-          <Ring value={done / total} size={92} stroke={8} label={`${done}/${total}`} />
+      <header className="pt-6 pb-4 lg:max-w-2xl">
+        <p className="text-sm text-ink-3">{view === "today" ? prettyDay(day) : "The shape of your time"}</p>
+        <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">
+          {view === "today"
+            ? isToday ? "Today" : day < realToday ? "Looking back" : "Planning ahead"
+            : HORIZON_META.find((h) => h.value === view)?.label ?? view}
+        </h1>
+        {total > 0 && isToday && view === "today" && (
+          <p className="text-sm text-ink-2 mt-2">
+            {done === total
+              ? "Everything done. Rest well."
+              : `${total - done} small ${total - done === 1 ? "action" : "actions"} between you and a good day.`}
+          </p>
         )}
       </header>
 
@@ -153,6 +148,16 @@ function Today() {
               {isToday ? "Add something for today…" : `Add something for ${shortDay(day)}…`}
             </button>
           </div>
+
+          {total > 0 && (
+            <div className="mb-4">
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wide text-ink-3">Progress</p>
+                <p className="text-xs font-semibold text-ink-3 tabular-nums">{done}/{total}</p>
+              </div>
+              <Bar value={done / total} height={4} />
+            </div>
+          )}
 
           {total === 0 ? (
             <EmptyState
@@ -584,7 +589,7 @@ function ActionRow({
         aria-label={
           action.done ? "Undo" : multi ? `Log one (${dayValue} of ${dayTarget})` : "Mark done"
         }
-        className={`pressable relative grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition-colors ${
+        className={`pressable relative grid h-6 w-6 shrink-0 place-items-center rounded-lg border-2 transition-colors ${
           action.done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
         }`}
       >
