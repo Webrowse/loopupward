@@ -37,7 +37,7 @@ export default function TodayPage() {
 }
 
 function Today() {
-  const { db, toggleEntry, deleteAction, updateAction, updateItem, reorderDay } = useLife();
+  const { db, toggleEntry, deleteAction, reorderDay } = useLife();
   const params = useSearchParams();
   // arriving from Reflect's "Plan ahead" link lands on that exact period,
   // instead of always resetting to the Today tab
@@ -47,6 +47,7 @@ function Today() {
   const [day, setDay] = useState(realToday);
   const [planning, setPlanning] = useState(false);
   const [editingAction, setEditingAction] = useState<Action | null>(null);
+  const [editingItemTitle, setEditingItemTitle] = useState<Item | null>(null);
   const [planningHabit, setPlanningHabit] = useState<{ item: Item; date: string } | null>(null);
   const [focusing, setFocusing] = useState<TodayEntry | null>(null);
   const [reordering, setReordering] = useState(false);
@@ -228,16 +229,15 @@ function Today() {
                 entry: e,
                 onToggle: () => toggleEntry(e, day),
                 onDelete: e.virtualHabit || e.virtualItemTask ? undefined : () => deleteAction(e.action.id),
-                onEdit:
-                  e.item || e.virtualHabit || e.virtualItemTask ? undefined : () => setEditingAction(e.action),
-                // every row edits whatever it actually shows as its title —
-                // a real action's own title, or (for a goal's today-piece
-                // and a goal marked "today" itself) the goal's title
-                onEditInline:
-                  e.item && !e.virtualHabit
-                    ? (title: string) =>
-                        e.virtualItemTask ? updateItem(e.item!.id, { title }) : updateAction(e.action.id, { title })
-                    : undefined,
+                // a real action opens the full edit popup (title, priority,
+                // note, delete) whether or not it's linked to a goal — the
+                // link no longer takes editing away, it just adds a way in
+                onEdit: e.virtualHabit || e.virtualItemTask ? undefined : () => setEditingAction(e.action),
+                // habits and a goal marked "today" aren't backed by a real
+                // action — their own title lives on the item, so renaming
+                // opens a lighter popup that edits the item instead
+                onEditItem:
+                  (e.virtualHabit || e.virtualItemTask) && e.item ? () => setEditingItemTitle(e.item!) : undefined,
                 onPlanDay:
                   e.virtualHabit && e.item ? () => setPlanningHabit({ item: e.item!, date: day }) : undefined,
                 onFocus: () => setFocusing(e),
@@ -262,6 +262,7 @@ function Today() {
 
       <PlanSheet open={planning} onClose={() => setPlanning(false)} day={day} />
       <EditActionSheet action={editingAction} onClose={() => setEditingAction(null)} />
+      <EditItemTitleSheet item={editingItemTitle} onClose={() => setEditingItemTitle(null)} />
       <HabitDayNoteSheet planning={planningHabit} onClose={() => setPlanningHabit(null)} />
       <FocusTimer
         open={!!focusing}
@@ -551,6 +552,57 @@ function EditActionSheet({ action, onClose }: { action: Action | null; onClose: 
   );
 }
 
+/* ————— renaming a habit or a goal marked "today" — these live on the item
+ *  itself, not a real action row, so it's a lighter popup than EditActionSheet ————— */
+
+function EditItemTitleSheet({ item, onClose }: { item: Item | null; onClose: () => void }) {
+  const { updateItem } = useLife();
+  const [title, setTitle] = useState("");
+  const [titleError, setTitleError] = useState(false);
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  const [lastId, setLastId] = useState(item?.id ?? null);
+  if (item && item.id !== lastId) {
+    setLastId(item.id);
+    setTitle(item.title);
+    setTitleError(false);
+  }
+
+  const save = () => {
+    if (!item) return;
+    if (!title.trim()) {
+      setTitleError(true);
+      titleRef.current?.focus();
+      return;
+    }
+    updateItem(item.id, { title: title.trim() });
+    onClose();
+  };
+
+  return (
+    <Sheet
+      open={!!item}
+      onClose={onClose}
+      title="Rename"
+      primary={{ label: "Save", onClick: save }}
+    >
+      <Field label="What?">
+        <input
+          ref={titleRef}
+          className={`${inputCls} ${titleError ? "border-danger focus:border-danger" : ""}`}
+          value={title}
+          onChange={(e) => { setTitle(e.target.value); if (titleError) setTitleError(false); }}
+          autoFocus
+          aria-invalid={titleError}
+        />
+        {titleError && (
+          <p className="mt-1.5 text-xs text-danger">This needs a name.</p>
+        )}
+      </Field>
+    </Sheet>
+  );
+}
+
 /* ————— planning what a habit means on a specific day ————— */
 
 function HabitDayNoteSheet({
@@ -620,7 +672,7 @@ interface TaskRowConfig {
   onToggle: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
-  onEditInline?: (title: string) => void;
+  onEditItem?: () => void;
   onPlanDay?: () => void;
   onFocus?: () => void;
 }
@@ -734,7 +786,7 @@ function TaskList({ rows, day, reordering }: { rows: TaskRowConfig[]; day: strin
               onToggle={row.onToggle}
               onDelete={row.onDelete}
               onEdit={row.onEdit}
-              onEditInline={row.onEditInline}
+              onEditItem={row.onEditItem}
               onPlanDay={row.onPlanDay}
               onFocus={row.onFocus}
               dragHandle={
@@ -770,13 +822,13 @@ function TaskList({ rows, day, reordering }: { rows: TaskRowConfig[]; day: strin
 /* ————— a single row on the day ————— */
 
 function ActionRow({
-  entry, onToggle, onDelete, onEdit, onEditInline, onPlanDay, onFocus, dragHandle,
+  entry, onToggle, onDelete, onEdit, onEditItem, onPlanDay, onFocus, dragHandle,
 }: {
   entry: TodayEntry;
   onToggle: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
-  onEditInline?: (title: string) => void;
+  onEditItem?: () => void;
   onPlanDay?: () => void;
   onFocus?: () => void;
   dragHandle?: ReactNode;
@@ -790,36 +842,6 @@ function ActionRow({
   // do, so it leads; the habit's own name ("clean") becomes context beneath
   const dayPlanned = virtualHabit && !!action.note;
   const mainText = dayPlanned ? action.note : action.title;
-
-  const [editingInline, setEditingInline] = useState(false);
-  const [draft, setDraft] = useState("");
-  const draftRef = useRef<HTMLTextAreaElement>(null);
-
-  const growDraft = (el: HTMLTextAreaElement) => {
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 400)}px`;
-  };
-
-  // focus/select/size once, right as edit mode opens — not on every
-  // keystroke, which would keep re-selecting the whole draft and clobber
-  // everything but the last character typed
-  useEffect(() => {
-    if (!editingInline || !draftRef.current) return;
-    const el = draftRef.current;
-    el.focus();
-    el.select();
-    growDraft(el);
-  }, [editingInline]);
-
-  const startInlineEdit = () => {
-    setDraft(action.title);
-    setEditingInline(true);
-  };
-  const saveInlineEdit = () => {
-    const trimmed = draft.trim();
-    if (trimmed && onEditInline) onEditInline(trimmed);
-    setEditingInline(false);
-  };
 
   return (
     <div
@@ -856,43 +878,23 @@ function ActionRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           {action.priority > 0 && !action.done && <span className="shrink-0 text-xs">⭐</span>}
-          {editingInline ? (
-            <textarea
-              ref={draftRef}
-              value={draft}
-              onChange={(e) => { setDraft(e.target.value); growDraft(e.currentTarget); }}
-              onBlur={saveInlineEdit}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  saveInlineEdit();
-                } else if (e.key === "Escape") {
-                  setEditingInline(false);
-                }
-              }}
-              rows={1}
-              style={{ minHeight: "2.5em" }}
-              className="block min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-line bg-surface-2 px-2 py-1 text-[0.95rem] leading-snug text-ink outline-none focus:border-accent"
-            />
-          ) : (
-            // click the task itself to toggle it done, same as the checkbox —
-            // editing and opening the linked goal each got their own small
-            // icon instead, so this stays a single, unambiguous action
-            <span
-              onClick={onToggle}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onToggle();
-                }
-              }}
-              className={`block min-w-0 cursor-pointer whitespace-normal break-words text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
-            >
-              {mainText}
-            </span>
-          )}
+          {/* click the task itself to toggle it done, same as the checkbox —
+              editing and opening the linked goal each got their own small
+              icon instead, so this stays a single, unambiguous action */}
+          <span
+            onClick={onToggle}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onToggle();
+              }
+            }}
+            className={`block min-w-0 cursor-pointer whitespace-normal break-words text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
+          >
+            {mainText}
+          </span>
         </div>
         {dayPlanned && (
           <p className="mt-0.5 text-xs text-ink-3">{action.title}</p>
@@ -946,14 +948,15 @@ function ActionRow({
           className="shrink-0 text-ink-3 hover:text-ink px-1"
         >
           <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-            <path d="M14.5 3.5 16.5 5.5 6 16H4v-2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+            <rect x="3.5" y="4.5" width="13" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+            <path d="M3.5 8h13M7 3v3M13 3v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
           </svg>
         </button>
       )}
 
-      {(onEditInline || onEdit) && !editingInline && (
+      {(onEdit || onEditItem) && (
         <button
-          onClick={onEditInline ? startInlineEdit : onEdit}
+          onClick={onEdit ?? onEditItem}
           aria-label="Edit this task"
           className="shrink-0 text-ink-3 hover:text-ink px-1"
         >
@@ -976,15 +979,21 @@ function ActionRow({
         </button>
       )}
 
-      {onDelete && (
-        <button
-          onClick={onDelete}
-          aria-label="Remove"
-          className="text-ink-3 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity px-1"
-        >
-          ×
-        </button>
-      )}
+      {/* always rendered, even when nothing can be removed here — so the
+          icon row's width (and everything to its left) lines up the same
+          across every row instead of shifting by one icon's width */}
+      <button
+        onClick={onDelete}
+        disabled={!onDelete}
+        aria-label="Remove"
+        aria-hidden={!onDelete}
+        tabIndex={onDelete ? 0 : -1}
+        className={`shrink-0 px-1 transition-opacity ${
+          onDelete ? "text-ink-3 opacity-0 group-hover:opacity-100 focus:opacity-100" : "invisible"
+        }`}
+      >
+        ×
+      </button>
 
       {dragHandle}
     </div>
