@@ -89,7 +89,11 @@ function Today() {
     router.replace(`${pathname}?${qs.toString()}`, { scroll: false });
   };
   const setDay = (d: string) => goTo({ view: "today", day: d });
-  const setView = (v: ViewTab) => goTo({ view: v });
+  // the Today tab doubles as a "jump to today" shortcut — without this,
+  // clicking it while already on a different day within Today view (e.g.
+  // after the sidebar calendar sent you to the 25th) would just re-write
+  // the same URL and look like the button does nothing
+  const setView = (v: ViewTab) => goTo(v === "today" ? { view: "today", day: realToday } : { view: v });
   const setAnchor = (period: Period, a: string) => {
     setAnchors((prev) => ({ ...prev, [period]: a }));
     goTo({ view: period, anchor: a });
