@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const HIGHLIGHT_BG = "#fef08a";
 const HIGHLIGHT_FG = "#1a1a1a";
@@ -129,26 +129,40 @@ export function RichTextEditor({
     }
   }, [value]);
 
+  const updateFormat = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const sel = window.getSelection();
+    if (!sel || !sel.anchorNode || !el.contains(sel.anchorNode)) return;
+    // queryCommandValue reflects the pending style for a collapsed caret
+    // (the same reason queryCommandState works for bold before you type),
+    // where the DOM has no span yet to walk up and inspect
+    let bg = "";
+    let color = "";
+    try {
+      // "hiliteColor" applies cleanly but queryCommandValue can't read it back
+      // (returns empty) — "backColor" is the readable alias for the same style
+      bg = document.queryCommandValue("backColor");
+      color = document.queryCommandValue("foreColor");
+    } catch {
+      // some engines don't support these two — fall through to the DOM walk
+    }
+    if (!bg) bg = inlineStyleAt(el, "backgroundColor");
+    if (!color) color = inlineStyleAt(el, "color");
+    setFormat({
+      bold: document.queryCommandState("bold"),
+      italic: document.queryCommandState("italic"),
+      underline: document.queryCommandState("underline"),
+      highlight: bg === highlightRgb,
+      size: inlineStyleAt(el, "fontSize"),
+      color: colorRgb.includes(color) ? color : "",
+    });
+  }, [colorRgb, highlightRgb]);
+
   useEffect(() => {
-    const updateFormat = () => {
-      const el = ref.current;
-      if (!el) return;
-      const sel = window.getSelection();
-      if (!sel || !sel.anchorNode || !el.contains(sel.anchorNode)) return;
-      const bg = inlineStyleAt(el, "backgroundColor");
-      const color = inlineStyleAt(el, "color");
-      setFormat({
-        bold: document.queryCommandState("bold"),
-        italic: document.queryCommandState("italic"),
-        underline: document.queryCommandState("underline"),
-        highlight: !!bg && bg === highlightRgb,
-        size: inlineStyleAt(el, "fontSize"),
-        color: colorRgb.includes(color) ? color : "",
-      });
-    };
     document.addEventListener("selectionchange", updateFormat);
     return () => document.removeEventListener("selectionchange", updateFormat);
-  }, [colorRgb, highlightRgb]);
+  }, [updateFormat]);
 
   const handleInput = () => {
     if (!ref.current) return;
@@ -157,11 +171,16 @@ export function RichTextEditor({
     onChange(ref.current.innerHTML);
   };
 
+  // toggling bold/italic/underline/color on a collapsed caret changes the
+  // browser's internal "next typed character" style without moving the
+  // selection at all, so no selectionchange event fires — the toolbar would
+  // otherwise only catch up once the user actually typed something
   const exec = (cmd: string, arg?: string) => {
     ref.current?.focus();
     document.execCommand("styleWithCSS", false, "true");
     document.execCommand(cmd, false, arg);
     handleInput();
+    updateFormat();
   };
 
   const style = (s: Partial<CSSStyleDeclaration>) => {
@@ -170,6 +189,7 @@ export function RichTextEditor({
     if (sel && sel.rangeCount > 0 && !sel.isCollapsed) wrapSelection(s);
     else insertCollapsedStyle(s);
     handleInput();
+    updateFormat();
   };
 
   const highlight = () => {
@@ -180,6 +200,7 @@ export function RichTextEditor({
     document.execCommand("hiliteColor", false, HIGHLIGHT_BG);
     document.execCommand("foreColor", false, HIGHLIGHT_FG);
     handleInput();
+    updateFormat();
   };
 
   return (
