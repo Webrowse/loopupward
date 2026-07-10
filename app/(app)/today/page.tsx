@@ -12,6 +12,7 @@ import { areaColor } from "@/lib/palette";
 import { todayEntries, TodayEntry } from "@/lib/progress";
 import { Action, Cadence, HORIZON_META, Item } from "@/lib/types";
 import { DailyJournal } from "@/components/journal";
+import { FocusTimer } from "@/components/focustimer";
 import { HorizonList, ScheduleEditor, ScheduleValue } from "@/components/items";
 import { Ring } from "@/components/progress";
 import { EmptyState, Field, Segmented, Sheet, inputCls } from "@/components/ui";
@@ -47,6 +48,7 @@ function Today() {
   const [planning, setPlanning] = useState(false);
   const [editingAction, setEditingAction] = useState<Action | null>(null);
   const [planningHabit, setPlanningHabit] = useState<{ item: Item; date: string } | null>(null);
+  const [focusing, setFocusing] = useState<TodayEntry | null>(null);
   const [view, setView] = useState<ViewTab>(isPeriod(paramView) ? paramView : "today");
   const [anchors, setAnchors] = useState<Record<Period, string>>({
     week: realToday, month: realToday, quarter: realToday, year: realToday,
@@ -176,6 +178,7 @@ function Today() {
                   onPlanDay={
                     e.virtualHabit && e.item ? () => setPlanningHabit({ item: e.item!, date: day }) : undefined
                   }
+                  onFocus={() => setFocusing(e)}
                 />
               ))}
             </div>
@@ -199,6 +202,21 @@ function Today() {
       <PlanSheet open={planning} onClose={() => setPlanning(false)} day={day} />
       <EditActionSheet action={editingAction} onClose={() => setEditingAction(null)} />
       <HabitDayNoteSheet planning={planningHabit} onClose={() => setPlanningHabit(null)} />
+      <FocusTimer
+        open={!!focusing}
+        // a habit's day note ("clean desk") is the real task; its own title
+        // ("clean") becomes context. Otherwise the title leads and a note,
+        // if any, is just a small aside — not the thing itself.
+        title={
+          focusing?.virtualHabit && focusing.action.note ? focusing.action.note : focusing?.action.title ?? ""
+        }
+        subtitle={
+          focusing?.virtualHabit && focusing.action.note ? focusing.action.title : focusing?.action.note || undefined
+        }
+        done={focusing?.action.done ?? false}
+        onToggle={() => focusing && toggleEntry(focusing, day)}
+        onClose={() => setFocusing(null)}
+      />
     </div>
   );
 }
@@ -537,9 +555,14 @@ function HabitDayNoteSheet({
 /* ————— a single row on the day ————— */
 
 function ActionRow({
-  entry, onToggle, onDelete, onEdit, onPlanDay,
+  entry, onToggle, onDelete, onEdit, onPlanDay, onFocus,
 }: {
-  entry: TodayEntry; onToggle: () => void; onDelete?: () => void; onEdit?: () => void; onPlanDay?: () => void;
+  entry: TodayEntry;
+  onToggle: () => void;
+  onDelete?: () => void;
+  onEdit?: () => void;
+  onPlanDay?: () => void;
+  onFocus?: () => void;
 }) {
   const { db, theme } = useLife();
   const { action, item, carriedFrom, virtualHabit, virtualItemTask, dayValue, dayTarget, scheduleLabel } = entry;
@@ -639,6 +662,19 @@ function ActionRow({
         >
           <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
             <path d="M14.5 3.5 16.5 5.5 6 16H4v-2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+
+      {onFocus && !action.done && (
+        <button
+          onClick={onFocus}
+          aria-label="Focus on this with a timer"
+          className="shrink-0 text-ink-3 hover:text-ink px-1"
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+            <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.4" />
+            <path d="M10 6v4l2.8 1.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
       )}
