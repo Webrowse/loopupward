@@ -12,7 +12,11 @@ import { today } from "./dates";
  *
  * This corrects to the browser's actual local day right after mount, and
  * keeps nudging forward on an interval so a tab left open across local
- * midnight rolls over on its own instead of staying stuck.
+ * midnight rolls over on its own instead of staying stuck. Backgrounded
+ * tabs throttle `setInterval` heavily, so a layout mounted before midnight
+ * (like the sidebar, which persists across client-side navigations) can
+ * sit stale for a while on its own — rechecking on visibility/focus catches
+ * it up immediately instead of waiting on the throttled timer.
  */
 export function useToday(): string {
   const [day, setDay] = useState(today);
@@ -24,7 +28,13 @@ export function useToday(): string {
     };
     check();
     const id = setInterval(check, 60_000);
-    return () => clearInterval(id);
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+    };
   }, []);
 
   return day;
