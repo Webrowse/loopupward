@@ -367,6 +367,30 @@ const KIND_DEFAULT_TRACKER: Partial<Record<ItemKind, TrackerType>> = {
 
 const PERIOD_HORIZONS: Horizon[] = ["week", "month", "quarter", "year"];
 
+const NOTE_HEADING_MAX = 60;
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Organizing a seed into a note should keep the whole captured thought as
+ *  the note's content — a long capture shouldn't get jammed whole into a
+ *  single-line title and cut off. A short one-line thought stays exactly as
+ *  typed with no body; anything longer gets a short heading pulled from its
+ *  start, with the full text preserved as the note's body underneath. */
+function deriveNoteFields(text: string): { title: string; richBody: string } {
+  const trimmed = text.trim();
+  if (!trimmed.includes("\n") && trimmed.length <= NOTE_HEADING_MAX) {
+    return { title: trimmed, richBody: "" };
+  }
+  const firstLine = trimmed.split("\n")[0].trim();
+  const heading = firstLine.length > NOTE_HEADING_MAX
+    ? `${firstLine.slice(0, NOTE_HEADING_MAX).replace(/\s+\S*$/, "").trim()}…`
+    : firstLine;
+  const richBody = trimmed.split("\n").map(escapeHtml).join("<br>");
+  return { title: heading || "Untitled note", richBody };
+}
+
 export function ItemSheet({
   open, onClose, initial, editing, defaultAreaId, defaultParentId, defaultHorizon,
   defaultHorizonPeriod, onCreated,
@@ -496,8 +520,11 @@ export function ItemSheet({
       return;
     }
     const t = target.trim() === "" ? (tracker === "percent" ? 100 : null) : parseFloat(target);
+    // organizing a seed into a note: the captured text is content, not a
+    // heading — split it so nothing long gets cut off as a single line title
+    const noteSplit = !editing && kind === "note" ? deriveNoteFields(title) : null;
     const patch = {
-      title: title.trim(),
+      title: noteSplit ? noteSplit.title : title.trim(),
       kind,
       tracker,
       areaId,
@@ -510,6 +537,7 @@ export function ItemSheet({
       unit: unit.trim() || (tracker === "money" ? "₹" : null),
       labels: labelIds,
       note,
+      ...(noteSplit ? { richBody: noteSplit.richBody } : {}),
     };
     if (editing) {
       updateItem(editing.id, patch);
