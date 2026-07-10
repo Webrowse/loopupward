@@ -141,31 +141,13 @@ export function FocusTimer({
     };
   }, [open, onClose]);
 
-  if (!open || !current) return null;
+  if (!open) return null;
 
   const start = () => {
     setRemaining(minutes * 60);
     setFinished(false);
     setOvertime(0);
     setRunning(true);
-  };
-
-  const check = () => {
-    const completing = !current.action.done;
-    onToggle(current);
-    if (completing) {
-      // let the pop, the check stroke, and the ring pulse actually play
-      // before offering what's next — that pause is the whole point
-      setJustCompleted(true);
-      setTimeout(() => {
-        setJustCompleted(false);
-        setRunning(false);
-        setPickingNext(true);
-      }, 900);
-    } else {
-      setJustCompleted(false);
-      setTimeout(onClose, 300);
-    }
   };
 
   const pickNext = (entry: TodayEntry) => {
@@ -177,6 +159,10 @@ export function FocusTimer({
     setJustCompleted(false);
   };
 
+  // marking a carried-over task done drops it out of `entries` entirely (it
+  // only ever shows up there while still undone), so `current` can go null
+  // the moment that happens — this screen must not depend on it still
+  // resolving, or the whole timer silently unmounts back to the Today page
   if (pickingNext) {
     const undone = entries.filter((e) => !e.action.done);
     return (
@@ -210,6 +196,28 @@ export function FocusTimer({
       </div>
     );
   }
+
+  // everything below is the setup sheet and the running countdown — both
+  // need a real current entry to show
+  if (!current) return null;
+
+  const check = () => {
+    const completing = !current.action.done;
+    onToggle(current);
+    if (completing) {
+      // let the pop, the check stroke, and the ring pulse actually play
+      // before offering what's next — that pause is the whole point
+      setJustCompleted(true);
+      setTimeout(() => {
+        setJustCompleted(false);
+        setRunning(false);
+        setPickingNext(true);
+      }, 900);
+    } else {
+      setJustCompleted(false);
+      setTimeout(onClose, 300);
+    }
+  };
 
   const { title, subtitle } = entryText(current);
 
