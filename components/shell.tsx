@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode } from "react";
 import { useLife } from "@/lib/data/provider";
+import { MiniCalendar } from "@/components/minicalendar";
 
 const TABS = [
   { href: "/home", label: "Mind", icon: MindIcon },
@@ -60,6 +61,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
+
+        <MiniCalendar />
+
         <Link
           href="/guide"
           className="mt-auto px-3 text-xs text-ink-3 hover:text-ink-2"

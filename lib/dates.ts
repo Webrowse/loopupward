@@ -43,6 +43,21 @@ export function startOfMonth(day: string): string {
   return day.slice(0, 8) + "01";
 }
 
+/** Steps by whole months. Only meant for the 1st of a month (as used by the
+ *  sidebar calendar) — stepping from a mid-month day risks JS Date's
+ *  short-month rollover (e.g. Jan 31 + 1 month → Mar 3). */
+export function addMonths(day: string, n: number): string {
+  const d = fromDay(day);
+  d.setMonth(d.getMonth() + n);
+  return toDay(d);
+}
+
+export function addYears(day: string, n: number): string {
+  const d = fromDay(day);
+  d.setFullYear(d.getFullYear() + n);
+  return toDay(d);
+}
+
 export function startOfQuarter(day: string): string {
   const d = fromDay(day);
   const qm = Math.floor(d.getMonth() / 3) * 3;

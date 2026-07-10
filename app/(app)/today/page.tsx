@@ -19,6 +19,12 @@ import { EmptyState, Field, Segmented, Sheet, inputCls } from "@/components/ui";
 
 const DOW_LETTER = ["S", "M", "T", "W", "T", "F", "S"];
 
+/** Narrows a ?day= query param (e.g. from the sidebar calendar) into a
+ *  plausible YYYY-MM-DD, so a stray/missing query string never crashes. */
+function isValidDay(v: string | null): v is string {
+  return !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+}
+
 type ViewTab = "today" | Period;
 const VIEW_TABS: { value: ViewTab; label: string }[] = [
   { value: "today", label: "Today" },
@@ -43,8 +49,19 @@ function Today() {
   // instead of always resetting to the Today tab
   const paramView = params.get("view");
   const paramDate = params.get("date");
+  // the sidebar calendar jumps here with ?day=YYYY-MM-DD
+  const paramDay = params.get("day");
   const realToday = today();
-  const [day, setDay] = useState(realToday);
+  const [day, setDay] = useState(isValidDay(paramDay) ? paramDay : realToday);
+  const [lastParamDay, setLastParamDay] = useState(paramDay);
+
+  // the sidebar calendar can send a new ?day= while this page is already
+  // mounted — state only reads the query string once on its own, so notice
+  // later changes here too
+  if (paramDay !== lastParamDay) {
+    setLastParamDay(paramDay);
+    if (isValidDay(paramDay)) setDay(paramDay);
+  }
   const [planning, setPlanning] = useState(false);
   const [editingAction, setEditingAction] = useState<Action | null>(null);
   const [editingItemTitle, setEditingItemTitle] = useState<Item | null>(null);
@@ -826,7 +843,9 @@ function ActionRow({
   dragHandle?: ReactNode;
 }) {
   const { db, theme } = useLife();
-  const { action, item, carriedFrom, virtualHabit, virtualItemTask, dayValue, dayTarget, scheduleLabel } = entry;
+  const {
+    action, item, carriedFrom, completedOn, virtualHabit, virtualItemTask, dayValue, dayTarget, scheduleLabel,
+  } = entry;
   const multi = dayTarget > 1;
   const dark = theme === "dark";
   const itemLabels = item ? [...new Set(item.labels)] : [];
@@ -917,6 +936,7 @@ function ActionRow({
           {virtualHabit && !scheduleLabel && <span>habit</span>}
           {virtualItemTask && <span>🎯 today</span>}
           {carriedFrom && <span className="shrink-0 text-amber">carried from {shortDay(carriedFrom)}</span>}
+          {completedOn && <span className="shrink-0 text-accent-deep">done {shortDay(completedOn)}</span>}
         </div>
       </div>
 

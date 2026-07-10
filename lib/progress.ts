@@ -203,6 +203,10 @@ export interface TodayEntry {
   virtualItemTask: boolean;
   /** action carried forward from an earlier day */
   carriedFrom: string | null;
+  /** for an action shown on its own planned day: the day it actually got
+   *  done, when that's a later day — carrying it forward never erases it
+   *  from where it was meant to happen */
+  completedOn: string | null;
   /** units logged today vs the daily amount (3L water → 2/3) */
   dayValue: number;
   dayTarget: number;
@@ -260,7 +264,8 @@ export function scheduledState(item: Item, logs: Log[], day: string): ScheduledS
 export function todayEntries(db: DB, day = today(), includeCarried = day === today()): TodayEntry[] {
   const entries: TodayEntry[] = [];
 
-  // 1. real actions for the day
+  // 1. real actions for the day — a task never leaves the day it was
+  //    planned for, even once carrying it forward finishes it somewhere else
   for (const a of db.actions.filter((a) => a.date === day)) {
     entries.push({
       action: a,
@@ -268,22 +273,30 @@ export function todayEntries(db: DB, day = today(), includeCarried = day === tod
       virtualHabit: false,
       virtualItemTask: false,
       carriedFrom: null,
+      completedOn: a.done && a.doneAt != null && dayFromMs(a.doneAt) !== day ? dayFromMs(a.doneAt) : null,
       dayValue: a.done ? 1 : 0,
       dayTarget: 1,
       scheduleLabel: null,
     });
   }
 
-  // 2. unfinished actions from earlier days — carried forward, never shamed
-  //    (only on the real today; browsing other days shows just that day)
-  for (const a of includeCarried ? db.actions.filter((a) => !a.done && a.date < day) : []) {
+  // 2. actions from earlier days that are either still open, or were finished
+  //    on the day being viewed right now — carried forward, never shamed
+  //    (only on the real today; browsing other days shows just that day).
+  //    Finishing one here doesn't erase it: it just stops carrying past the
+  //    day it actually got done.
+  for (const a of includeCarried
+    ? db.actions.filter((a) => a.date < day && (!a.done || (a.doneAt != null && dayFromMs(a.doneAt) === day)))
+    : []
+  ) {
     entries.push({
       action: a,
       item: a.itemId ? db.items.find((i) => i.id === a.itemId) ?? null : null,
       virtualHabit: false,
       virtualItemTask: false,
       carriedFrom: a.date,
-      dayValue: 0,
+      completedOn: null,
+      dayValue: a.done ? 1 : 0,
       dayTarget: 1,
       scheduleLabel: null,
     });
@@ -314,6 +327,7 @@ export function todayEntries(db: DB, day = today(), includeCarried = day === tod
       virtualHabit: true,
       virtualItemTask: false,
       carriedFrom: null,
+      completedOn: null,
       dayValue: state.dayValue,
       dayTarget: state.dayTarget,
       scheduleLabel: state.label,
@@ -348,6 +362,7 @@ export function todayEntries(db: DB, day = today(), includeCarried = day === tod
         virtualHabit: false,
         virtualItemTask: true,
         carriedFrom: null,
+        completedOn: null,
         dayValue: doneToday ? 1 : 0,
         dayTarget: 1,
         scheduleLabel: null,
