@@ -37,7 +37,7 @@ export default function TodayPage() {
 }
 
 function Today() {
-  const { db, toggleEntry, deleteAction, updateAction, reorderDay } = useLife();
+  const { db, toggleEntry, deleteAction, updateAction, updateItem, reorderDay } = useLife();
   const params = useSearchParams();
   // arriving from Reflect's "Plan ahead" link lands on that exact period,
   // instead of always resetting to the Today tab
@@ -49,6 +49,8 @@ function Today() {
   const [editingAction, setEditingAction] = useState<Action | null>(null);
   const [planningHabit, setPlanningHabit] = useState<{ item: Item; date: string } | null>(null);
   const [focusing, setFocusing] = useState<TodayEntry | null>(null);
+  const [reordering, setReordering] = useState(false);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [view, setView] = useState<ViewTab>(isPeriod(paramView) ? paramView : "today");
   const [anchors, setAnchors] = useState<Record<Period, string>>({
     week: realToday, month: realToday, quarter: realToday, year: realToday,
@@ -154,13 +156,53 @@ function Today() {
               <div className="mb-1.5 flex items-center justify-between">
                 <p className="text-xs font-medium uppercase tracking-wide text-ink-3">Progress</p>
                 <div className="flex items-center gap-2.5">
-                  <button
-                    onClick={() => reorderDay(day, sortedByDone(entries).map((e) => e.action.id))}
-                    className="pressable text-xs font-medium text-ink-3 hover:text-ink-2"
-                    title="Move done tasks to the bottom"
-                  >
-                    Sort
-                  </button>
+                  {reordering ? (
+                    <button
+                      onClick={() => setReordering(false)}
+                      className="pressable text-xs font-medium text-accent-deep"
+                    >
+                      Done arranging
+                    </button>
+                  ) : (
+                    <div className="relative">
+                      <button
+                        onClick={() => setSortMenuOpen((v) => !v)}
+                        className="pressable text-xs font-medium text-ink-3 hover:text-ink-2"
+                      >
+                        Sort
+                      </button>
+                      {sortMenuOpen && (
+                        <>
+                          <button
+                            aria-hidden
+                            tabIndex={-1}
+                            onClick={() => setSortMenuOpen(false)}
+                            className="fixed inset-0 z-30 cursor-default"
+                          />
+                          <div className="absolute right-0 top-full z-40 mt-1.5 w-48 overflow-hidden rounded-xl border border-line-soft bg-surface shadow-(--shadow-float)">
+                            <button
+                              onClick={() => {
+                                reorderDay(day, sortedByDone(entries).map((e) => e.action.id));
+                                setSortMenuOpen(false);
+                              }}
+                              className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-surface-2"
+                            >
+                              Unfinished first
+                            </button>
+                            <button
+                              onClick={() => {
+                                setReordering(true);
+                                setSortMenuOpen(false);
+                              }}
+                              className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-surface-2"
+                            >
+                              Custom order (drag)
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                   <p className="text-xs font-semibold text-ink-3 tabular-nums">{done}/{total}</p>
                 </div>
               </div>
@@ -181,18 +223,20 @@ function Today() {
           ) : (
             <TaskList
               day={day}
+              reordering={reordering}
               rows={entries.map((e) => ({
                 entry: e,
                 onToggle: () => toggleEntry(e, day),
                 onDelete: e.virtualHabit || e.virtualItemTask ? undefined : () => deleteAction(e.action.id),
                 onEdit:
                   e.item || e.virtualHabit || e.virtualItemTask ? undefined : () => setEditingAction(e.action),
-                // a piece broken off a goal is a real action too — it just
-                // also carries a link to that goal, which used to be the
-                // only thing you could do with it from here
+                // every row edits whatever it actually shows as its title —
+                // a real action's own title, or (for a goal's today-piece
+                // and a goal marked "today" itself) the goal's title
                 onEditInline:
-                  e.item && !e.virtualHabit && !e.virtualItemTask
-                    ? (title: string) => updateAction(e.action.id, { title })
+                  e.item && !e.virtualHabit
+                    ? (title: string) =>
+                        e.virtualItemTask ? updateItem(e.item!.id, { title }) : updateAction(e.action.id, { title })
                     : undefined,
                 onPlanDay:
                   e.virtualHabit && e.item ? () => setPlanningHabit({ item: e.item!, date: day }) : undefined,
@@ -585,7 +629,7 @@ interface TaskRowConfig {
 // actual pixel gap between rows
 const ROW_GAP = 8;
 
-function TaskList({ rows, day }: { rows: TaskRowConfig[]; day: string }) {
+function TaskList({ rows, day, reordering }: { rows: TaskRowConfig[]; day: string; reordering: boolean }) {
   const { reorderDay } = useLife();
   const byId = useMemo(() => new Map(rows.map((r) => [r.entry.action.id, r] as const)), [rows]);
   const baseOrder = useMemo(() => rows.map((r) => r.entry.action.id), [rows]);
@@ -694,24 +738,26 @@ function TaskList({ rows, day }: { rows: TaskRowConfig[]; day: string }) {
               onPlanDay={row.onPlanDay}
               onFocus={row.onFocus}
               dragHandle={
-                <button
-                  onPointerDown={(e) => {
-                    e.currentTarget.setPointerCapture(e.pointerId);
-                    beginDrag(id, e.clientY);
-                  }}
-                  onPointerMove={(e) => draggingId === id && moveDrag(id, e.clientY)}
-                  onPointerUp={() => draggingId === id && endDrag(id)}
-                  onPointerCancel={() => draggingId === id && endDrag(id)}
-                  onLostPointerCapture={() => draggingId === id && endDrag(id)}
-                  aria-label="Drag to reorder"
-                  className="shrink-0 touch-none cursor-grab px-1 text-ink-3 active:cursor-grabbing"
-                >
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                    <circle cx="4" cy="3" r="1.3" /><circle cx="10" cy="3" r="1.3" />
-                    <circle cx="4" cy="7" r="1.3" /><circle cx="10" cy="7" r="1.3" />
-                    <circle cx="4" cy="11" r="1.3" /><circle cx="10" cy="11" r="1.3" />
-                  </svg>
-                </button>
+                reordering ? (
+                  <button
+                    onPointerDown={(e) => {
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      beginDrag(id, e.clientY);
+                    }}
+                    onPointerMove={(e) => draggingId === id && moveDrag(id, e.clientY)}
+                    onPointerUp={() => draggingId === id && endDrag(id)}
+                    onPointerCancel={() => draggingId === id && endDrag(id)}
+                    onLostPointerCapture={() => draggingId === id && endDrag(id)}
+                    aria-label="Drag to reorder"
+                    className="shrink-0 touch-none cursor-grab px-1 text-ink-3 active:cursor-grabbing"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                      <circle cx="4" cy="3" r="1.3" /><circle cx="10" cy="3" r="1.3" />
+                      <circle cx="4" cy="7" r="1.3" /><circle cx="10" cy="7" r="1.3" />
+                      <circle cx="4" cy="11" r="1.3" /><circle cx="10" cy="11" r="1.3" />
+                    </svg>
+                  </button>
+                ) : undefined
               }
             />
           </div>
@@ -747,6 +793,23 @@ function ActionRow({
 
   const [editingInline, setEditingInline] = useState(false);
   const [draft, setDraft] = useState("");
+  const draftRef = useRef<HTMLTextAreaElement>(null);
+
+  const growDraft = (el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 400)}px`;
+  };
+
+  // focus/select/size once, right as edit mode opens — not on every
+  // keystroke, which would keep re-selecting the whole draft and clobber
+  // everything but the last character typed
+  useEffect(() => {
+    if (!editingInline || !draftRef.current) return;
+    const el = draftRef.current;
+    el.focus();
+    el.select();
+    growDraft(el);
+  }, [editingInline]);
 
   const startInlineEdit = () => {
     setDraft(action.title);
@@ -795,10 +858,9 @@ function ActionRow({
           {action.priority > 0 && !action.done && <span className="shrink-0 text-xs">⭐</span>}
           {editingInline ? (
             <textarea
-              autoFocus
+              ref={draftRef}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onFocus={(e) => e.currentTarget.select()}
+              onChange={(e) => { setDraft(e.target.value); growDraft(e.currentTarget); }}
               onBlur={saveInlineEdit}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -809,25 +871,25 @@ function ActionRow({
                 }
               }}
               rows={1}
-              className="block min-w-0 flex-1 resize-none rounded-lg border border-line bg-surface-2 px-2 py-1 text-[0.95rem] leading-snug text-ink outline-none focus:border-accent"
+              style={{ minHeight: "2.5em" }}
+              className="block min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-line bg-surface-2 px-2 py-1 text-[0.95rem] leading-snug text-ink outline-none focus:border-accent"
             />
-          ) : item ? (
-            <Link
-              href={`/item/${item.id}`}
-              className={`block min-w-0 whitespace-normal break-words text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
-            >
-              {mainText}
-            </Link>
-          ) : onEdit ? (
-            <button
-              type="button"
-              onClick={onEdit}
-              className={`block min-w-0 whitespace-normal break-words text-left text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
-            >
-              {mainText}
-            </button>
           ) : (
-            <span className={`block min-w-0 whitespace-normal break-words text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}>
+            // click the task itself to toggle it done, same as the checkbox —
+            // editing and opening the linked goal each got their own small
+            // icon instead, so this stays a single, unambiguous action
+            <span
+              onClick={onToggle}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onToggle();
+                }
+              }}
+              className={`block min-w-0 cursor-pointer whitespace-normal break-words text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
+            >
               {mainText}
             </span>
           )}
@@ -864,6 +926,19 @@ function ActionRow({
         </div>
       </div>
 
+      {item && (
+        <Link
+          href={`/item/${item.id}`}
+          aria-label={`Open "${item.title}"`}
+          className="shrink-0 text-ink-3 hover:text-ink px-1"
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+            <path d="M8 5H5.5A1.5 1.5 0 0 0 4 6.5v8A1.5 1.5 0 0 0 5.5 16h8a1.5 1.5 0 0 0 1.5-1.5V12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M11 4h5v5M15.5 4.5 9.5 10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </Link>
+      )}
+
       {onPlanDay && (
         <button
           onClick={onPlanDay}
@@ -876,9 +951,9 @@ function ActionRow({
         </button>
       )}
 
-      {onEditInline && !editingInline && (
+      {(onEditInline || onEdit) && !editingInline && (
         <button
-          onClick={startInlineEdit}
+          onClick={onEditInline ? startInlineEdit : onEdit}
           aria-label="Edit this task"
           className="shrink-0 text-ink-3 hover:text-ink px-1"
         >
