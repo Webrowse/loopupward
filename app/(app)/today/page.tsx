@@ -569,6 +569,10 @@ function ActionRow({
   const multi = dayTarget > 1;
   const dark = theme === "dark";
   const itemLabels = item ? [...new Set(item.labels)] : [];
+  // a habit's day-specific plan ("clean desk") is what you actually came to
+  // do, so it leads; the habit's own name ("clean") becomes context beneath
+  const dayPlanned = virtualHabit && !!action.note;
+  const mainText = dayPlanned ? action.note : action.title;
   return (
     <div
       className={`group flex items-center gap-3 rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3 shadow-(--shadow-card) transition-opacity ${
@@ -609,7 +613,7 @@ function ActionRow({
               href={`/item/${item.id}`}
               className={`block min-w-0 whitespace-normal break-words text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
             >
-              {action.title}
+              {mainText}
             </Link>
           ) : onEdit ? (
             <button
@@ -617,14 +621,17 @@ function ActionRow({
               onClick={onEdit}
               className={`block min-w-0 whitespace-normal break-words text-left text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
             >
-              {action.title}
+              {mainText}
             </button>
           ) : (
             <span className={`block min-w-0 whitespace-normal break-words text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}>
-              {action.title}
+              {mainText}
             </span>
           )}
         </div>
+        {dayPlanned && (
+          <p className="mt-0.5 text-xs text-ink-3">{action.title}</p>
+        )}
         <div className="flex gap-2 text-xs text-ink-3">
           {multi && (
             <span className="tabular-nums font-medium text-accent-deep">
@@ -632,7 +639,7 @@ function ActionRow({
               {item?.unit ? ` ${item.unit}` : ""}
             </span>
           )}
-          {action.note && <span className="truncate">{action.note}</span>}
+          {!dayPlanned && action.note && <span className="truncate">{action.note}</span>}
           {itemLabels.slice(0, 2).map((lid) => {
             const l = db.labels.find((x) => x.id === lid);
             if (!l) return null;
