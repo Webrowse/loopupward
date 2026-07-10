@@ -49,7 +49,7 @@ function Today() {
   const [editingAction, setEditingAction] = useState<Action | null>(null);
   const [editingItemTitle, setEditingItemTitle] = useState<Item | null>(null);
   const [planningHabit, setPlanningHabit] = useState<{ item: Item; date: string } | null>(null);
-  const [focusing, setFocusing] = useState<TodayEntry | null>(null);
+  const [focusingId, setFocusingId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [view, setView] = useState<ViewTab>(isPeriod(paramView) ? paramView : "today");
@@ -240,7 +240,7 @@ function Today() {
                   (e.virtualHabit || e.virtualItemTask) && e.item ? () => setEditingItemTitle(e.item!) : undefined,
                 onPlanDay:
                   e.virtualHabit && e.item ? () => setPlanningHabit({ item: e.item!, date: day }) : undefined,
-                onFocus: () => setFocusing(e),
+                onFocus: () => setFocusingId(e.action.id),
               }))}
             />
           )}
@@ -265,19 +265,11 @@ function Today() {
       <EditItemTitleSheet item={editingItemTitle} onClose={() => setEditingItemTitle(null)} />
       <HabitDayNoteSheet planning={planningHabit} onClose={() => setPlanningHabit(null)} />
       <FocusTimer
-        open={!!focusing}
-        // a habit's day note ("clean desk") is the real task; its own title
-        // ("clean") becomes context. Otherwise the title leads and a note,
-        // if any, is just a small aside — not the thing itself.
-        title={
-          focusing?.virtualHabit && focusing.action.note ? focusing.action.note : focusing?.action.title ?? ""
-        }
-        subtitle={
-          focusing?.virtualHabit && focusing.action.note ? focusing.action.title : focusing?.action.note || undefined
-        }
-        done={focusing?.action.done ?? false}
-        onToggle={() => focusing && toggleEntry(focusing, day)}
-        onClose={() => setFocusing(null)}
+        open={!!focusingId}
+        entries={entries}
+        initialEntryId={focusingId}
+        onToggle={(entry) => toggleEntry(entry, day)}
+        onClose={() => setFocusingId(null)}
       />
     </div>
   );

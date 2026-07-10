@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { TodayEntry } from "@/lib/progress";
 import { Chip, Field, Sheet, inputCls } from "@/components/ui";
 
 const PRESETS = [5, 10, 15, 25, 45];
@@ -40,6 +41,17 @@ function ringColor(fraction: number): string {
 const RING_SIZE = 300;
 const RING_STROKE = 10;
 
+/** A habit's day-specific plan ("clean desk") is what you actually came to
+ *  do, so it leads; the habit's own name ("clean") becomes context beneath.
+ *  Otherwise the title leads and a note, if any, is just a small aside. */
+function entryText(entry: TodayEntry): { title: string; subtitle?: string } {
+  const dayPlanned = entry.virtualHabit && !!entry.action.note;
+  return {
+    title: dayPlanned ? entry.action.note : entry.action.title,
+    subtitle: dayPlanned ? entry.action.title : entry.action.note || undefined,
+  };
+}
+
 /**
  * A full-screen, single-purpose focus mode: pick a length, then nothing on
  * screen but the task, a big checkbox and a countdown until it ends. No
@@ -47,35 +59,52 @@ const RING_STROKE = 10;
  * The ring around the countdown depletes and shifts from green to red as
  * time runs out; past zero it holds empty while a small count-up beside the
  * frozen 00:00 tracks how far into overtime the task ran.
+ *
+ * Finishing one task doesn't drop you back to the Today list — it offers
+ * whatever's still undone so a chain of focus sessions can run back to back
+ * without ever leaving this screen.
  */
 export function FocusTimer({
-  open, title, subtitle, done, onToggle, onClose,
+  open, entries, initialEntryId, onToggle, onClose,
 }: {
   open: boolean;
-  title: string;
-  subtitle?: string;
-  done: boolean;
-  onToggle: () => void;
+  entries: TodayEntry[];
+  initialEntryId: string | null;
+  onToggle: (entry: TodayEntry) => void;
   onClose: () => void;
 }) {
+  const [activeId, setActiveId] = useState<string | null>(initialEntryId);
   const [minutes, setMinutes] = useState(25);
   const [running, setRunning] = useState(false);
   const [remaining, setRemaining] = useState(0);
   const [finished, setFinished] = useState(false);
   const [overtime, setOvertime] = useState(0);
   const [justCompleted, setJustCompleted] = useState(false);
+  const [pickingNext, setPickingNext] = useState(false);
   const [wasOpen, setWasOpen] = useState(open);
 
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (!open) {
+    if (open) {
+      // freshly opened — pick up whichever row was tapped
+      setActiveId(initialEntryId);
+      setPickingNext(false);
+      setRunning(false);
+      setFinished(false);
+      setOvertime(0);
+      setJustCompleted(false);
+    } else {
       setRunning(false);
       setFinished(false);
       setMinutes(25);
       setOvertime(0);
       setJustCompleted(false);
+      setPickingNext(false);
+      setActiveId(null);
     }
   }
+
+  const current = entries.find((e) => e.action.id === activeId) ?? null;
 
   useEffect(() => {
     if (!running) return;
@@ -112,7 +141,7 @@ export function FocusTimer({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || !current) return null;
 
   const start = () => {
     setRemaining(minutes * 60);
@@ -122,18 +151,67 @@ export function FocusTimer({
   };
 
   const check = () => {
-    const completing = !done;
-    onToggle();
+    const completing = !current.action.done;
+    onToggle(current);
     if (completing) {
       // let the pop, the check stroke, and the ring pulse actually play
-      // before the screen cuts away — that pause is the whole point
+      // before offering what's next — that pause is the whole point
       setJustCompleted(true);
-      setTimeout(onClose, 900);
+      setTimeout(() => {
+        setJustCompleted(false);
+        setRunning(false);
+        setPickingNext(true);
+      }, 900);
     } else {
       setJustCompleted(false);
       setTimeout(onClose, 300);
     }
   };
+
+  const pickNext = (entry: TodayEntry) => {
+    setActiveId(entry.action.id);
+    setPickingNext(false);
+    setRunning(false);
+    setFinished(false);
+    setOvertime(0);
+    setJustCompleted(false);
+  };
+
+  if (pickingNext) {
+    const undone = entries.filter((e) => !e.action.done);
+    return (
+      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-6 bg-bg px-6 py-10 text-center">
+        <div>
+          <p className="text-lg text-accent-deep font-medium mb-1">Nice work. 🌱</p>
+          <h1 className="font-display text-[1.75rem] sm:text-[2rem] leading-tight text-ink">
+            {undone.length > 0 ? "What's next?" : "Everything's done"}
+          </h1>
+        </div>
+
+        {undone.length > 0 ? (
+          <div className="w-full max-w-sm space-y-2 overflow-y-auto" style={{ maxHeight: "50vh" }}>
+            {undone.map((e) => (
+              <button
+                key={e.action.id}
+                onClick={() => pickNext(e)}
+                className="pressable block w-full rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3 text-left text-[0.95rem] text-ink shadow-(--shadow-card) hover:border-accent"
+              >
+                {entryText(e).title}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-ink-3 max-w-xs">Nothing left on today&rsquo;s list.</p>
+        )}
+
+        <button onClick={onClose} className="pressable text-sm font-medium text-ink-3 hover:text-ink px-4 py-2">
+          Later
+        </button>
+      </div>
+    );
+  }
+
+  const { title, subtitle } = entryText(current);
 
   if (!running) {
     return (
@@ -199,15 +277,15 @@ export function FocusTimer({
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
           <button
             onClick={check}
-            aria-label={done ? "Undo" : "Mark done"}
+            aria-label={current.action.done ? "Undo" : "Mark done"}
             className={`pressable relative grid h-20 w-20 sm:h-24 sm:w-24 shrink-0 place-items-center rounded-3xl border-4 transition-colors ${
-              done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
+              current.action.done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
             } ${justCompleted ? "check-pop" : ""}`}
           >
-            {done && justCompleted && (
+            {current.action.done && justCompleted && (
               <span className="check-ring-pulse pointer-events-none absolute inset-0 rounded-3xl border-4 border-accent" />
             )}
-            {done && (
+            {current.action.done && (
               <svg width="40" height="40" viewBox="0 0 12 12" fill="none">
                 <path
                   d="M2 6.5 4.8 9 10 3.5"
