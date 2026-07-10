@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, Suspense, useMemo, useRef, useState } from "react";
+import { ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
@@ -651,6 +651,17 @@ function TaskList({ rows, day }: { rows: TaskRowConfig[]; day: string }) {
     reorderDay(day, orderRef.current);
   };
 
+  // safety net: a touch that grazes the handle mid-scroll can start a drag
+  // whose pointerup/pointercancel never reaches us (the gesture turns into
+  // a page scroll instead). Whenever no drag is in flight, make sure no row
+  // is left stuck with a stray transform — otherwise it renders in the
+  // wrong spot forever, showing as a gap where it should be and an overlap
+  // where the leftover transform put it.
+  useEffect(() => {
+    if (draggingId) return;
+    rowEls.current.forEach((el) => { el.style.transform = ""; });
+  }, [draggingId, rows]);
+
   return (
     <div className="space-y-2">
       {order.map((id) => {
@@ -682,6 +693,7 @@ function TaskList({ rows, day }: { rows: TaskRowConfig[]; day: string }) {
                   onPointerMove={(e) => draggingId === id && moveDrag(id, e.clientY)}
                   onPointerUp={() => draggingId === id && endDrag(id)}
                   onPointerCancel={() => draggingId === id && endDrag(id)}
+                  onLostPointerCapture={() => draggingId === id && endDrag(id)}
                   aria-label="Drag to reorder"
                   className="shrink-0 touch-none cursor-grab px-1 text-ink-3 active:cursor-grabbing"
                 >
