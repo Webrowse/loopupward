@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addDays, addMonths, addYears, fromDay, startOfMonth, startOfWeek } from "@/lib/dates";
 import { useToday } from "@/lib/useToday";
@@ -44,6 +44,16 @@ export function MiniCalendar() {
   const [manualViewMonth, setManualViewMonth] = useState<string | null>(null);
   const viewMonth = manualViewMonth ?? startOfMonth(realToday);
 
+  // this sidebar lives in the persisted layout, so its very first render can
+  // come from a stale prerendered/cached HTML snapshot — the grid's cells
+  // already compute the right day, but re-keying forces the browser to throw
+  // away whatever stale DOM it had and paint fresh nodes from that value
+  const [freshKey, setFreshKey] = useState(0);
+  useEffect(() => {
+    const markFresh = () => setFreshKey(1);
+    markFresh();
+  }, []);
+
   const d = fromDay(viewMonth);
   const year = d.getFullYear();
   const monthIdx = d.getMonth();
@@ -69,7 +79,7 @@ export function MiniCalendar() {
         <ArrowButton label="Next year" double onClick={() => setManualViewMonth(addYears(viewMonth, 1))} />
       </div>
 
-      <div className="grid grid-cols-7 gap-y-0.5">
+      <div key={freshKey} className="grid grid-cols-7 gap-y-0.5">
         {DOW_LETTER.map((l, i) => (
           <span key={i} className="grid h-5 place-items-center text-[10px] text-ink-3">{l}</span>
         ))}
