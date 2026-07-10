@@ -10,7 +10,7 @@ import {
 } from "@/lib/dates";
 import { areaColor } from "@/lib/palette";
 import { todayEntries, TodayEntry } from "@/lib/progress";
-import { Cadence, HORIZON_META } from "@/lib/types";
+import { Action, Cadence, HORIZON_META } from "@/lib/types";
 import { DailyJournal } from "@/components/journal";
 import { HorizonList, ScheduleEditor, ScheduleValue } from "@/components/items";
 import { Ring } from "@/components/progress";
@@ -45,6 +45,7 @@ function Today() {
   const realToday = today();
   const [day, setDay] = useState(realToday);
   const [planning, setPlanning] = useState(false);
+  const [editingAction, setEditingAction] = useState<Action | null>(null);
   const [view, setView] = useState<ViewTab>(isPeriod(paramView) ? paramView : "today");
   const [anchors, setAnchors] = useState<Record<Period, string>>({
     week: realToday, month: realToday, quarter: realToday, year: realToday,
@@ -168,6 +169,9 @@ function Today() {
                   entry={e}
                   onToggle={() => toggleEntry(e, day)}
                   onDelete={e.virtualHabit || e.virtualItemTask ? undefined : () => deleteAction(e.action.id)}
+                  onEdit={
+                    e.item || e.virtualHabit || e.virtualItemTask ? undefined : () => setEditingAction(e.action)
+                  }
                 />
               ))}
             </div>
@@ -189,6 +193,7 @@ function Today() {
       )}
 
       <PlanSheet open={planning} onClose={() => setPlanning(false)} day={day} />
+      <EditActionSheet action={editingAction} onClose={() => setEditingAction(null)} />
     </div>
   );
 }
@@ -347,11 +352,104 @@ function PriorityChip({ label, active, onClick }: { label: string; active: boole
   );
 }
 
+/* ————— editing a one-time task (no linked item) ————— */
+
+function EditActionSheet({ action, onClose }: { action: Action | null; onClose: () => void }) {
+  const { updateAction, deleteAction } = useLife();
+  const [title, setTitle] = useState("");
+  const [priority, setPriority] = useState(0);
+  const [note, setNote] = useState("");
+  const [titleError, setTitleError] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  const [lastId, setLastId] = useState(action?.id ?? null);
+  if (action && action.id !== lastId) {
+    setLastId(action.id);
+    setTitle(action.title);
+    setPriority(action.priority);
+    setNote(action.note);
+    setTitleError(false);
+    setConfirmDelete(false);
+  }
+
+  const close = () => { onClose(); setConfirmDelete(false); };
+
+  const save = () => {
+    if (!action) return;
+    if (!title.trim()) {
+      setTitleError(true);
+      titleRef.current?.focus();
+      return;
+    }
+    updateAction(action.id, { title: title.trim(), priority, note });
+    close();
+  };
+
+  return (
+    <Sheet
+      open={!!action}
+      onClose={close}
+      title="Edit task"
+      primary={{ label: "Save", onClick: save }}
+    >
+      <Field label="What?">
+        <input
+          ref={titleRef}
+          className={`${inputCls} ${titleError ? "border-danger focus:border-danger" : ""}`}
+          value={title}
+          onChange={(e) => { setTitle(e.target.value); if (titleError) setTitleError(false); }}
+          autoFocus
+          aria-invalid={titleError}
+        />
+        {titleError && (
+          <p className="mt-1.5 text-xs text-danger">This needs a name before it can go on your day.</p>
+        )}
+      </Field>
+
+      <Field label="Priority">
+        <div className="flex gap-1.5">
+          <PriorityChip label="Normal" active={priority === 0} onClick={() => setPriority(0)} />
+          <PriorityChip label="⭐ Important" active={priority === 1} onClick={() => setPriority(1)} />
+        </div>
+      </Field>
+
+      <Field label="Small note">
+        <textarea
+          className={`${inputCls} min-h-16 resize-none`}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Anything to remember…"
+        />
+      </Field>
+
+      <div className="pt-2">
+        {confirmDelete ? (
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-ink-2">Remove this task?</span>
+            <button
+              className="font-medium text-danger"
+              onClick={() => { if (action) deleteAction(action.id); close(); }}
+            >
+              Delete
+            </button>
+            <button className="text-ink-3" onClick={() => setConfirmDelete(false)}>Keep</button>
+          </div>
+        ) : (
+          <button className="text-sm font-medium text-danger" onClick={() => setConfirmDelete(true)}>
+            Delete task
+          </button>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
 /* ————— a single row on the day ————— */
 
 function ActionRow({
-  entry, onToggle, onDelete,
-}: { entry: TodayEntry; onToggle: () => void; onDelete?: () => void }) {
+  entry, onToggle, onDelete, onEdit,
+}: { entry: TodayEntry; onToggle: () => void; onDelete?: () => void; onEdit?: () => void }) {
   const { db, theme } = useLife();
   const { action, item, carriedFrom, virtualHabit, virtualItemTask, dayValue, dayTarget, scheduleLabel } = entry;
   const multi = dayTarget > 1;
@@ -395,12 +493,20 @@ function ActionRow({
           {item ? (
             <Link
               href={`/item/${item.id}`}
-              className={`block truncate text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
+              className={`block min-w-0 whitespace-normal break-words text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
             >
               {action.title}
             </Link>
+          ) : onEdit ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              className={`block min-w-0 whitespace-normal break-words text-left text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
+            >
+              {action.title}
+            </button>
           ) : (
-            <span className={`block truncate text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}>
+            <span className={`block min-w-0 whitespace-normal break-words text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}>
               {action.title}
             </span>
           )}

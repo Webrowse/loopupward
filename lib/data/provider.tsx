@@ -62,6 +62,7 @@ interface LifeContextValue {
     amount?: number,
     opts?: { priority?: number; note?: string }
   ) => void;
+  updateAction: (id: string, patch: Partial<Action>) => void;
   deleteAction: (id: string) => void;
   toggleEntry: (entry: TodayEntry, day?: string) => void;
   /** Log or unlog one habit occurrence for a single day — distinct from
@@ -402,6 +403,11 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     upsertRows("actions", [action]);
   }, [upsertRows]);
 
+  const updateAction = useCallback((id: string, patch: Partial<Action>) => {
+    const action = db.actions.find((a) => a.id === id);
+    if (action) upsertRows("actions", [{ ...action, ...patch }]);
+  }, [db.actions, upsertRows]);
+
   const deleteAction = useCallback((id: string) => removeRows("actions", [id]), [removeRows]);
 
   /** Log or unlog one habit occurrence for a single day. This only ever
@@ -495,7 +501,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     addLabel, updateLabel, deleteLabel,
     addArea, updateArea, deleteArea,
     addItem, updateItem, moveItem, deleteItem, completeItem, reopenItem, setTracker,
-    addAction, deleteAction, toggleEntry, toggleHabitDay,
+    addAction, updateAction, deleteAction, toggleEntry, toggleHabitDay,
     saveReflection,
     signOut, exportJSON,
   };
