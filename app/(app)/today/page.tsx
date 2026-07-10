@@ -37,7 +37,7 @@ export default function TodayPage() {
 }
 
 function Today() {
-  const { db, toggleEntry, deleteAction, reorderDay } = useLife();
+  const { db, toggleEntry, deleteAction, updateAction, reorderDay } = useLife();
   const params = useSearchParams();
   // arriving from Reflect's "Plan ahead" link lands on that exact period,
   // instead of always resetting to the Today tab
@@ -187,6 +187,13 @@ function Today() {
                 onDelete: e.virtualHabit || e.virtualItemTask ? undefined : () => deleteAction(e.action.id),
                 onEdit:
                   e.item || e.virtualHabit || e.virtualItemTask ? undefined : () => setEditingAction(e.action),
+                // a piece broken off a goal is a real action too — it just
+                // also carries a link to that goal, which used to be the
+                // only thing you could do with it from here
+                onEditInline:
+                  e.item && !e.virtualHabit && !e.virtualItemTask
+                    ? (title: string) => updateAction(e.action.id, { title })
+                    : undefined,
                 onPlanDay:
                   e.virtualHabit && e.item ? () => setPlanningHabit({ item: e.item!, date: day }) : undefined,
                 onFocus: () => setFocusing(e),
@@ -569,6 +576,7 @@ interface TaskRowConfig {
   onToggle: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
+  onEditInline?: (title: string) => void;
   onPlanDay?: () => void;
   onFocus?: () => void;
 }
@@ -682,6 +690,7 @@ function TaskList({ rows, day }: { rows: TaskRowConfig[]; day: string }) {
               onToggle={row.onToggle}
               onDelete={row.onDelete}
               onEdit={row.onEdit}
+              onEditInline={row.onEditInline}
               onPlanDay={row.onPlanDay}
               onFocus={row.onFocus}
               dragHandle={
@@ -715,12 +724,13 @@ function TaskList({ rows, day }: { rows: TaskRowConfig[]; day: string }) {
 /* ————— a single row on the day ————— */
 
 function ActionRow({
-  entry, onToggle, onDelete, onEdit, onPlanDay, onFocus, dragHandle,
+  entry, onToggle, onDelete, onEdit, onEditInline, onPlanDay, onFocus, dragHandle,
 }: {
   entry: TodayEntry;
   onToggle: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
+  onEditInline?: (title: string) => void;
   onPlanDay?: () => void;
   onFocus?: () => void;
   dragHandle?: ReactNode;
@@ -734,6 +744,20 @@ function ActionRow({
   // do, so it leads; the habit's own name ("clean") becomes context beneath
   const dayPlanned = virtualHabit && !!action.note;
   const mainText = dayPlanned ? action.note : action.title;
+
+  const [editingInline, setEditingInline] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  const startInlineEdit = () => {
+    setDraft(action.title);
+    setEditingInline(true);
+  };
+  const saveInlineEdit = () => {
+    const trimmed = draft.trim();
+    if (trimmed && onEditInline) onEditInline(trimmed);
+    setEditingInline(false);
+  };
+
   return (
     <div
       className={`group flex items-center gap-3 rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3 shadow-(--shadow-card) transition-opacity ${
@@ -769,7 +793,25 @@ function ActionRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           {action.priority > 0 && !action.done && <span className="shrink-0 text-xs">⭐</span>}
-          {item ? (
+          {editingInline ? (
+            <textarea
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={saveInlineEdit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  saveInlineEdit();
+                } else if (e.key === "Escape") {
+                  setEditingInline(false);
+                }
+              }}
+              rows={1}
+              className="block min-w-0 flex-1 resize-none rounded-lg border border-line bg-surface-2 px-2 py-1 text-[0.95rem] leading-snug text-ink outline-none focus:border-accent"
+            />
+          ) : item ? (
             <Link
               href={`/item/${item.id}`}
               className={`block min-w-0 whitespace-normal break-words text-[0.95rem] leading-snug ${action.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
@@ -826,6 +868,18 @@ function ActionRow({
         <button
           onClick={onPlanDay}
           aria-label="Plan what this day means"
+          className="shrink-0 text-ink-3 hover:text-ink px-1"
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+            <path d="M14.5 3.5 16.5 5.5 6 16H4v-2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+
+      {onEditInline && !editingInline && (
+        <button
+          onClick={startInlineEdit}
+          aria-label="Edit this task"
           className="shrink-0 text-ink-3 hover:text-ink px-1"
         >
           <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
