@@ -30,7 +30,8 @@ export default function LifePage() {
       !i.parentId &&
       i.status === "active" &&
       !SPACE_KINDS.includes(i.kind) &&
-      i.kind !== "note"
+      i.kind !== "note" &&
+      i.kind !== "folder"
   );
 
   const closeAdding = () => {

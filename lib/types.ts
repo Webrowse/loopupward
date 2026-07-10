@@ -8,6 +8,7 @@
 
 export type ItemKind =
   | "note"
+  | "folder"
   | "quote"
   | "idea"
   | "dream"
@@ -233,6 +234,7 @@ export interface Profile {
 
 export const KIND_META: Record<ItemKind, { label: string; emoji: string }> = {
   note: { label: "Note", emoji: "📝" },
+  folder: { label: "Folder", emoji: "🗂️" },
   quote: { label: "Quote", emoji: "❝" },
   idea: { label: "Idea", emoji: "💡" },
   dream: { label: "Dream", emoji: "🌅" },

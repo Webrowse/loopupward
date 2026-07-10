@@ -185,7 +185,7 @@ pub struct DbPayload {
 /* ————— validation ————— */
 
 const KINDS: &[&str] = &[
-    "note", "quote", "idea", "dream", "goal", "habit", "project", "book",
+    "note", "folder", "quote", "idea", "dream", "goal", "habit", "project", "book",
     "milestone", "principle", "promise", "lesson", "memory",
 ];
 const TRACKERS: &[&str] = &["none", "check", "counter", "percent", "money", "habit", "book"];
