@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export function Button({
@@ -132,6 +132,28 @@ export function Sheet({
     onCloseRef.current = onClose;
   });
 
+  // iOS/Android don't reliably shrink dvh units for an open keyboard inside a
+  // fixed-position overlay, so a sheet's sticky footer (the submit button)
+  // can end up rendered behind the keyboard — unreachable by scrolling,
+  // since the footer sits outside the scrollable content area. Tracking the
+  // actual visible viewport lets the overlay itself resize and reposition
+  // around the keyboard, the same way the rest of the page already does.
+  const [viewport, setViewport] = useState<{ height: number; top: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => setViewport({ height: vv.height, top: vv.offsetTop });
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCloseRef.current();
@@ -146,7 +168,10 @@ export function Sheet({
   if (!open) return null;
   const submit = onSubmit ?? primary?.onClick;
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center overflow-hidden sm:p-6">
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center overflow-hidden sm:p-6"
+      style={viewport ? { top: viewport.top, height: viewport.height } : undefined}
+    >
       <div className="absolute inset-0 bg-ink/30 backdrop-blur-[2px] fade-in" onClick={onClose} />
       <div
         role="dialog"
@@ -164,6 +189,7 @@ export function Sheet({
           }
         }}
         className={`sheet-up relative flex w-full ${wide ? "sm:max-w-xl" : "sm:max-w-md"} max-h-[88dvh] sm:max-h-[85dvh] flex-col bg-surface rounded-t-3xl sm:rounded-3xl border border-line-soft shadow-(--shadow-float)`}
+        style={viewport ? { maxHeight: Math.round(viewport.height * 0.88) } : undefined}
       >
         {/* sticky header */}
         <div className="shrink-0 border-b border-line-soft pt-3 pb-3 px-5">
