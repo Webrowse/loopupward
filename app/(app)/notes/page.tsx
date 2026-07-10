@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useLife } from "@/lib/data/provider";
 import { children as childrenOf } from "@/lib/progress";
+import { deriveNoteFields, NOTE_HEADING_MAX } from "@/components/items";
 import { RichTextEditor } from "@/components/richtext";
 import { Button, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
@@ -60,7 +61,18 @@ export default function NotesRootPage() {
       noteTitleRef.current?.focus();
       return;
     }
-    addItem({ title: noteTitle.trim(), richBody: noteBody, kind: "note", tracker: "none" });
+    const trimmedTitle = noteTitle.trim();
+    // a long thought typed straight into the title field shouldn't be lost —
+    // fold it into the body (ahead of whatever's already there) and keep
+    // just a short heading, same as organizing a long seed does. A normal
+    // short title stays untouched — it's not also duplicated into the body.
+    if (trimmedTitle.length > NOTE_HEADING_MAX || trimmedTitle.includes("\n")) {
+      const split = deriveNoteFields(trimmedTitle);
+      const richBody = noteBody ? `${split.richBody}<br>${noteBody}` : split.richBody;
+      addItem({ title: split.title, richBody, kind: "note", tracker: "none" });
+    } else {
+      addItem({ title: trimmedTitle, richBody: noteBody, kind: "note", tracker: "none" });
+    }
     closeNoteSheet();
   };
 

@@ -367,7 +367,7 @@ const KIND_DEFAULT_TRACKER: Partial<Record<ItemKind, TrackerType>> = {
 
 const PERIOD_HORIZONS: Horizon[] = ["week", "month", "quarter", "year"];
 
-const NOTE_HEADING_MAX = 60;
+export const NOTE_HEADING_MAX = 60;
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -375,14 +375,12 @@ function escapeHtml(s: string): string {
 
 /** Organizing a seed into a note should keep the whole captured thought as
  *  the note's content — a long capture shouldn't get jammed whole into a
- *  single-line title and cut off. A short one-line thought stays exactly as
- *  typed with no body; anything longer gets a short heading pulled from its
- *  start, with the full text preserved as the note's body underneath. */
-function deriveNoteFields(text: string): { title: string; richBody: string } {
+ *  single-line title and cut off. The full text always lands in the body,
+ *  even a short one (so it's never "only in the heading"); the heading is
+ *  just a short label pulled from the start, identical to the body when
+ *  the thought was already short enough to need no trimming. */
+export function deriveNoteFields(text: string): { title: string; richBody: string } {
   const trimmed = text.trim();
-  if (!trimmed.includes("\n") && trimmed.length <= NOTE_HEADING_MAX) {
-    return { title: trimmed, richBody: "" };
-  }
   const firstLine = trimmed.split("\n")[0].trim();
   const heading = firstLine.length > NOTE_HEADING_MAX
     ? `${firstLine.slice(0, NOTE_HEADING_MAX).replace(/\s+\S*$/, "").trim()}…`
