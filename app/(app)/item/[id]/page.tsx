@@ -215,7 +215,7 @@ export default function ItemPage() {
         {kids.length === 0 ? (
           <p className="text-sm text-ink-3">
             Big things are built from smaller ones. Nest a year goal, a monthly goal, a
-            chapter — progress flows upward.
+            chapter. Progress flows upward.
           </p>
         ) : (
           <div className="space-y-2">
@@ -233,7 +233,7 @@ export default function ItemPage() {
             onClick={() => setShowHistory((v) => !v)}
             className="pressable flex w-full items-center justify-between text-xs font-medium uppercase tracking-wide text-ink-3 mb-2"
           >
-            <span>History — {history.length}</span>
+            <span>History ({history.length})</span>
             <span>{showHistory ? "hide" : "show"}</span>
           </button>
           {showHistory && (
@@ -311,7 +311,7 @@ export default function ItemPage() {
       >
         <p className="text-sm text-ink-2 leading-relaxed">
           “{item.title}” will be removed.
-          {kids.length > 0 && ` The ${kids.length} things inside move up a level — they aren't lost.`}
+          {kids.length > 0 && ` The ${kids.length} things inside move up a level. They aren't lost.`}
         </p>
       </Sheet>
 
@@ -329,7 +329,7 @@ export default function ItemPage() {
         >
           <p className="text-sm text-ink-2 leading-relaxed">
             “{item.title}” will stop appearing on Today and its streak ends here. This is
-            different from logging today — if you just did it today, close this and use
+            different from logging today: if you just did it today, close this and use
             “Done today” instead. You can bring the habit back anytime with Reopen.
           </p>
         </Sheet>
@@ -437,7 +437,7 @@ function MoveSheet({
             </button>
           </div>
         ) : (
-          <p className="mb-2 text-sm text-ink-3">Top level — it belongs to no bigger thing yet.</p>
+          <p className="mb-2 text-sm text-ink-3">Top level, it belongs to no bigger thing yet.</p>
         )}
         <input
           className={inputCls}

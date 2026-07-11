@@ -22,9 +22,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="relative z-[1] min-h-dvh lg:flex">
       {syncError && (
         <div className="fixed top-[max(0.75rem,env(safe-area-inset-top))] left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2">
-          <div className="fade-in flex items-start gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-ink-2 shadow-(--shadow-float)">
+          <div role="status" className="fade-in flex items-start gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-ink-2 shadow-(--shadow-float)">
             <span className="flex-1 leading-snug">{syncError}</span>
-            <button onClick={dismissSyncError} aria-label="Dismiss" className="text-ink-3 hover:text-ink">×</button>
+            <button
+              onClick={dismissSyncError}
+              aria-label="Dismiss"
+              className="pressable -m-2 grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink-3 hover:text-ink"
+            >
+              ×
+            </button>
           </div>
         </div>
       )}

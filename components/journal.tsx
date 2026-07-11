@@ -87,7 +87,7 @@ export function DailyJournal({ date }: { date: string }) {
       <Sheet
         open={expanded}
         onClose={() => setExpanded(false)}
-        title={`Daily notes — ${prettyDay(date)}`}
+        title={`Daily notes: ${prettyDay(date)}`}
         wide
         cancelLabel="Close"
         primary={{ label: dirty ? "Save" : "Done", onClick: () => { if (dirty) save(); setExpanded(false); } }}

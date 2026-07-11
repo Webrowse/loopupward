@@ -59,6 +59,7 @@ export function Chip({
       type="button"
       onClick={onClick}
       style={style}
+      aria-pressed={active}
       className={`pressable shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium border transition-colors ${
         active
           ? "bg-ink text-bg border-ink"
@@ -80,8 +81,9 @@ export function Segmented<T extends string>({
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
+          aria-pressed={value === o.value}
           className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-all ${
-            value === o.value ? "bg-surface text-ink shadow-(--shadow-card)" : "text-ink-3"
+            value === o.value ? "bg-surface text-ink shadow-(--shadow-card)" : "text-ink-2"
           }`}
         >
           {o.label}
@@ -295,7 +297,7 @@ export function EmptyState({
 }: { emoji: string; title: string; body: string; children?: ReactNode }) {
   return (
     <div className="rise-in text-center py-14 px-6">
-      <div className="text-4xl mb-4">{emoji}</div>
+      <div className="text-4xl mb-4" aria-hidden="true">{emoji}</div>
       <h3 className="font-display text-xl text-ink mb-2">{title}</h3>
       <p className="text-[0.95rem] text-ink-2 max-w-xs mx-auto leading-relaxed">{body}</p>
       {children && <div className="mt-6 flex justify-center">{children}</div>}

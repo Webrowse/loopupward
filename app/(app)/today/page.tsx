@@ -459,7 +459,7 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
             onChange={(e) => { if (e.target.value) { setTaskDate(e.target.value); setDateTouched(true); } }}
           />
           <p className="mt-1.5 text-xs text-ink-3">
-            {taskDate === realToday ? "Today" : prettyDay(taskDate)} — jump ahead to plant a task on any future day,
+            {taskDate === realToday ? "Today" : prettyDay(taskDate)}: jump ahead to plant a task on any future day,
             like a birthday or a deadline, without paging through the day strip.
           </p>
         </Field>
@@ -1031,7 +1031,7 @@ function ActionRow({
         aria-hidden={!onDelete}
         tabIndex={onDelete ? 0 : -1}
         className={`shrink-0 px-1 transition-opacity ${
-          onDelete ? "text-ink-3 opacity-0 group-hover:opacity-100 focus:opacity-100" : "invisible"
+          onDelete ? "touch-visible text-ink-3 opacity-0 group-hover:opacity-100 focus:opacity-100" : "invisible"
         }`}
       >
         ×

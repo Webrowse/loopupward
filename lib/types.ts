@@ -273,3 +273,20 @@ export const SPACE_KINDS: ItemKind[] = [
   "idea",
   "dream",
 ];
+
+/** Where a given kind actually lands once created, so a person picking a
+ *  kind (or reading a "created" confirmation) can tell where to find it
+ *  again without having to already know the app's layout. */
+export function destinationFor(kind: ItemKind): { label: string; href: string; hint: string } {
+  if (kind === "note" || kind === "folder") {
+    return { label: "Notes", href: "/notes", hint: "Lives in Notes, ready to search or fold into something later." };
+  }
+  if (SPACE_KINDS.includes(kind)) {
+    return {
+      label: "Quiet Space",
+      href: "/space",
+      hint: "Lives in your Quiet Space, alongside the quotes and lessons worth reading again.",
+    };
+  }
+  return { label: "Life", href: "/life", hint: "Lives in Life, tracked and scheduled with your other goals and habits." };
+}

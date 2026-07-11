@@ -19,8 +19,8 @@ export default function NotFound() {
       </h1>
 
       <p className="mt-4 max-w-sm text-[1.05rem] leading-relaxed text-ink-2">
-        There&apos;s nothing here — the link may be old, or the thing you&apos;re looking
-        for moved. Your data is safe; let&apos;s get you back.
+        There&apos;s nothing here. The link may be old, or the thing you&apos;re looking
+        for moved. Your data is safe, let&apos;s get you back.
       </p>
 
       <div className="mt-10 w-full max-w-xs space-y-2.5">

@@ -113,12 +113,12 @@ export default function NotesRootPage() {
         <EmptyState
           emoji="🗒"
           title="Nothing here yet"
-          body="Jot a quick note, or start a folder to group ones that belong together — 'July 2026', 'Rich shopping list', 'Recipes'."
+          body="Jot a quick note, or start a folder to group ones that belong together, like 'July 2026', 'Rich shopping list', 'Recipes'."
         >
           <Button onClick={() => setAddingNote(true)}>Write your first note</Button>
         </EmptyState>
       ) : freeNotes.length === 0 ? (
-        <p className="text-sm text-ink-3">No loose notes right now — they&rsquo;ll show up here.</p>
+        <p className="text-sm text-ink-3">No loose notes right now. They&rsquo;ll show up here.</p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {freeNotes.map((n) => (
@@ -183,7 +183,7 @@ export default function NotesRootPage() {
           <RichTextEditor value={noteBody} onChange={setNoteBody} placeholder="Write it all here…" minHeightClass="min-h-40" />
         </Field>
         <p className="text-xs text-ink-3">
-          It stays loose here until you drop it into a folder — or never do.
+          It stays loose here until you drop it into a folder, or never do.
         </p>
       </Sheet>
     </div>

@@ -78,6 +78,7 @@ function Journal() {
             <button
               className="pressable px-3 py-1 text-ink-2 disabled:opacity-30"
               disabled={prevBlocked}
+              aria-label={`Previous ${period}`}
               onClick={() => setAnchor(previousAnchor(period, anchor))}
             >
               ‹
@@ -86,6 +87,7 @@ function Journal() {
             <button
               className="pressable px-3 py-1 text-ink-2 disabled:opacity-30"
               disabled={atPresent}
+              aria-label={`Next ${period}`}
               onClick={() => setAnchor(nextAnchor(period, anchor))}
             >
               ›
@@ -117,7 +119,7 @@ function Journal() {
           </div>
           {premium && entries.length > 0 && (
             <p className="no-print -mt-4 mb-6 text-xs text-ink-3">
-              &ldquo;Save as PDF&rdquo; opens your browser&apos;s print dialog — choose &ldquo;Save as PDF&rdquo; as the destination.
+              &ldquo;Save as PDF&rdquo; opens your browser&apos;s print dialog. Choose &ldquo;Save as PDF&rdquo; as the destination.
             </p>
           )}
 
@@ -130,7 +132,7 @@ function Journal() {
           ) : (
             <div>
               <p className="hidden print:block font-display text-xl mb-4">
-                LoopUpward Journal — {prettyPeriod(period, anchor)}
+                LoopUpward Journal: {prettyPeriod(period, anchor)}
               </p>
               {entries.map((e) => (
                 <article key={e.id} className="border-b border-line-soft py-5 first:pt-0 last:border-0">

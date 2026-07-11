@@ -60,7 +60,7 @@ export default function AreaPage() {
         <EmptyState
           emoji={area.emoji}
           title={`${area.name} is waiting`}
-          body="Plant a goal, a habit, a book — anything that belongs in this part of your life."
+          body="Plant a goal, a habit, a book: anything that belongs in this part of your life."
         />
       ) : (
         <div className="mt-3 space-y-2">
@@ -118,7 +118,7 @@ export default function AreaPage() {
           ) : (
             <div>
               <p className="text-sm text-ink-2 mb-3">
-                Everything inside survives — it just loses its room. Delete “{area.name}”?
+                Everything inside survives, it just loses its room. Delete “{area.name}”?
               </p>
               <div className="flex gap-2">
                 <Button

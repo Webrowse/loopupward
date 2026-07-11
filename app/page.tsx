@@ -14,7 +14,7 @@ export default function Landing() {
       </h1>
 
       <p className="mt-6 max-w-sm text-[1.05rem] leading-relaxed text-ink-2">
-        The videos you watch, the books you save, the quotes that stop you — those
+        The videos you watch, the books you save, the quotes that stop you: those
         thoughts usually disappear. LoopUpward gives them a permanent home, and a path
         into daily action.
       </p>

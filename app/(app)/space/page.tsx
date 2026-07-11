@@ -21,6 +21,7 @@ export default function SpacePage() {
   const { db, deleteItem } = useLife();
   const [filter, setFilter] = useState<ItemKind | "all">("all");
   const [adding, setAdding] = useState(false);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const entries = useMemo(
     () =>
@@ -37,7 +38,7 @@ export default function SpacePage() {
         <p className="text-sm text-ink-3">Words to keep</p>
         <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">Quiet space</h1>
         <p className="text-sm text-ink-2 mt-2 leading-relaxed">
-          Quotes, principles, promises, lessons — the inner material you&apos;re built from.
+          Quotes, principles, promises, lessons: the inner material you&apos;re built from.
         </p>
       </header>
 
@@ -58,7 +59,7 @@ export default function SpacePage() {
         <EmptyState
           emoji="🫙"
           title="Nothing kept yet"
-          body="When a quote changes how you think, or you make yourself a promise — keep it here. Future you will read these."
+          body="When a quote changes how you think, or you make yourself a promise, keep it here. Future you will read these."
         >
           <Link href="/home" className="text-accent-deep font-medium text-sm">
             Capture a thought →
@@ -84,12 +85,26 @@ export default function SpacePage() {
                   {KIND_META[e.kind].emoji} {SPACE_LABELS[e.kind] ?? KIND_META[e.kind].label} ·{" "}
                   {new Date(e.createdAt).toLocaleDateString(undefined, { month: "short", year: "numeric" })}
                 </span>
-                <button
-                  onClick={() => deleteItem(e.id)}
-                  className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:text-danger"
-                >
-                  remove
-                </button>
+                {confirmingId === e.id ? (
+                  <span className="flex items-center gap-2">
+                    <button
+                      onClick={() => { deleteItem(e.id); setConfirmingId(null); }}
+                      className="font-medium text-danger"
+                    >
+                      remove forever
+                    </button>
+                    <button onClick={() => setConfirmingId(null)} className="hover:text-ink-2">
+                      keep
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setConfirmingId(e.id)}
+                    className="touch-visible opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:text-danger"
+                  >
+                    remove
+                  </button>
+                )}
               </div>
             </div>
           ))}

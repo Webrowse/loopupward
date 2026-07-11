@@ -78,7 +78,7 @@ function Reflect() {
         <EmptyState
           emoji="🔭"
           title={`${period === "quarter" ? "Quarterly" : "Yearly"} reviews are premium`}
-          body="Zoom out over a whole quarter or year of your life — every book, workout, rupee and streak, compared season by season."
+          body="Zoom out over a whole quarter or year of your life: every book, workout, rupee and streak, compared season by season."
         >
           <Link href="/pricing"><Button>See premium</Button></Link>
         </EmptyState>
@@ -86,7 +86,7 @@ function Reflect() {
         <EmptyState
           emoji="🪞"
           title="Nothing to reflect on yet"
-          body="Live a few days inside LoopUpward first — complete actions, log habits. Then this mirror starts talking back."
+          body="Live a few days inside LoopUpward first: complete actions, log habits. Then this mirror starts talking back."
         >
           <Link href="/today" className="text-accent-deep font-medium text-sm">Start today →</Link>
         </EmptyState>
@@ -97,6 +97,7 @@ function Reflect() {
             <button
               className="pressable px-3 py-1 text-ink-2 disabled:opacity-30"
               disabled={prevBlocked}
+              aria-label={`Previous ${period}`}
               onClick={() => setAnchor(previousAnchor(period, anchor))}
             >
               ‹
@@ -105,6 +106,7 @@ function Reflect() {
             <button
               className="pressable px-3 py-1 text-ink-2 disabled:opacity-30"
               disabled={atPresent}
+              aria-label={`Next ${period}`}
               onClick={() => setAnchor(nextAnchor(period, anchor))}
             >
               ›
@@ -213,7 +215,7 @@ function Reflect() {
                 You wrote on {review.journal.daysWritten}{" "}
                 {review.journal.daysWritten === 1 ? "day" : "days"}
                 {review.journal.topWords.length > 0 && (
-                  <> — your notes most often mentioned{" "}
+                  <>. Your notes most often mentioned{" "}
                     <span className="text-accent-deep">{review.journal.topWords.join(", ")}</span>.
                   </>
                 )}
@@ -292,9 +294,9 @@ function AreaScoreTile({ label, score }: { label: string; score: { areaId: strin
 function compareLine(cur: number, prev: number, period: Period, unit = ""): string {
   const label = { week: "last week", month: "last month", quarter: "last quarter", year: "last year" }[period];
   const u = unit ? ` ${unit}` : "";
-  if (prev === 0 && cur === 0) return `Quiet so far — a single small action changes that.`;
+  if (prev === 0 && cur === 0) return `Quiet so far. A single small action changes that.`;
   if (prev === 0) return `Up from zero ${label}. That's how change starts.`;
-  if (cur > prev) return `${cur}${u} vs ${prev}${u} ${label} — moving forward.`;
+  if (cur > prev) return `${cur}${u} vs ${prev}${u} ${label}. Moving forward.`;
   if (cur === prev) return `Same as ${label} (${prev}${u}). Steady counts.`;
   return `${cur}${u} vs ${prev}${u} ${label}. Data, not failure.`;
 }

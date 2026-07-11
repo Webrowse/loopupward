@@ -34,7 +34,7 @@ function Pricing() {
   const { user, premium, cloudAvailable } = useLife();
   const [selected, setSelected] = useState<PlanId>("yearly");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
 
   const startCheckout = async () => {
     if (!user) {
@@ -73,16 +73,19 @@ function Pricing() {
                 plan: selected,
               },
             });
-            setMessage("Welcome to premium. Your space just got bigger. 🌿");
+            setMessage({ text: "Welcome to premium. Your space just got bigger. 🌿", tone: "ok" });
             setTimeout(() => (window.location.href = "/home"), 1600);
           } catch {
-            setMessage("Payment received — premium activates within a minute.");
+            setMessage({ text: "Payment received. Premium activates within a minute.", tone: "ok" });
           }
         },
       });
       rzp.open();
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Something went wrong");
+      setMessage({
+        text: e instanceof Error ? e.message : "Something went wrong. You haven't been charged. Please try again.",
+        tone: "error",
+      });
     } finally {
       setBusy(false);
     }
@@ -144,9 +147,16 @@ function Pricing() {
           <Button full onClick={startCheckout} disabled={busy || (!cloudAvailable && !user)}>
             {busy ? "Opening secure checkout…" : user ? "Continue" : "Sign in to subscribe"}
           </Button>
-          {message && <p className="mt-4 text-center text-sm text-accent-deep">{message}</p>}
+          {message && (
+            <p
+              role="status"
+              className={`mt-4 text-center text-sm ${message.tone === "error" ? "text-danger" : "text-accent-deep"}`}
+            >
+              {message.text}
+            </p>
+          )}
           <p className="mt-4 text-center text-xs leading-relaxed text-ink-3">
-            Secure payments by Razorpay — UPI, cards, netbanking, international cards.
+            Secure payments by Razorpay: UPI, cards, netbanking, international cards.
             Renews automatically; cancel anytime and keep premium until your period ends.
           </p>
         </>

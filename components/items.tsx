@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
-import { Cadence, Horizon, HORIZON_META, Item, ItemKind, KIND_META, TrackerType } from "@/lib/types";
+import { Cadence, destinationFor, Horizon, HORIZON_META, Item, ItemKind, KIND_META, TrackerType } from "@/lib/types";
 import {
   children as childrenOf, currentStreak, formatValue, habitDailyTarget, habitDays,
   horizonEntries, itemProgress, ownProgress, scheduleLabel,
@@ -253,20 +253,22 @@ export function TrackerControls({ item }: { item: Item }) {
 /* ————— Create / edit sheet ————— */
 
 const TRACKER_OPTIONS: { value: TrackerType; label: string; hint: string }[] = [
-  { value: "none", label: "Just exists", hint: "a note, a thought — or measured by what's inside it" },
+  { value: "none", label: "Just exists", hint: "a note, a thought, or measured by what's inside it" },
   { value: "check", label: "Done / not done", hint: "one clear finish line" },
   { value: "counter", label: "Count", hint: "workout 200 times, read 20 books" },
   { value: "percent", label: "Percent", hint: "course 45% complete" },
   { value: "money", label: "Money", hint: "save toward an amount" },
-  { value: "habit", label: "Habit", hint: "streaks, logged day by day — 3L water, 20 pushups" },
+  { value: "habit", label: "Habit", hint: "streaks, logged day by day: 3L water, 20 pushups" },
   { value: "book", label: "Book", hint: "chapter 7 of 20" },
 ];
 
 /* ————— Schedule editor (shared by create/edit sheet and item page) ————— */
 
 const DOW = [
-  { n: 1, label: "M" }, { n: 2, label: "T" }, { n: 3, label: "W" }, { n: 4, label: "T" },
-  { n: 5, label: "F" }, { n: 6, label: "S" }, { n: 0, label: "S" },
+  { n: 1, label: "M", name: "Monday" }, { n: 2, label: "T", name: "Tuesday" },
+  { n: 3, label: "W", name: "Wednesday" }, { n: 4, label: "T", name: "Thursday" },
+  { n: 5, label: "F", name: "Friday" }, { n: 6, label: "S", name: "Saturday" },
+  { n: 0, label: "S", name: "Sunday" },
 ];
 
 export interface ScheduleValue {
@@ -313,7 +315,8 @@ export function ScheduleEditor({
               <button
                 key={i}
                 type="button"
-                aria-label={`weekday ${d.n}`}
+                aria-label={d.name}
+                aria-pressed={active}
                 onClick={() => {
                   const cur = new Set(value.cadenceDays ?? []);
                   if (active) cur.delete(d.n);
@@ -567,7 +570,7 @@ export function ItemSheet({
           aria-invalid={titleError}
         />
         {titleError && (
-          <p className="mt-1.5 text-xs text-danger">Give it a name first — that&apos;s the only thing it needs.</p>
+          <p className="mt-1.5 text-xs text-danger">Give it a name first. That&apos;s the only thing it needs.</p>
         )}
       </Field>
 
@@ -591,6 +594,7 @@ export function ItemSheet({
             ))}
           </div>
         )}
+        <p className="mt-2 text-xs text-ink-3">{destinationFor(kind).hint}</p>
       </Field>
 
       <Field label="How do you want to track it?">

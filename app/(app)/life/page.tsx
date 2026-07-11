@@ -73,7 +73,7 @@ export default function LifePage() {
       {areas.length === 0 ? (
         <EmptyState
           emoji="🗺"
-          title="No areas yet — and that's fine"
+          title="No areas yet, and that's fine"
           body="Areas are the rooms of your life: Health, Money, Books, French… Create them when your seeds start wanting a home."
         >
           <Button onClick={() => setAdding(true)}>Create your first area</Button>
@@ -348,7 +348,7 @@ function LabelsSection() {
                   </div>
                   {confirmDelete === l.id && (
                     <p className="mt-1.5 text-xs text-ink-3">
-                      Items keep living — they just lose this tag.
+                      Items keep living, they just lose this tag.
                     </p>
                   )}
                 </div>

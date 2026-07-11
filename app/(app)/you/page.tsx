@@ -62,8 +62,8 @@ export default function YouPage() {
             <p className="font-medium text-ink">Your data lives on this device</p>
             <p className="text-sm text-ink-2 mt-1 leading-relaxed">
               {cloudAvailable
-                ? "Sign in with Google to keep it safe in your private cloud and continue on any device — phone or laptop, same life."
-                : "Cloud sync isn't configured for this deployment yet — everything is stored locally in your browser."}
+                ? "Sign in with Google to keep it safe in your private cloud and continue on any device: phone or laptop, same life."
+                : "Cloud sync isn't configured for this deployment yet. Everything is stored locally in your browser."}
             </p>
             {cloudAvailable && (
               <div className="mt-4">
@@ -95,7 +95,7 @@ export default function YouPage() {
         {!premium && (
           <p className="text-sm text-ink-2 mt-3 leading-relaxed">
             Premium unlocks unlimited life areas, quarterly &amp; yearly reviews, and your
-            complete history — for people serious about becoming someone.
+            complete history, for people serious about becoming someone.
           </p>
         )}
       </Card>
@@ -116,8 +116,8 @@ export default function YouPage() {
       <Card className="p-5 mb-3">
         <p className="text-sm font-medium text-ink">Your data is yours</p>
         <p className="text-sm text-ink-2 mt-1 leading-relaxed">
-          Download everything — {db.items.length} items, {db.seeds.length} seeds,{" "}
-          {db.actions.length} actions — as JSON, anytime. Use it however you like, including
+          Download everything: {db.items.length} items, {db.seeds.length} seeds,{" "}
+          {db.actions.length} actions, as JSON, anytime. Use it however you like, including
           with AI tools. We never sell personal data.
         </p>
         <div className="mt-4">

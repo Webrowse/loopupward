@@ -11,6 +11,7 @@ const FONT_SIZES = [
   { label: "XL", size: "1.6rem" },
 ];
 const FONT_COLORS = ["#211e19", "#b4543e", "#c07423", "#3d7a50", "#2a5e8f"];
+const FONT_COLOR_NAMES = ["Ink", "Brick red", "Amber", "Moss green", "Blue"];
 
 /** The browser normalizes any color you set (hex, name…) to `rgb(r, g, b)`
  *  when you read it back — cache that normalized form once so live
@@ -57,6 +58,41 @@ function insertCollapsedStyle(style: Partial<CSSStyleDeclaration>) {
   span.appendChild(zwsp);
   range.deleteContents();
   range.insertNode(span);
+  const next = document.createRange();
+  next.setStart(zwsp, 1);
+  next.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(next);
+}
+
+/** Same idea as `insertCollapsedStyle`, but for escaping an inline style
+ *  the caret is currently sitting inside rather than adding one: a plain
+ *  `range.insertNode` at a collapsed caret lands *inside* the enclosing
+ *  span (splitting its text node), so a "transparent" override just lets
+ *  the ancestor's own background show through instead of clearing it.
+ *  This instead walks up to that nearest styled `<span>` and inserts the
+ *  fresh span as its next sibling, so new typing sits outside it entirely. */
+function insertAfterEnclosingSpan(root: HTMLElement, style: Partial<CSSStyleDeclaration>) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  let node: Node | null = sel.anchorNode;
+  let enclosing: HTMLElement | null = null;
+  while (node && node !== root.parentNode) {
+    if (node instanceof HTMLElement && node.tagName === "SPAN") {
+      enclosing = node;
+      break;
+    }
+    node = node.parentNode;
+  }
+  const span = document.createElement("span");
+  Object.assign(span.style, style);
+  const zwsp = document.createTextNode("​");
+  span.appendChild(zwsp);
+  if (enclosing?.parentNode) {
+    enclosing.parentNode.insertBefore(span, enclosing.nextSibling);
+  } else {
+    sel.getRangeAt(0).insertNode(span);
+  }
   const next = document.createRange();
   next.setStart(zwsp, 1);
   next.collapse(true);
@@ -194,11 +230,30 @@ export function RichTextEditor({
 
   const highlight = () => {
     ref.current?.focus();
+    const sel = window.getSelection();
+    const collapsed = !sel || sel.rangeCount === 0 || sel.isCollapsed;
+    if (format.highlight && collapsed && ref.current) {
+      // the caret sits inside an existing highlight span, so execCommand
+      // has nothing to "unwrap" for a collapsed selection and future
+      // typing just stays inside it — and inserting a plain "transparent"
+      // span here would only nest inside the highlight, leaving its yellow
+      // showing through. Escape to a sibling span after it instead.
+      insertAfterEnclosingSpan(ref.current, { backgroundColor: "transparent", color: "inherit" });
+      handleInput();
+      updateFormat();
+      return;
+    }
     document.execCommand("styleWithCSS", false, "true");
-    // pair a fixed dark foreground with the highlight — the app's default
-    // text color is near-white for dark mode, invisible on pale yellow
-    document.execCommand("hiliteColor", false, HIGHLIGHT_BG);
-    document.execCommand("foreColor", false, HIGHLIGHT_FG);
+    if (format.highlight) {
+      // turning off a real selection: execCommand can unwrap this fine
+      document.execCommand("hiliteColor", false, "transparent");
+      document.execCommand("foreColor", false, "inherit");
+    } else {
+      // pair a fixed dark foreground with the highlight — the app's default
+      // text color is near-white for dark mode, invisible on pale yellow
+      document.execCommand("hiliteColor", false, HIGHLIGHT_BG);
+      document.execCommand("foreColor", false, HIGHLIGHT_FG);
+    }
     handleInput();
     updateFormat();
   };
@@ -234,7 +289,8 @@ export function RichTextEditor({
           <button
             key={c}
             type="button"
-            aria-label="Font color"
+            aria-label={`Text color: ${FONT_COLOR_NAMES[i]}`}
+            aria-pressed={format.color === colorRgb[i]}
             onMouseDown={(e) => { e.preventDefault(); exec("foreColor", c); }}
             className={`pressable h-6 w-6 shrink-0 rounded-full border-2 ${
               format.color === colorRgb[i] ? "border-ink" : "border-line-soft"

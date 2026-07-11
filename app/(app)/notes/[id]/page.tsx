@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
-import { Item } from "@/lib/types";
+import { destinationFor, Item } from "@/lib/types";
 import { children as childrenOf } from "@/lib/progress";
 import { ItemSheet } from "@/components/items";
 import { RichTextEditor } from "@/components/richtext";
@@ -122,7 +122,7 @@ function FolderPage({ item }: { item: Item }) {
       >
         <p className="text-sm text-ink-2 leading-relaxed">
           &ldquo;{item.title}&rdquo; will be removed.
-          {kids.length > 0 && ` The ${kids.length} note${kids.length === 1 ? "" : "s"} inside become loose notes — they aren't lost.`}
+          {kids.length > 0 && ` The ${kids.length} note${kids.length === 1 ? "" : "s"} inside become loose notes. They aren't lost.`}
         </p>
       </Sheet>
     </div>
@@ -138,7 +138,7 @@ function NotePageBody({ item }: { item: Item }) {
   const [justSaved, setJustSaved] = useState(false);
   const [moving, setMoving] = useState(false);
   const [organizing, setOrganizing] = useState(false);
-  const [justOrganized, setJustOrganized] = useState(false);
+  const [justOrganized, setJustOrganized] = useState<{ label: string; href: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [lastId, setLastId] = useState(item.id);
@@ -202,7 +202,15 @@ function NotePageBody({ item }: { item: Item }) {
 
       <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-line-soft pt-4">
         <Button small variant="ghost" onClick={() => setOrganizing(true)}>Organize into something</Button>
-        {justOrganized && <span className="text-xs text-accent-deep">✓ created — this note is unchanged</span>}
+        {justOrganized && (
+          <span className="text-xs text-accent-deep">
+            ✓ Created in{" "}
+            <Link href={justOrganized.href} className="font-medium underline underline-offset-2">
+              {justOrganized.label}
+            </Link>
+            . This note stays here too, unchanged.
+          </span>
+        )}
         <Button small variant="ghost" onClick={() => setMoving(true)}>Move</Button>
         <Button small variant="danger" onClick={() => setConfirmDelete(true)}>Delete</Button>
       </div>
@@ -213,9 +221,10 @@ function NotePageBody({ item }: { item: Item }) {
         open={organizing}
         onClose={() => setOrganizing(false)}
         initial={item.title}
-        onCreated={() => {
-          setJustOrganized(true);
-          setTimeout(() => setJustOrganized(false), 2200);
+        onCreated={(created) => {
+          const { label, href } = destinationFor(created.kind);
+          setJustOrganized({ label, href });
+          setTimeout(() => setJustOrganized(null), 4000);
         }}
       />
 

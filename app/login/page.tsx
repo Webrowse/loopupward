@@ -37,7 +37,7 @@ export default function LoginPage() {
       setToken(res.token);
       window.location.href = "/home";
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Sign-in failed — try again");
+      setError(e instanceof Error ? e.message : "Sign-in failed, try again");
       setBusy(false);
     }
   }, []);
@@ -66,6 +66,8 @@ export default function LoginPage() {
     script.src = "https://accounts.google.com/gsi/client";
     script.async = true;
     script.onload = render;
+    script.onerror = () =>
+      setError("Couldn't load Google sign-in. Check your connection and refresh, or continue on this device below.");
     document.body.appendChild(script);
   }, [configured, handleCredential]);
 
@@ -84,7 +86,7 @@ export default function LoginPage() {
         ) : (
           <p className="text-center text-sm leading-relaxed text-ink-2">
             Cloud sign-in isn&apos;t configured for this deployment yet. You can still use
-            LoopUpward — everything is saved privately on this device.
+            LoopUpward, everything is saved privately on this device.
           </p>
         )}
 

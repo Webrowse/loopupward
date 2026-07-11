@@ -86,7 +86,7 @@ export default function HomePage() {
             />
             <div className="flex items-center justify-between px-3 pb-3">
               <span className={`text-xs transition-opacity ${justPlanted ? "text-accent opacity-100" : "opacity-0"}`}>
-                ✓ captured — organize it whenever you like
+                ✓ captured, organize it whenever you like
               </span>
               <Button small onClick={capture} disabled={!text.trim()}>Capture</Button>
             </div>
@@ -107,7 +107,7 @@ export default function HomePage() {
                 ))}
               </div>
               <p className="mt-10 text-[0.95rem] leading-relaxed text-ink-3 max-w-xs mx-auto">
-                This is a place where you build yourself. Capture first — give things a
+                This is a place where you build yourself. Capture first, give things a
                 shape later. <Link href="/guide" className="text-accent-deep">How it works →</Link>
               </p>
             </div>
@@ -171,7 +171,7 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
   return (
     <section className="mt-8 lg:mt-6">
       <h2 className="text-xs font-medium uppercase tracking-wide text-ink-3 mb-3">
-        Seeds — {seeds.length} waiting
+        {seeds.length} seeds waiting
       </h2>
       <div className="space-y-2">
         {seeds.map((seed) => (
@@ -188,15 +188,15 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-sm">
               <TriageChip onClick={() => setShaping(seed)}>🪴 Organize</TriageChip>
               <TriageChip onClick={() => quickNote(seed)}>📝 Notes</TriageChip>
-              <TriageChip onClick={() => setSeedStatus(seed.id, "later")} title="Rests below — nothing is lost">
+              <TriageChip onClick={() => setSeedStatus(seed.id, "later")} title="Rests below. Nothing is lost">
                 🌙 Later
               </TriageChip>
-              <TriageChip onClick={() => setSeedStatus(seed.id, "archived")} title="Tucked away in Archived — never gone">
+              <TriageChip onClick={() => setSeedStatus(seed.id, "archived")} title="Tucked away in Archived. Never gone">
                 🫙 Archive
               </TriageChip>
               <button
                 onClick={() => setConfirming(seed)}
-                className="pressable ml-auto text-xs text-ink-3 hover:text-danger"
+                className="pressable ml-auto -my-1.5 -mr-1.5 px-1.5 py-1.5 text-xs text-ink-3 hover:text-danger"
               >
                 delete
               </button>
@@ -232,7 +232,7 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
       >
         <p className="text-sm text-ink-2 leading-relaxed">
           “{confirming?.text}” will be gone for good. If you just want it out of the way,
-          Archive keeps it safe — you can always find it again below.
+          Archive keeps it safe. You can always find it again below.
         </p>
       </Sheet>
     </section>
@@ -251,7 +251,7 @@ function RestingSeeds({ seeds }: { seeds: Seed[] }) {
         onClick={() => setOpenList((v) => !v)}
         className="pressable flex w-full items-center justify-between text-xs font-medium uppercase tracking-wide text-ink-3"
       >
-        <span>🌙 Resting — {seeds.length}</span>
+        <span>🌙 Resting ({seeds.length})</span>
         <span>{openList ? "hide" : "show"}</span>
       </button>
       {openList && (
@@ -269,7 +269,7 @@ function RestingSeeds({ seeds }: { seeds: Seed[] }) {
               </button>
               <button
                 onClick={() => setSeedStatus(seed.id, "inbox")}
-                className="pressable shrink-0 text-xs font-medium text-accent-deep"
+                className="pressable shrink-0 -my-2 -mr-1.5 px-1.5 py-2 text-xs font-medium text-accent-deep"
               >
                 wake ↑
               </button>
@@ -296,7 +296,7 @@ function ArchivedSeeds({ seeds }: { seeds: Seed[] }) {
         onClick={() => setOpenList((v) => !v)}
         className="pressable flex w-full items-center justify-between text-xs font-medium uppercase tracking-wide text-ink-3"
       >
-        <span>🫙 Archived — {seeds.length}</span>
+        <span>🫙 Archived ({seeds.length})</span>
         <span>{openList ? "hide" : "show"}</span>
       </button>
       {openList && (
@@ -312,16 +312,16 @@ function ArchivedSeeds({ seeds }: { seeds: Seed[] }) {
               >
                 {seed.text}
               </button>
-              <div className="flex shrink-0 items-center gap-3 text-xs">
+              <div className="flex shrink-0 items-center gap-1.5 text-xs">
                 <button
                   onClick={() => setSeedStatus(seed.id, "inbox")}
-                  className="pressable font-medium text-accent-deep"
+                  className="pressable -my-2 px-1.5 py-2 font-medium text-accent-deep"
                 >
                   restore
                 </button>
                 <button
                   onClick={() => setConfirming(seed)}
-                  className="pressable text-ink-3 hover:text-danger"
+                  className="pressable -my-2 -mr-1.5 px-1.5 py-2 text-ink-3 hover:text-danger"
                 >
                   delete
                 </button>
@@ -495,7 +495,7 @@ function AreasPanel() {
   return (
     <Panel title="Your life" href="/life">
       {areas.length === 0 ? (
-        <p className="text-sm text-ink-3">No areas yet — the rooms of your life.</p>
+        <p className="text-sm text-ink-3">No areas yet. These are the rooms of your life.</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {areas.map((a) => {
@@ -531,7 +531,7 @@ function SpacePanel() {
           {quote.kind === "quote" ? `“${quote.title}”` : quote.title}
         </blockquote>
       ) : (
-        <p className="text-sm text-ink-3">Quotes, principles, promises — words to keep.</p>
+        <p className="text-sm text-ink-3">Quotes, principles, promises: words to keep.</p>
       )}
     </Panel>
   );

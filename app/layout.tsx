@@ -14,7 +14,7 @@ const instrument = Instrument_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "LoopUpward — a place where you build yourself",
+  title: "LoopUpward: a place where you build yourself",
   description:
     "Capture the person you want to become, turn intentions into systems, act daily, and see your life move forward.",
   applicationName: "LoopUpward",

@@ -6,7 +6,7 @@ import { BackLink } from "@/components/ui";
 const STEPS = [
   {
     emoji: "💭",
-    title: "Mind — capture anything",
+    title: "Mind: capture anything",
     body:
       "A goal, a book, a quote, “learn guitar someday.” Write it in five seconds and let it go. Nothing needs a category yet.",
     href: "/home",
@@ -14,25 +14,25 @@ const STEPS = [
   },
   {
     emoji: "🪴",
-    title: "Life — organize what matters",
+    title: "Life: organize what matters",
     body:
-      "When a thought keeps coming back, give it a shape: a goal, a habit, a money target. Nest smaller things inside bigger ones — Learn French → Reach B2 → Finish grammar book → This week's chapters. Nothing is rigid: move anything between areas, parents, and time horizons whenever your life changes.",
+      "When a thought keeps coming back, give it a shape: a goal, a habit, a money target. Nest smaller things inside bigger ones, like Learn French → Reach B2 → Finish grammar book → This week's chapters. Nothing is rigid: move anything between areas, parents, and time horizons whenever your life changes.",
     href: "/life",
     link: "See your life",
   },
   {
     emoji: "☀️",
-    title: "Today — small actions",
+    title: "Today: small actions",
     body:
-      "Schedules put things on Today automatically — every day, Mon/Wed/Fri, 4× a week, monthly. Completing a small action updates the habit's streak and the goal it belongs to. Progress flows upward. The Week, Month, Quarter, and Year tabs hold the same view for anything planned further out — pull any of them into Today when you're ready to act on it.",
+      "Schedules put things on Today automatically: every day, Mon/Wed/Fri, 4× a week, monthly. Completing a small action updates the habit's streak and the goal it belongs to. Progress flows upward. The Week, Month, Quarter, and Year tabs hold the same view for anything planned further out. Pull any of them into Today when you're ready to act on it.",
     href: "/today",
     link: "Open Today",
   },
   {
     emoji: "🪞",
-    title: "Reflect — see who you're becoming",
+    title: "Reflect: see who you're becoming",
     body:
-      "Weekly, monthly, and yearly reviews are built from your real history: every day you showed up, every page, every rupee. Unfinished plans are not failures — they're information about what to try differently.",
+      "Weekly, monthly, and yearly reviews are built from your real history: every day you showed up, every page, every rupee. Unfinished plans are not failures. They're information about what to try differently.",
     href: "/reflect",
     link: "Reflect",
   },
@@ -80,7 +80,7 @@ export default function GuidePage() {
 
       <p className="mt-10 text-center text-sm leading-relaxed text-ink-3 max-w-sm mx-auto">
         Missed days carry forward without shame. The question is never “did you fail
-        today?” — it&apos;s “is your life moving toward the person you wanted to become?”
+        today?” It&apos;s “is your life moving toward the person you wanted to become?”
       </p>
     </div>
   );
