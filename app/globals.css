@@ -18,7 +18,14 @@
   --danger: #b4543e;
   --shadow-card: 0 1px 2px rgb(33 30 25 / 0.04), 0 4px 16px rgb(33 30 25 / 0.05);
   --shadow-float: 0 2px 8px rgb(33 30 25 / 0.08), 0 12px 40px rgb(33 30 25 / 0.12);
+  --font-display-active: var(--font-fraunces);
 }
+
+/* Display font choice, set via Settings → Appearance (lib/fonts.ts) */
+:root[data-font="lora"] { --font-display-active: var(--font-lora); }
+:root[data-font="playfair"] { --font-display-active: var(--font-playfair); }
+:root[data-font="crimson"] { --font-display-active: var(--font-crimson); }
+:root[data-font="source-serif"] { --font-display-active: var(--font-source-serif); }
 
 :root[data-theme="dark"] {
   --bg: #151310;
@@ -55,7 +62,7 @@
   --color-amber-soft: var(--amber-soft);
   --color-danger: var(--danger);
   --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-display: var(--font-display-active), Georgia, serif;
   --radius-card: 1.25rem;
   --radius-btn: 0.875rem;
   --shadow-card: var(--shadow-card);
@@ -78,9 +85,10 @@ body {
   font-feature-settings: "cv05", "ss01";
 }
 
-/* Display serif for headings that should feel human */
+/* Display serif for headings that should feel human. The active family is
+   chosen in Settings → Appearance and set via --font-display-active. */
 .font-display {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: var(--font-display-active), Georgia, serif;
   font-optical-sizing: auto;
   letter-spacing: -0.01em;
 }

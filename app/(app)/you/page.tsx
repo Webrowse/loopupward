@@ -6,11 +6,20 @@ import { useState } from "react";
 import { useLife } from "@/lib/data/provider";
 import { api } from "@/lib/api";
 import { Button, Card, Segmented } from "@/components/ui";
+import { FONT_OPTIONS, FontId } from "@/lib/fonts";
+
+const FONT_VARS: Record<FontId, string> = {
+  fraunces: "var(--font-fraunces)",
+  lora: "var(--font-lora)",
+  playfair: "var(--font-playfair)",
+  crimson: "var(--font-crimson)",
+  "source-serif": "var(--font-source-serif)",
+};
 
 export default function YouPage() {
   const {
     db, user, premium, owner, mode, cloudAvailable,
-    theme, setTheme, signOut, exportJSON,
+    theme, setTheme, font, setFont, signOut, exportJSON,
   } = useLife();
   const [exporting, setExporting] = useState(false);
 
@@ -109,6 +118,28 @@ export default function YouPage() {
             value={theme}
             onChange={setTheme}
           />
+        </div>
+        <div className="mt-4 border-t border-line-soft pt-4">
+          <p className="text-sm font-medium text-ink mb-2.5">Display font</p>
+          <div className="flex flex-wrap gap-1.5">
+            {FONT_OPTIONS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFont(f.id)}
+                aria-pressed={font === f.id}
+                className={`pressable rounded-xl border px-3 py-2 text-left transition-colors ${
+                  font === f.id ? "border-accent bg-accent-soft" : "border-line hover:bg-surface-2"
+                }`}
+              >
+                <span className="block text-lg leading-none text-ink" style={{ fontFamily: FONT_VARS[f.id] }}>
+                  {f.sample}
+                </span>
+                <span className="mt-1 block text-[0.7rem] text-ink-3">{f.label}</span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-2.5 text-xs text-ink-3">Changes headings and quotes throughout the app.</p>
         </div>
       </Card>
 

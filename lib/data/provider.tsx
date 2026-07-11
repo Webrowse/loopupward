@@ -16,6 +16,7 @@ import { Repo } from "./repo";
 import { today } from "../dates";
 import { TodayEntry } from "../progress";
 import { FREE_LIMITS } from "../limits";
+import { DEFAULT_FONT, FontId, isFontId } from "../fonts";
 
 interface LifeContextValue {
   ready: boolean;
@@ -30,6 +31,8 @@ interface LifeContextValue {
   dismissSyncError: () => void;
   theme: "light" | "dark";
   setTheme: (t: "light" | "dark") => void;
+  font: FontId;
+  setFont: (f: FontId) => void;
 
   addSeed: (text: string) => Seed;
   updateSeed: (id: string, text: string) => void;
@@ -95,6 +98,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<ApiUser | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [theme, setThemeState] = useState<"light" | "dark">("light");
+  const [font, setFontState] = useState<FontId>(DEFAULT_FONT);
   const repoRef = useRef<Repo>(new LocalRepo());
   const cloudAvailable = apiConfigured();
   const mode: "local" | "cloud" = user ? "cloud" : "local";
@@ -107,6 +111,20 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     setThemeState(t);
     document.documentElement.dataset.theme = t === "dark" ? "dark" : "";
     try { localStorage.setItem("lifeos-theme", t); } catch {}
+  }, []);
+
+  /* ————— display font ————— */
+  useEffect(() => {
+    const syncFont = () => {
+      const attr = document.documentElement.dataset.font;
+      setFontState(isFontId(attr) ? attr : DEFAULT_FONT);
+    };
+    syncFont();
+  }, []);
+  const setFont = useCallback((f: FontId) => {
+    setFontState(f);
+    document.documentElement.dataset.font = f;
+    try { localStorage.setItem("lifeos-font", f); } catch {}
   }, []);
 
   /* ————— session & data bootstrap ————— */
@@ -528,6 +546,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     ready, db, mode, cloudAvailable, user, premium, owner, limits,
     syncError, dismissSyncError,
     theme, setTheme,
+    font, setFont,
     addSeed, updateSeed, setSeedStatus, deleteSeed, plantSeed,
     saveJournal,
     addLabel, updateLabel, deleteLabel,
