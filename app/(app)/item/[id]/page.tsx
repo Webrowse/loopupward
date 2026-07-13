@@ -15,6 +15,7 @@ import {
   shortDay, today,
 } from "@/lib/dates";
 import { DateGridPicker, ItemCard, ItemSheet, ScheduleEditor, TrackerControls } from "@/components/items";
+import { KindIcon } from "@/components/icons";
 import { Bar, Heatmap, Ring, StatTile } from "@/components/progress";
 import { BackLink, Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
@@ -107,8 +108,8 @@ export default function ItemPage() {
 
       <header className="pt-4 pb-2 flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-3">
-            {meta.emoji} {meta.label}
+          <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-ink-3">
+            <KindIcon kind={item.kind} /> {meta.label}
             {item.status === "done" && <span className="text-accent-deep"> · complete</span>}
             {item.status === "someday" && " · someday"}
           </p>
@@ -457,7 +458,7 @@ function MoveSheet({
               }}
               className="pressable block w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-left text-sm text-ink hover:border-accent"
             >
-              {KIND_META[cand.kind].emoji} {cand.title}
+              <KindIcon kind={cand.kind} /> {cand.title}
             </button>
           ))}
           {search.trim() && candidates.length === 0 && (

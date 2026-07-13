@@ -10,7 +10,7 @@ import {
 } from "@/lib/dates";
 import { FREE_LIMITS } from "@/lib/limits";
 import { journalEntriesInRange, journalToCsv, downloadTextFile } from "@/lib/journalExport";
-import { MOODS, ENERGY } from "@/components/journal";
+import { MOOD_ICONS, ENERGY_ICONS } from "@/components/icons";
 import { BackLink, Button, EmptyState, Segmented } from "@/components/ui";
 
 const PERIODS: { value: Period; label: string }[] = [
@@ -134,14 +134,17 @@ function Journal() {
               <p className="hidden print:block font-display text-xl mb-4">
                 LoopUpward Journal: {prettyPeriod(period, anchor)}
               </p>
-              {entries.map((e) => (
+              {entries.map((e) => {
+                const MoodIcon = e.mood != null ? MOOD_ICONS[e.mood - 1] : null;
+                const EnergyIcon = e.energy != null ? ENERGY_ICONS[e.energy - 1] : null;
+                return (
                 <article key={e.id} className="border-b border-line-soft py-5 first:pt-0 last:border-0">
                   <div className="flex items-baseline justify-between gap-3">
                     <h2 className="font-display text-lg text-ink">{prettyDay(e.date)}</h2>
-                    {(e.mood != null || e.energy != null) && (
-                      <div className="flex shrink-0 gap-2 text-sm text-ink-3">
-                        {e.mood != null && <span>{MOODS[e.mood - 1]}</span>}
-                        {e.energy != null && <span>{ENERGY[e.energy - 1]}</span>}
+                    {(MoodIcon || EnergyIcon) && (
+                      <div className="flex shrink-0 items-center gap-2 text-sm text-ink-3">
+                        {MoodIcon && <MoodIcon />}
+                        {EnergyIcon && <EnergyIcon />}
                       </div>
                     )}
                   </div>
@@ -159,7 +162,8 @@ function Journal() {
                     </div>
                   )}
                 </article>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

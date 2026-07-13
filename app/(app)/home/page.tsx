@@ -9,6 +9,7 @@ import { destinationFor, Seed, SPACE_KINDS } from "@/lib/types";
 import { itemProgress, todayEntries } from "@/lib/progress";
 import { areaColor } from "@/lib/palette";
 import { deriveNoteFields, ItemSheet } from "@/components/items";
+import { ArchiveIcon, MoonIcon, NoteIcon, OrganizeIcon } from "@/components/icons";
 import { Bar, Ring } from "@/components/progress";
 import { Button, MovedNotice, Sheet } from "@/components/ui";
 
@@ -205,13 +206,13 @@ function SeedInbox({
               {seed.text}
             </button>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-sm">
-              <TriageChip onClick={() => setShaping(seed)}>🪴 Organize</TriageChip>
-              <TriageChip onClick={() => quickNote(seed)}>📝 Notes</TriageChip>
+              <TriageChip onClick={() => setShaping(seed)}><OrganizeIcon /> Organize</TriageChip>
+              <TriageChip onClick={() => quickNote(seed)}><NoteIcon /> Notes</TriageChip>
               <TriageChip onClick={() => setSeedStatus(seed.id, "later")} title="Rests below. Nothing is lost">
-                🌙 Later
+                <MoonIcon /> Later
               </TriageChip>
               <TriageChip onClick={() => setSeedStatus(seed.id, "archived")} title="Tucked away in Archived. Never gone">
-                🫙 Archive
+                <ArchiveIcon /> Archive
               </TriageChip>
               <button
                 onClick={() => setConfirming(seed)}
@@ -273,7 +274,7 @@ function RestingSeeds({ seeds }: { seeds: Seed[] }) {
         onClick={() => setOpenList((v) => !v)}
         className="pressable flex w-full items-center justify-between text-xs font-medium uppercase tracking-wide text-ink-3"
       >
-        <span>🌙 Resting ({seeds.length})</span>
+        <span className="inline-flex items-center gap-1"><MoonIcon /> Resting ({seeds.length})</span>
         <span>{openList ? "hide" : "show"}</span>
       </button>
       {openList && (
@@ -318,7 +319,7 @@ function ArchivedSeeds({ seeds }: { seeds: Seed[] }) {
         onClick={() => setOpenList((v) => !v)}
         className="pressable flex w-full items-center justify-between text-xs font-medium uppercase tracking-wide text-ink-3"
       >
-        <span>🫙 Archived ({seeds.length})</span>
+        <span className="inline-flex items-center gap-1"><ArchiveIcon /> Archived ({seeds.length})</span>
         <span>{openList ? "hide" : "show"}</span>
       </button>
       {openList && (
@@ -384,7 +385,7 @@ function TriageChip({
     <button
       onClick={onClick}
       title={title}
-      className="pressable rounded-full border border-line bg-bg px-2.5 py-1 text-xs font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
+      className="pressable inline-flex items-center gap-1 rounded-full border border-line bg-bg px-2.5 py-1 text-xs font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
     >
       {children}
     </button>

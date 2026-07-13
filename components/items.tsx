@@ -14,6 +14,7 @@ import {
   previousAnchor, prettyDay, prettyPeriod, startOfMonth, startOfWeek, today,
 } from "@/lib/dates";
 import { AREA_COLORS, areaColor } from "@/lib/palette";
+import { KindIcon } from "./icons";
 import { Bar } from "./progress";
 import { Button, Chip, EmptyState, Field, MovedNotice, Sheet, inputCls } from "./ui";
 
@@ -38,7 +39,7 @@ export function ItemCard({ item, hideLabelIds }: { item: Item; hideLabelIds?: st
       className="pressable block w-full text-left bg-surface rounded-(--radius-card) border border-line-soft shadow-(--shadow-card) px-4 py-3.5"
     >
       <div className="flex items-start gap-3">
-        <span className="text-lg leading-6 shrink-0">{KIND_META[item.kind].emoji}</span>
+        <KindIcon kind={item.kind} className="mt-0.5 h-[18px] w-[18px] shrink-0 text-ink-2" />
         <div className="min-w-0 flex-1">
           <div className={`text-[0.95rem] font-medium leading-snug ${item.status === "done" ? "text-ink-3 line-through decoration-ink-3/50" : "text-ink"}`}>
             {item.title}
@@ -736,7 +737,7 @@ export function ItemSheet({
         <div className="flex flex-wrap gap-1.5">
           {COMMON_KINDS.map((k) => (
             <Chip key={k} active={kind === k} onClick={() => pickKind(k)}>
-              {KIND_META[k].emoji} {KIND_META[k].label}
+              <KindIcon kind={k} className="mr-0.5" /> {KIND_META[k].label}
             </Chip>
           ))}
           {!showMore && (
@@ -747,7 +748,7 @@ export function ItemSheet({
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {MORE_KINDS.map((k) => (
               <Chip key={k} active={kind === k} onClick={() => pickKind(k)}>
-                {KIND_META[k].emoji} {KIND_META[k].label}
+                <KindIcon kind={k} className="mr-0.5" /> {KIND_META[k].label}
               </Chip>
             ))}
           </div>

@@ -1,12 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { ComponentType, useState } from "react";
 import { useLife } from "@/lib/data/provider";
 import { prettyDay } from "@/lib/dates";
+import { ENERGY_ICONS, MOOD_ICONS } from "./icons";
 import { Button, Sheet } from "./ui";
-
-export const MOODS = ["😞", "😕", "😐", "🙂", "😄"];
-export const ENERGY = ["🪫", "🌘", "🌗", "🌖", "⚡"];
 
 const DEFAULT_ROUGH_MAX = 5000;
 const DEFAULT_EOD_MAX = 3000;
@@ -132,8 +130,8 @@ function JournalFields({
 
       {/* mood & energy */}
       <div className="mt-4 space-y-2.5">
-        <ScaleRow label="Mood" icons={MOODS} value={mood} onChange={onMood} />
-        <ScaleRow label="Energy" icons={ENERGY} value={energy} onChange={onEnergy} />
+        <ScaleRow label="Mood" icons={MOOD_ICONS} value={mood} onChange={onMood} />
+        <ScaleRow label="Energy" icons={ENERGY_ICONS} value={energy} onChange={onEnergy} />
       </div>
 
       {/* end-of-day reflection — optional, gently offered */}
@@ -176,7 +174,7 @@ function ScaleRow({
   label, icons, value, onChange,
 }: {
   label: string;
-  icons: string[];
+  icons: ComponentType<{ className?: string }>[];
   value: number | null;
   onChange: (v: number | null) => void;
 }) {
@@ -184,7 +182,7 @@ function ScaleRow({
     <div className="flex items-center justify-between gap-3">
       <span className="text-sm text-ink-2">{label}</span>
       <div className="flex gap-1">
-        {icons.map((icon, i) => {
+        {icons.map((Icon, i) => {
           const v = i + 1;
           const active = value === v;
           return (
@@ -192,11 +190,13 @@ function ScaleRow({
               key={v}
               onClick={() => onChange(active ? null : v)}
               aria-label={`${label} ${v} of 5`}
-              className={`pressable grid h-8 w-8 place-items-center rounded-full text-base transition-all ${
-                active ? "bg-accent-soft scale-110" : value !== null ? "opacity-40" : "opacity-70 hover:opacity-100"
+              className={`pressable grid h-8 w-8 place-items-center rounded-full transition-all ${
+                active
+                  ? "bg-accent-soft scale-110 text-accent-deep"
+                  : value !== null ? "opacity-40 text-ink-2" : "opacity-70 hover:opacity-100 text-ink-2"
               }`}
             >
-              {icon}
+              <Icon className="h-[18px] w-[18px]" />
             </button>
           );
         })}

@@ -13,6 +13,7 @@ import { areaColor } from "@/lib/palette";
 import { formatValue } from "@/lib/progress";
 import { Bar, Heatmap, Ring, StatTile } from "@/components/progress";
 import { Button, EmptyState, Segmented } from "@/components/ui";
+import { ENERGY_ICONS, MOOD_ICONS } from "@/components/icons";
 
 const PERIODS: { value: Period; label: string }[] = [
   { value: "week", label: "Week" },
@@ -30,7 +31,7 @@ export default function ReflectPage() {
 }
 
 function Reflect() {
-  const { db, premium, saveReflection, theme } = useLife();
+  const { db, premium, saveReflection } = useLife();
   const params = useSearchParams();
   // arriving from "Reflect on this period" (Today's Week/Month/Quarter/Year
   // tabs) lands on that exact period, instead of always resetting to Week
@@ -222,12 +223,22 @@ function Reflect() {
               </p>
               {(review.journal.avgMood !== null || review.journal.avgEnergy !== null) && (
                 <div className="mt-3 flex gap-5 text-sm text-ink-2">
-                  {review.journal.avgMood !== null && (
-                    <span>Mood {["😞", "😕", "😐", "🙂", "😄"][Math.round(review.journal.avgMood) - 1]} {review.journal.avgMood.toFixed(1)}/5</span>
-                  )}
-                  {review.journal.avgEnergy !== null && (
-                    <span>Energy ⚡ {review.journal.avgEnergy.toFixed(1)}/5</span>
-                  )}
+                  {review.journal.avgMood !== null && (() => {
+                    const MoodIcon = MOOD_ICONS[Math.round(review.journal.avgMood) - 1];
+                    return (
+                      <span className="inline-flex items-center gap-1">
+                        Mood <MoodIcon /> {review.journal.avgMood.toFixed(1)}/5
+                      </span>
+                    );
+                  })()}
+                  {review.journal.avgEnergy !== null && (() => {
+                    const EnergyIcon = ENERGY_ICONS[Math.round(review.journal.avgEnergy) - 1];
+                    return (
+                      <span className="inline-flex items-center gap-1">
+                        Energy <EnergyIcon /> {review.journal.avgEnergy.toFixed(1)}/5
+                      </span>
+                    );
+                  })()}
                 </div>
               )}
               <Link

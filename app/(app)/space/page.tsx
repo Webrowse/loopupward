@@ -6,6 +6,7 @@ import { useLife } from "@/lib/data/provider";
 import { Item, ItemKind, KIND_META, SPACE_KINDS } from "@/lib/types";
 import { Button, Chip, EmptyState } from "@/components/ui";
 import { ItemSheet } from "@/components/items";
+import { KindIcon } from "@/components/icons";
 
 const SPACE_LABELS: Record<string, string> = {
   quote: "Quotes",
@@ -47,7 +48,7 @@ export default function SpacePage() {
         <Chip active={filter === "all"} onClick={() => setFilter("all")}>All</Chip>
         {SPACE_KINDS.map((k) => (
           <Chip key={k} active={filter === k} onClick={() => setFilter(k)}>
-            {KIND_META[k].emoji} {SPACE_LABELS[k]}
+            <KindIcon kind={k} className="mr-0.5" /> {SPACE_LABELS[k]}
           </Chip>
         ))}
       </div>
@@ -82,8 +83,8 @@ export default function SpacePage() {
               )}
               {e.note && <p className="mt-2 text-sm text-ink-2 whitespace-pre-wrap">{e.note}</p>}
               <div className="mt-3 flex items-center justify-between text-xs text-ink-3">
-                <span>
-                  {KIND_META[e.kind].emoji} {SPACE_LABELS[e.kind] ?? KIND_META[e.kind].label} ·{" "}
+                <span className="inline-flex items-center gap-1">
+                  <KindIcon kind={e.kind} /> {SPACE_LABELS[e.kind] ?? KIND_META[e.kind].label} ·{" "}
                   {new Date(e.createdAt).toLocaleDateString(undefined, { month: "short", year: "numeric" })}
                 </span>
                 {confirmingId === e.id ? (
