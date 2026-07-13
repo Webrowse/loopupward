@@ -33,8 +33,10 @@ export type TrackerType =
 
 export type ItemStatus = "active" | "done" | "someday" | "archived";
 
-/** Planning horizon — the same node moves through time: someday → year → … → today. */
-export type Horizon = "someday" | "life" | "year" | "quarter" | "month" | "week" | "today" | null;
+/** Planning horizon — the same node moves through time: someday → year → … → today.
+ *  "date" stands apart from that progression: it pins the item to one exact
+ *  calendar day (an appointment, a birthday) rather than a fuzzy bucket. */
+export type Horizon = "someday" | "life" | "year" | "quarter" | "month" | "week" | "today" | "date" | null;
 
 export const HORIZON_META: { value: Exclude<Horizon, null>; label: string }[] = [
   { value: "someday", label: "Someday" },
@@ -43,6 +45,7 @@ export const HORIZON_META: { value: Exclude<Horizon, null>; label: string }[] = 
   { value: "month", label: "This month" },
   { value: "week", label: "This week" },
   { value: "today", label: "Today" },
+  { value: "date", label: "Exact date" },
 ];
 
 /**
@@ -81,8 +84,13 @@ export interface Item {
   horizon: Horizon;
   /** any day (YYYY-MM-DD) inside the specific week/month/quarter/year
    *  instance this horizon points at — compare via dates.periodKey(horizon,
-   *  this). Null for someday/today/none, or items not yet anchored. */
+   *  this). Null for someday/today/none, or items not yet anchored.
+   *  For horizon "date" this is the exact pinned day instead (this year's
+   *  occurrence, when dateRepeatsYearly is set). */
   horizonPeriod: string | null;
+  /** horizon "date" only: resurface every year on horizonPeriod's month/day
+   *  (a birthday) instead of once (a one-off appointment). */
+  dateRepeatsYearly: boolean;
   /** rich (HTML) content for note-kind items — the notes app's editor body.
    *  Separate from `note` above, which stays a plain-text annotation. */
   richBody: string | null;

@@ -1,5 +1,7 @@
 /** Date helpers. All "day" values are local-timezone ISO dates: YYYY-MM-DD. */
 
+import type { Horizon } from "@/lib/types";
+
 export function toDay(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -109,6 +111,29 @@ export function previousAnchor(period: Period, anchor: string): string {
 export function nextAnchor(period: Period, anchor: string): string {
   const { end } = periodRange(period, anchor);
   return addDays(end, 1);
+}
+
+const PERIOD_RANK: Record<Period, number> = { week: 1, month: 2, quarter: 3, year: 4 };
+
+/** The window a nested period picker must stay inside, so a weekly goal
+ *  nested under a monthly one only offers weeks from that month. Only
+ *  applies when the child is strictly finer-grained than the parent
+ *  (weeks inside a month, not months inside a week) — otherwise nesting
+ *  imposes no timeframe of its own. */
+export function boundingRange(
+  childPeriod: Period, parentHorizon: Horizon, parentAnchor: string | null
+): { start: string; end: string } | null {
+  if (!isPeriod(parentHorizon) || !parentAnchor) return null;
+  if (PERIOD_RANK[childPeriod] >= PERIOD_RANK[parentHorizon]) return null;
+  return periodRange(parentHorizon, parentAnchor);
+}
+
+/** Default anchor for a freshly bounded period picker: today's instance if
+ *  it's actually inside the parent's window, otherwise the window's first
+ *  instance — so opening the picker never lands outside its own bounds. */
+export function firstAnchorWithin(range: { start: string; end: string }): string {
+  const t = today();
+  return t >= range.start && t <= range.end ? t : range.start;
 }
 
 export function isoWeek(day: string): { year: number; week: number } {

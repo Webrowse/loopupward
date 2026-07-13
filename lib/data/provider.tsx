@@ -324,6 +324,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     const item: Item = {
       id: uid(), areaId: null, parentId: null, kind: "note", tracker: "none",
       note: "", target: null, current: 0, unit: null, horizon: null, horizonPeriod: null,
+      dateRepeatsYearly: false,
       richBody: null,
       status: "active", cadence: null, cadenceDays: null, cadenceCount: null,
       labels: [], pinned: false,

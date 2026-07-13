@@ -370,6 +370,45 @@ export function todayEntries(db: DB, day = today(), includeCarried = day === tod
     }
   }
 
+  // 5. items pinned to an exact calendar date — a one-off appointment, or
+  //    an annual one like a birthday (dateRepeatsYearly). Unlike #4, this
+  //    isn't gated to the real today: browsing ahead to the pinned day
+  //    should reveal it, the whole point of picking a date in advance.
+  for (const item of db.items) {
+    if (item.horizon !== "date" || !item.horizonPeriod) continue;
+    const matches = item.dateRepeatsYearly
+      ? item.horizonPeriod.slice(5) === day.slice(5)
+      : item.horizonPeriod === day;
+    if (!matches) continue;
+    if (entries.some((e) => e.action.itemId === item.id)) continue;
+
+    if (item.dateRepeatsYearly) {
+      // recurring: logged per-occurrence like a habit, so it resets on its
+      // own next year instead of "Mark complete" retiring it for good
+      if (item.status !== "active") continue;
+      const dayValue = dayLogged(db.logs, item.id, day);
+      entries.push({
+        action: {
+          id: `date:${item.id}:${day}`, itemId: item.id, title: item.title, date: day,
+          done: dayValue > 0, doneAt: null, amount: 1, priority: 0, note: "", createdAt: item.createdAt,
+        },
+        item, virtualHabit: true, virtualItemTask: false, carriedFrom: null, completedOn: null,
+        dayValue, dayTarget: 1, scheduleLabel: "every year",
+      });
+    } else {
+      const doneToday = item.status === "done" && item.completedAt != null && dayFromMs(item.completedAt) === day;
+      if (item.status !== "active" && !doneToday) continue;
+      entries.push({
+        action: {
+          id: `date-item:${item.id}`, itemId: item.id, title: item.title, date: day,
+          done: doneToday, doneAt: item.completedAt, amount: 1, priority: 0, note: "", createdAt: item.createdAt,
+        },
+        item, virtualHabit: false, virtualItemTask: true, carriedFrom: null, completedOn: null,
+        dayValue: doneToday ? 1 : 0, dayTarget: 1, scheduleLabel: null,
+      });
+    }
+  }
+
   // completing a task never moves it — position only changes by dragging,
   // or by the explicit "Sort" tidy-up, both of which persist here
   const manualOrder = db.dayOrder.find((o) => o.date === day)?.order;

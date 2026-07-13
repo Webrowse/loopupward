@@ -11,9 +11,10 @@ import {
 } from "@/lib/progress";
 import { areaColor } from "@/lib/palette";
 import {
-  dayFromMs, nextAnchor, Period, previousAnchor, prettyPeriod, shortDay, today,
+  boundingRange, dayFromMs, firstAnchorWithin, nextAnchor, Period, previousAnchor, prettyDay, prettyPeriod,
+  shortDay, today,
 } from "@/lib/dates";
-import { ItemCard, ItemSheet, ScheduleEditor, TrackerControls } from "@/components/items";
+import { DateGridPicker, ItemCard, ItemSheet, ScheduleEditor, TrackerControls } from "@/components/items";
 import { Bar, Heatmap, Ring, StatTile } from "@/components/progress";
 import { BackLink, Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
@@ -289,6 +290,7 @@ export default function ItemPage() {
         open={scheduling}
         onClose={() => setScheduling(false)}
         item={item}
+        parent={crumbs.length ? crumbs[crumbs.length - 1] : null}
         onSave={(patch) => updateItem(item.id, patch)}
       />
 
@@ -473,13 +475,30 @@ const PERIOD_HORIZONS: Horizon[] = ["week", "month", "quarter", "year"];
 const isPeriodHorizon = (h: Horizon): h is Period => (PERIOD_HORIZONS as string[]).includes(h ?? "");
 
 function ScheduleSheet({
-  open, onClose, item, onSave,
+  open, onClose, item, parent, onSave,
 }: {
   open: boolean;
   onClose: () => void;
   item: Item;
+  /** immediate parent, if nested — bounds the period stepper below so a
+   *  weekly goal under a monthly one only steps through that month's weeks */
+  parent: Item | null;
   onSave: (patch: Partial<Item>) => void;
 }) {
+  const parentRange = useMemo(() => {
+    if (!isPeriodHorizon(item.horizon)) return null;
+    return boundingRange(item.horizon, parent?.horizon ?? null, parent?.horizonPeriod ?? null);
+  }, [item.horizon, parent]);
+
+  const stepPrevDisabled = Boolean(
+    parentRange && isPeriodHorizon(item.horizon) &&
+    previousAnchor(item.horizon, item.horizonPeriod ?? today()) < parentRange.start
+  );
+  const stepNextDisabled = Boolean(
+    parentRange && isPeriodHorizon(item.horizon) &&
+    nextAnchor(item.horizon, item.horizonPeriod ?? today()) > parentRange.end
+  );
+
   return (
     <Sheet
       open={open}
@@ -495,22 +514,34 @@ function ScheduleSheet({
             <Chip
               key={h.value}
               active={item.horizon === h.value}
-              onClick={() =>
+              onClick={() => {
+                let horizonPeriod: string | null = null;
+                if (isPeriodHorizon(h.value)) {
+                  if (item.horizon === h.value && item.horizonPeriod) {
+                    // keep the existing anchor when re-confirming the same
+                    // horizon; otherwise land on "now" (bounded to the
+                    // parent's own window, if nested) — adjust with the
+                    // stepper below
+                    horizonPeriod = item.horizonPeriod;
+                  } else {
+                    const range = boundingRange(h.value, parent?.horizon ?? null, parent?.horizonPeriod ?? null);
+                    horizonPeriod = range ? firstAnchorWithin(range) : today();
+                  }
+                } else if (h.value === "date") {
+                  // keep an already-picked date when re-confirming; otherwise
+                  // start on today's date in the calendar grid below
+                  horizonPeriod = item.horizon === "date" && item.horizonPeriod ? item.horizonPeriod : today();
+                }
                 onSave({
                   horizon: h.value,
-                  // keep the existing anchor when re-confirming the same
-                  // horizon; otherwise land on "now" — adjust with the
-                  // stepper below
-                  horizonPeriod: isPeriodHorizon(h.value)
-                    ? (item.horizon === h.value && item.horizonPeriod) || today()
-                    : null,
+                  horizonPeriod,
                   // this picker only ever labels a timeframe; shelving (status)
                   // stays a separate, deliberate action via the Someday/Make
                   // active buttons — otherwise a cadence on a "someday" item
                   // would silently stop appearing on Today
                   ...(item.status === "someday" && h.value !== "someday" ? { status: "active" as const } : {}),
-                })
-              }
+                });
+              }}
             >
               {h.label}
             </Chip>
@@ -523,8 +554,9 @@ function ScheduleSheet({
           <div className="mt-3 flex items-center gap-2">
             <button
               onClick={() => onSave({ horizonPeriod: previousAnchor(item.horizon as Period, item.horizonPeriod ?? today()) })}
+              disabled={stepPrevDisabled}
               aria-label={`Previous ${item.horizon}`}
-              className="pressable grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-3 hover:bg-surface-2"
+              className="pressable grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-3 hover:bg-surface-2 disabled:opacity-30 disabled:pointer-events-none"
             >
               ‹
             </button>
@@ -533,11 +565,37 @@ function ScheduleSheet({
             </span>
             <button
               onClick={() => onSave({ horizonPeriod: nextAnchor(item.horizon as Period, item.horizonPeriod ?? today()) })}
+              disabled={stepNextDisabled}
               aria-label={`Next ${item.horizon}`}
-              className="pressable grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-3 hover:bg-surface-2"
+              className="pressable grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-3 hover:bg-surface-2 disabled:opacity-30 disabled:pointer-events-none"
             >
               ›
             </button>
+          </div>
+        )}
+        {parentRange && parent && (
+          <p className="mt-1.5 text-xs text-ink-3">
+            Kept inside {parent.title}&rsquo;s {HORIZON_META.find((h) => h.value === parent.horizon)?.label.toLowerCase()}.
+          </p>
+        )}
+        {item.horizon === "date" && (
+          <div className="mt-3 space-y-2.5">
+            <DateGridPicker
+              value={item.horizonPeriod ?? today()}
+              onChange={(day) => onSave({ horizonPeriod: day })}
+            />
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-ink">
+                {prettyDay(item.horizonPeriod ?? today())}
+                {!item.dateRepeatsYearly && `, ${(item.horizonPeriod ?? today()).slice(0, 4)}`}
+              </p>
+              <Chip
+                active={item.dateRepeatsYearly}
+                onClick={() => onSave({ dateRepeatsYearly: !item.dateRepeatsYearly })}
+              >
+                Repeats every year
+              </Chip>
+            </div>
           </div>
         )}
       </Field>

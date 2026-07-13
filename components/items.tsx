@@ -9,7 +9,10 @@ import {
   children as childrenOf, currentStreak, formatValue, habitDailyTarget, habitDays,
   horizonEntries, itemProgress, ownProgress, scheduleLabel,
 } from "@/lib/progress";
-import { Period, today } from "@/lib/dates";
+import {
+  addDays, addMonths, addYears, boundingRange, firstAnchorWithin, fromDay, nextAnchor, Period,
+  previousAnchor, prettyDay, prettyPeriod, startOfMonth, startOfWeek, today,
+} from "@/lib/dates";
 import { AREA_COLORS, areaColor } from "@/lib/palette";
 import { Bar } from "./progress";
 import { Button, Chip, EmptyState, Field, Sheet, inputCls } from "./ui";
@@ -353,6 +356,92 @@ export function ScheduleEditor({
   );
 }
 
+const GRID_MONTH_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const GRID_DOW_LETTER = ["M", "T", "W", "T", "F", "S", "S"];
+
+/** A real month calendar for picking one exact day — an appointment or a
+ *  birthday, as opposed to the fuzzy week/month/quarter/year buckets. */
+export function DateGridPicker({ value, onChange }: { value: string; onChange: (day: string) => void }) {
+  const [manualViewMonth, setManualViewMonth] = useState<string | null>(null);
+  const viewMonth = manualViewMonth ?? startOfMonth(value);
+
+  const d = fromDay(viewMonth);
+  const year = d.getFullYear();
+  const monthIdx = d.getMonth();
+  const gridStart = startOfWeek(viewMonth);
+  const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+
+  return (
+    <div className="rounded-xl border border-line-soft bg-surface p-2.5">
+      <div className="flex items-center justify-between mb-1.5">
+        <button
+          type="button"
+          aria-label="Previous year"
+          onClick={() => setManualViewMonth(addYears(viewMonth, -1))}
+          className="pressable grid h-6 w-6 place-items-center rounded text-ink-3 hover:bg-surface-2 hover:text-ink"
+        >
+          ‹‹
+        </button>
+        <button
+          type="button"
+          aria-label="Previous month"
+          onClick={() => setManualViewMonth(addMonths(viewMonth, -1))}
+          className="pressable grid h-6 w-6 place-items-center rounded text-ink-3 hover:bg-surface-2 hover:text-ink"
+        >
+          ‹
+        </button>
+        <span className="text-sm font-medium text-ink">{GRID_MONTH_SHORT[monthIdx]} {year}</span>
+        <button
+          type="button"
+          aria-label="Next month"
+          onClick={() => setManualViewMonth(addMonths(viewMonth, 1))}
+          className="pressable grid h-6 w-6 place-items-center rounded text-ink-3 hover:bg-surface-2 hover:text-ink"
+        >
+          ›
+        </button>
+        <button
+          type="button"
+          aria-label="Next year"
+          onClick={() => setManualViewMonth(addYears(viewMonth, 1))}
+          className="pressable grid h-6 w-6 place-items-center rounded text-ink-3 hover:bg-surface-2 hover:text-ink"
+        >
+          ››
+        </button>
+      </div>
+      <div className="grid grid-cols-7 gap-y-0.5">
+        {GRID_DOW_LETTER.map((l, i) => (
+          <span key={i} className="grid h-7 place-items-center text-[10px] text-ink-3">{l}</span>
+        ))}
+        {cells.map((day) => {
+          const inMonth = day.slice(0, 7) === viewMonth.slice(0, 7);
+          const selected = day === value;
+          return (
+            <button
+              key={day}
+              type="button"
+              onClick={() => {
+                onChange(day);
+                setManualViewMonth(null);
+              }}
+              className={`pressable grid h-7 place-items-center rounded-md text-xs tabular-nums transition-colors ${
+                selected
+                  ? "bg-accent text-white dark:text-[#10160f] font-medium"
+                  : inMonth
+                    ? "text-ink hover:bg-surface-2"
+                    : "text-ink-3/50 hover:bg-surface-2"
+              }`}
+            >
+              {Number(day.slice(8))}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** The four kinds that cover most captures — shown first so the common path
  *  stays a single tap. Everything else lives behind "More". */
 const COMMON_KINDS: ItemKind[] = ["goal", "habit", "project", "note"];
@@ -369,6 +458,7 @@ const KIND_DEFAULT_TRACKER: Partial<Record<ItemKind, TrackerType>> = {
 };
 
 const PERIOD_HORIZONS: Horizon[] = ["week", "month", "quarter", "year"];
+const isPeriodHorizon = (h: Horizon): h is Period => (PERIOD_HORIZONS as string[]).includes(h ?? "");
 
 export const NOTE_HEADING_MAX = 60;
 
@@ -419,6 +509,7 @@ export function ItemSheet({
   const [horizonPeriod, setHorizonPeriod] = useState<string | null>(
     editing?.horizonPeriod ?? defaultHorizonPeriod ?? null
   );
+  const [dateRepeatsYearly, setDateRepeatsYearly] = useState(editing?.dateRepeatsYearly ?? false);
   const [schedule, setSchedule] = useState<ScheduleValue>({
     cadence: editing?.cadence ?? null,
     cadenceDays: editing?.cadenceDays ?? null,
@@ -448,6 +539,7 @@ export function ItemSheet({
     setAreaId(editing?.areaId ?? defaultAreaId ?? null);
     setHorizon(editing?.horizon ?? defaultHorizon ?? null);
     setHorizonPeriod(editing?.horizonPeriod ?? defaultHorizonPeriod ?? null);
+    setDateRepeatsYearly(editing?.dateRepeatsYearly ?? false);
     setSchedule({
       cadence: editing?.cadence ?? null,
       cadenceDays: editing?.cadenceDays ?? null,
@@ -494,18 +586,46 @@ export function ItemSheet({
     }
   };
 
-  // picking a horizon here has no period-navigator of its own, so a
-  // week/month/quarter/year choice always anchors to whichever instance is
-  // current right now — unless it's the exact one this sheet was opened for
-  // (e.g. "+ Add" from an already-navigated "next month" list)
+  // nesting inherits no default horizon of its own, but it does bound the
+  // stepper below: a weekly goal added under a monthly one only steps
+  // through weeks that fall inside that month
+  const parentId = editing?.parentId ?? defaultParentId ?? null;
+  const parentItem = useMemo(
+    () => (parentId ? db.items.find((i) => i.id === parentId) ?? null : null),
+    [db.items, parentId]
+  );
+  const parentRange = useMemo(() => {
+    if (!horizon || !isPeriodHorizon(horizon)) return null;
+    if (!parentItem) return null;
+    return boundingRange(horizon, parentItem.horizon, parentItem.horizonPeriod);
+  }, [horizon, parentItem]);
+
   const pickHorizon = (h: Horizon) => {
     setHorizon(h);
-    if (h && (PERIOD_HORIZONS as string[]).includes(h)) {
-      setHorizonPeriod(h === defaultHorizon && defaultHorizonPeriod ? defaultHorizonPeriod : today());
+    if (h && isPeriodHorizon(h)) {
+      if (h === defaultHorizon && defaultHorizonPeriod) {
+        setHorizonPeriod(defaultHorizonPeriod);
+      } else {
+        const range = parentItem ? boundingRange(h, parentItem.horizon, parentItem.horizonPeriod) : null;
+        setHorizonPeriod(range ? firstAnchorWithin(range) : today());
+      }
+    } else if (h === "date") {
+      // keep an already-picked date when re-confirming; otherwise start on
+      // today's date in the calendar grid below and let the user pick
+      setHorizonPeriod(editing?.horizon === "date" && editing.horizonPeriod ? editing.horizonPeriod : today());
     } else {
       setHorizonPeriod(null);
     }
   };
+
+  const stepPrevDisabled = Boolean(
+    parentRange && horizon && isPeriodHorizon(horizon) &&
+    previousAnchor(horizon, horizonPeriod ?? today()) < parentRange.start
+  );
+  const stepNextDisabled = Boolean(
+    parentRange && horizon && isPeriodHorizon(horizon) &&
+    nextAnchor(horizon, horizonPeriod ?? today()) > parentRange.end
+  );
 
   const needsTarget = ["counter", "money", "book", "percent"].includes(tracker);
   const isHabit = tracker === "habit";
@@ -531,6 +651,7 @@ export function ItemSheet({
       areaId,
       horizon,
       horizonPeriod,
+      dateRepeatsYearly: horizon === "date" && dateRepeatsYearly,
       cadence: schedule.cadence,
       cadenceDays: schedule.cadence === "days" ? schedule.cadenceDays : null,
       cadenceCount: schedule.cadence === "weekly" ? schedule.cadenceCount : null,
@@ -672,6 +793,50 @@ export function ItemSheet({
             </Chip>
           ))}
         </div>
+        {horizon && isPeriodHorizon(horizon) && (
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setHorizonPeriod(previousAnchor(horizon, horizonPeriod ?? today()))}
+              disabled={stepPrevDisabled}
+              aria-label={`Previous ${horizon}`}
+              className="pressable grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-3 hover:bg-surface-2 disabled:opacity-30 disabled:pointer-events-none"
+            >
+              ‹
+            </button>
+            <span className="flex-1 text-center text-sm font-medium text-ink">
+              {prettyPeriod(horizon, horizonPeriod ?? today())}
+            </span>
+            <button
+              type="button"
+              onClick={() => setHorizonPeriod(nextAnchor(horizon, horizonPeriod ?? today()))}
+              disabled={stepNextDisabled}
+              aria-label={`Next ${horizon}`}
+              className="pressable grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-3 hover:bg-surface-2 disabled:opacity-30 disabled:pointer-events-none"
+            >
+              ›
+            </button>
+          </div>
+        )}
+        {parentRange && parentItem && (
+          <p className="mt-1.5 text-xs text-ink-3">
+            Kept inside {parentItem.title}&rsquo;s {HORIZON_META.find((h) => h.value === parentItem.horizon)?.label.toLowerCase()}.
+          </p>
+        )}
+        {horizon === "date" && (
+          <div className="mt-3 space-y-2.5">
+            <DateGridPicker value={horizonPeriod ?? today()} onChange={setHorizonPeriod} />
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-ink">
+                {prettyDay(horizonPeriod ?? today())}
+                {!dateRepeatsYearly && `, ${(horizonPeriod ?? today()).slice(0, 4)}`}
+              </p>
+              <Chip active={dateRepeatsYearly} onClick={() => setDateRepeatsYearly((v) => !v)}>
+                Repeats every year
+              </Chip>
+            </div>
+          </div>
+        )}
       </Field>
 
       {!defaultParentId && (

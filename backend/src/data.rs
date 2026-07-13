@@ -43,6 +43,10 @@ pub struct Item {
     /// "2026-W28" / "2026-08" / "2026-Q3" / "2026" — unset for someday/today/none
     #[serde(default)]
     pub horizon_period: Option<String>,
+    /// horizon "date" only: resurface every year on horizon_period's
+    /// month/day (a birthday) instead of once (a one-off appointment)
+    #[serde(default)]
+    pub date_repeats_yearly: bool,
     /// rich (HTML) body for note-kind items — separate from `note` above,
     /// which stays a plain-text annotation available to every kind
     #[serde(default)]
@@ -205,7 +209,7 @@ const KINDS: &[&str] = &[
 ];
 const TRACKERS: &[&str] = &["none", "check", "counter", "percent", "money", "habit", "book"];
 const STATUSES: &[&str] = &["active", "done", "someday", "archived"];
-const HORIZONS: &[&str] = &["someday", "life", "year", "quarter", "month", "week", "today"];
+const HORIZONS: &[&str] = &["someday", "life", "year", "quarter", "month", "week", "today", "date"];
 const CADENCES: &[&str] = &["daily", "weekdays", "days", "weekly", "monthly"];
 const PERIODS: &[&str] = &["week", "month", "quarter", "year"];
 
@@ -415,15 +419,16 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
         r.validate()?;
         sqlx::query(
             "insert into items (id, user_id, area_id, parent_id, kind, tracker, title, note,
-               target, current, unit, horizon, horizon_period, rich_body, status, cadence,
+               target, current, unit, horizon, horizon_period, date_repeats_yearly, rich_body, status, cadence,
                cadence_days, cadence_count, labels, pinned, position, created_at_ms, completed_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
              on conflict (id) do update set
                area_id = excluded.area_id, parent_id = excluded.parent_id,
                kind = excluded.kind, tracker = excluded.tracker, title = excluded.title,
                note = excluded.note, target = excluded.target, current = excluded.current,
                unit = excluded.unit, horizon = excluded.horizon,
-               horizon_period = excluded.horizon_period, rich_body = excluded.rich_body,
+               horizon_period = excluded.horizon_period, date_repeats_yearly = excluded.date_repeats_yearly,
+               rich_body = excluded.rich_body,
                status = excluded.status,
                cadence = excluded.cadence, cadence_days = excluded.cadence_days,
                cadence_count = excluded.cadence_count, labels = excluded.labels,
@@ -433,7 +438,8 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
         )
         .bind(r.id).bind(user).bind(r.area_id).bind(r.parent_id).bind(&r.kind)
         .bind(&r.tracker).bind(&r.title).bind(&r.note).bind(r.target).bind(r.current)
-        .bind(&r.unit).bind(&r.horizon).bind(&r.horizon_period).bind(&r.rich_body).bind(&r.status)
+        .bind(&r.unit).bind(&r.horizon).bind(&r.horizon_period).bind(r.date_repeats_yearly)
+        .bind(&r.rich_body).bind(&r.status)
         .bind(&r.cadence)
         .bind(&r.cadence_days).bind(r.cadence_count).bind(&r.labels).bind(r.pinned)
         .bind(r.position).bind(r.created_at).bind(r.completed_at)
@@ -698,7 +704,8 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             kind: r.get("kind"), tracker: r.get("tracker"), title: r.get("title"),
             note: r.get("note"), target: r.get("target"), current: r.get("current"),
             unit: r.get("unit"), horizon: r.get("horizon"),
-            horizon_period: r.get("horizon_period"), rich_body: r.get("rich_body"),
+            horizon_period: r.get("horizon_period"), date_repeats_yearly: r.get("date_repeats_yearly"),
+            rich_body: r.get("rich_body"),
             status: r.get("status"),
             cadence: r.get("cadence"), cadence_days: r.get("cadence_days"),
             cadence_count: r.get("cadence_count"), labels: r.get("labels"),
