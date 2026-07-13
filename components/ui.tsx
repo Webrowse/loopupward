@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 export function Button({
@@ -289,6 +290,51 @@ export function BackLink({ fallback = "/life", label = "Back" }: { fallback?: st
       </svg>
       {label}
     </button>
+  );
+}
+
+/** Transient "here's where that went" confirmation with an undo — for any
+ *  action that makes something disappear from the current view, so it
+ *  never looks like it just vanished. Auto-dismisses, but can be closed
+ *  by hand too. */
+export function MovedNotice({
+  message, href, hrefLabel, onUndo, onDismiss,
+}: {
+  message: string;
+  href?: string;
+  hrefLabel?: string;
+  onUndo?: () => void;
+  onDismiss: () => void;
+}) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 7000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+
+  return (
+    <div className="fade-in mb-3 flex items-center justify-between gap-3 rounded-(--radius-card) border border-line-soft bg-surface px-4 py-2.5 text-sm shadow-(--shadow-card)">
+      <span className="text-ink-2">
+        {message}
+        {href && hrefLabel && (
+          <>
+            {" "}
+            <Link href={href} className="font-medium text-accent-deep underline underline-offset-2">
+              {hrefLabel}
+            </Link>
+          </>
+        )}
+      </span>
+      <span className="flex shrink-0 items-center gap-3">
+        {onUndo && (
+          <button onClick={onUndo} className="pressable text-xs font-medium text-accent-deep">
+            Undo
+          </button>
+        )}
+        <button onClick={onDismiss} aria-label="Dismiss" className="pressable text-ink-3 hover:text-ink-2">
+          ×
+        </button>
+      </span>
+    </div>
   );
 }
 

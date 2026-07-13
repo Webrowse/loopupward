@@ -10,6 +10,7 @@ const TABS = [
   { href: "/home", label: "Mind", icon: MindIcon },
   { href: "/today", label: "Today", icon: SunIcon },
   { href: "/life", label: "Life", icon: LifeIcon },
+  { href: "/notes", label: "Notes", icon: NotesIcon },
   { href: "/reflect", label: "Reflect", icon: MirrorIcon },
   { href: "/you", label: "You", icon: YouIcon },
 ];
@@ -154,6 +155,16 @@ function LifeIcon({ active }: { active?: boolean }) {
       <path d="M12 13c0-3.5 2.5-6 6-6 0 3.5-2.5 6-6 6Z" fill={active ? "currentColor" : "none"} fillOpacity={active ? 0.18 : 0} />
       <path d="M12 10C12 6.5 9.5 4 6 4c0 3.5 2.5 6 6 6Z" fill={active ? "currentColor" : "none"} fillOpacity={active ? 0.18 : 0} />
       <path d="M7 21h10" />
+    </svg>
+  );
+}
+
+function NotesIcon({ active }: { active?: boolean }) {
+  return (
+    <svg {...base(active)}>
+      <path d="M6 3.5h9l3 3V19a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 19V5A1.5 1.5 0 0 1 6 3.5Z" fill={active ? "currentColor" : "none"} fillOpacity={active ? 0.12 : 0} />
+      <path d="M15 3.5V6a1 1 0 0 0 1 1h2.5" />
+      <path d="M8 12h8M8 15.5h5" opacity={active ? 1 : 0.6} />
     </svg>
   );
 }

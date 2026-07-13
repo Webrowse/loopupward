@@ -2,16 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
 import { greeting, prettyDay } from "@/lib/dates";
 import { useToday } from "@/lib/useToday";
-import { Seed, SPACE_KINDS } from "@/lib/types";
+import { destinationFor, Seed, SPACE_KINDS } from "@/lib/types";
 import { itemProgress, todayEntries } from "@/lib/progress";
 import { areaColor } from "@/lib/palette";
 import { deriveNoteFields, ItemSheet } from "@/components/items";
 import { Bar, Ring } from "@/components/progress";
-import { Button, Sheet } from "@/components/ui";
+import { Button, MovedNotice, Sheet } from "@/components/ui";
 
 const WHISPERS = [
   "I want to run a marathon",
@@ -23,11 +22,17 @@ const WHISPERS = [
 ];
 
 export default function HomePage() {
-  const { db, user, addSeed, mode, cloudAvailable } = useLife();
+  const { db, user, addSeed, unplantSeed, mode, cloudAvailable } = useLife();
   const today = useToday();
   const [text, setText] = useState("");
   const [justPlanted, setJustPlanted] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // lifted above SeedInbox: organizing the very last seed empties the inbox
+  // and unmounts SeedInbox itself, which would otherwise wipe this out
+  // before it's ever seen
+  const [justOrganized, setJustOrganized] = useState<
+    { label: string; href: string; seedId: string; itemId: string } | null
+  >(null);
 
   const inbox = db.seeds
     .filter((s) => s.status === "inbox" && !s.itemId)
@@ -53,16 +58,11 @@ export default function HomePage() {
 
   return (
     <div className="rise-in">
-      <header className="pt-6 pb-8 lg:pb-6 flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm text-ink-3">{greeting()}{name ? `, ${name}` : ""}.</p>
-          <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">
-            {prettyDay(today)}
-          </h1>
-        </div>
-        <Link href="/notes">
-          <Button small variant="soft">🗒 Notes</Button>
-        </Link>
+      <header className="pt-6 pb-8 lg:pb-6">
+        <p className="text-sm text-ink-3">{greeting()}{name ? `, ${name}` : ""}.</p>
+        <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">
+          {prettyDay(today)}
+        </h1>
       </header>
 
       {/* desktop: three quiet columns; mobile: single flow */}
@@ -113,7 +113,21 @@ export default function HomePage() {
             </div>
           )}
 
-          {inbox.length > 0 && <SeedInbox seeds={inbox} />}
+          {justOrganized && (
+            <MovedNotice
+              message="Organized."
+              href={justOrganized.href}
+              hrefLabel={`View in ${justOrganized.label}`}
+              onUndo={() => {
+                unplantSeed(justOrganized.seedId, justOrganized.itemId);
+                setJustOrganized(null);
+              }}
+              onDismiss={() => setJustOrganized(null)}
+            />
+          )}
+          {inbox.length > 0 && (
+            <SeedInbox seeds={inbox} justOrganized={justOrganized} setJustOrganized={setJustOrganized} />
+          )}
           {resting.length > 0 && <RestingSeeds seeds={resting} />}
           {archived.length > 0 && <ArchivedSeeds seeds={archived} />}
 
@@ -152,9 +166,14 @@ export default function HomePage() {
 
 /* ————— seed inbox with one-tap triage ————— */
 
-function SeedInbox({ seeds }: { seeds: Seed[] }) {
+function SeedInbox({
+  seeds, setJustOrganized,
+}: {
+  seeds: Seed[];
+  justOrganized: { label: string; href: string; seedId: string; itemId: string } | null;
+  setJustOrganized: (v: { label: string; href: string; seedId: string; itemId: string } | null) => void;
+}) {
   const { addItem, plantSeed, setSeedStatus, deleteSeed } = useLife();
-  const router = useRouter();
   const [shaping, setShaping] = useState<Seed | null>(null);
   const [confirming, setConfirming] = useState<Seed | null>(null);
   const [editing, setEditing] = useState<Seed | null>(null);
@@ -164,7 +183,7 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
     const item = addItem({ title, richBody, kind: "note", tracker: "none" });
     if (item) {
       plantSeed(seed, item);
-      router.push(`/notes/${item.id}`);
+      setJustOrganized({ label: "Notes", href: `/notes/${item.id}`, seedId: seed.id, itemId: item.id });
     }
   };
 
@@ -210,7 +229,10 @@ function SeedInbox({ seeds }: { seeds: Seed[] }) {
         onClose={() => setShaping(null)}
         initial={shaping?.text.replace(/^quote:\s*/i, "") ?? ""}
         onCreated={(item) => {
-          if (shaping) plantSeed(shaping, item);
+          if (!shaping) return;
+          plantSeed(shaping, item);
+          const { label, href } = destinationFor(item.kind);
+          setJustOrganized({ label, href, seedId: shaping.id, itemId: item.id });
         }}
       />
 

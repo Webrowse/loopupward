@@ -39,6 +39,7 @@ interface LifeContextValue {
   setSeedStatus: (id: string, status: SeedStatus) => void;
   deleteSeed: (id: string) => void;
   plantSeed: (seed: Seed, item: Item) => void;
+  unplantSeed: (seedId: string, itemId: string) => void;
 
   saveJournal: (date: string, patch: Partial<Omit<JournalEntry, "id" | "date" | "createdAt" | "updatedAt">>) => void;
 
@@ -259,6 +260,15 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     upsertRows("items", [item]);
     upsertRows("seeds", [{ ...seed, itemId: item.id, archivedAt: Date.now(), status: "archived" }]);
   }, [upsertRows]);
+
+  /** Undo for plantSeed: removes the item it created and brings the seed
+   *  back to the inbox exactly as it was, for the "undo" on the moved
+   *  notice shown right after organizing a seed. */
+  const unplantSeed = useCallback((seedId: string, itemId: string) => {
+    const seed = db.seeds.find((s) => s.id === seedId);
+    if (seed) upsertRows("seeds", [{ ...seed, itemId: null, archivedAt: null, status: "inbox" }]);
+    removeRows("items", [itemId]);
+  }, [db.seeds, upsertRows, removeRows]);
 
   /* ————— daily journal ————— */
   const saveJournal = useCallback((date: string, patch: Partial<Omit<JournalEntry, "id" | "date" | "createdAt" | "updatedAt">>) => {
@@ -548,7 +558,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     syncError, dismissSyncError,
     theme, setTheme,
     font, setFont,
-    addSeed, updateSeed, setSeedStatus, deleteSeed, plantSeed,
+    addSeed, updateSeed, setSeedStatus, deleteSeed, plantSeed, unplantSeed,
     saveJournal,
     addLabel, updateLabel, deleteLabel,
     addArea, updateArea, deleteArea,

@@ -15,7 +15,7 @@ import {
 } from "@/lib/dates";
 import { AREA_COLORS, areaColor } from "@/lib/palette";
 import { Bar } from "./progress";
-import { Button, Chip, EmptyState, Field, Sheet, inputCls } from "./ui";
+import { Button, Chip, EmptyState, Field, MovedNotice, Sheet, inputCls } from "./ui";
 
 /* ————— Item card ————— */
 
@@ -85,13 +85,36 @@ export function ItemCard({ item, hideLabelIds }: { item: Item; hideLabelIds?: st
 /* ————— Horizon lists: "this week / month / quarter / year" ————— */
 
 export function HorizonList({ period, anchor }: { period: Period; anchor: string }) {
-  const { db } = useLife();
+  const { db, updateItem } = useLife();
   const [adding, setAdding] = useState(false);
+  const [justMoved, setJustMoved] = useState<{ title: string; undo: () => void } | null>(null);
   const entries = useMemo(() => horizonEntries(db, period, anchor), [db, period, anchor]);
   const label = HORIZON_META.find((h) => h.value === period)?.label ?? period;
 
+  // moving something to Today drops it out of this list — a schedule left
+  // over from before (e.g. a "monthly" cadence already satisfied this
+  // month) would otherwise silently keep it from ever showing up there, so
+  // this clears it too. Capture the old values so Undo can restore them.
+  const moveToToday = (item: Item) => {
+    const before = {
+      horizon: item.horizon, horizonPeriod: item.horizonPeriod,
+      cadence: item.cadence, cadenceDays: item.cadenceDays, cadenceCount: item.cadenceCount,
+    };
+    updateItem(item.id, { horizon: "today", horizonPeriod: null, cadence: null, cadenceDays: null, cadenceCount: null });
+    setJustMoved({ title: item.title, undo: () => { updateItem(item.id, before); setJustMoved(null); } });
+  };
+
   return (
     <div>
+      {justMoved && (
+        <MovedNotice
+          message={`Moved "${justMoved.title}" to Today.`}
+          href="/today"
+          hrefLabel="View Today"
+          onUndo={justMoved.undo}
+          onDismiss={() => setJustMoved(null)}
+        />
+      )}
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-ink-2">
           {entries.length === 0 ? `Nothing planned for ${label.toLowerCase()}` : `${entries.length} for ${label.toLowerCase()}`}
@@ -108,7 +131,7 @@ export function HorizonList({ period, anchor }: { period: Period; anchor: string
       ) : (
         <div className="space-y-2">
           {entries.map((item) => (
-            <HorizonRow key={item.id} item={item} />
+            <HorizonRow key={item.id} item={item} onMoveToday={moveToToday} />
           ))}
         </div>
       )}
@@ -123,8 +146,8 @@ export function HorizonList({ period, anchor }: { period: Period; anchor: string
   );
 }
 
-function HorizonRow({ item }: { item: Item }) {
-  const { db, theme, completeItem, reopenItem, updateItem } = useLife();
+function HorizonRow({ item, onMoveToday }: { item: Item; onMoveToday: (item: Item) => void }) {
+  const { db, theme, completeItem, reopenItem } = useLife();
   const progress = itemProgress(db, item);
   const kids = childrenOf(db, item.id);
   const area = db.areas.find((a) => a.id === item.areaId);
@@ -166,7 +189,7 @@ function HorizonRow({ item }: { item: Item }) {
       </Link>
       {!done && (
         <button
-          onClick={() => updateItem(item.id, { horizon: "today", horizonPeriod: null })}
+          onClick={() => onMoveToday(item)}
           className="pressable shrink-0 text-xs font-medium text-accent-deep"
         >
           → Today
