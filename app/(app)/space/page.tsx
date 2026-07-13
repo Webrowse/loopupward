@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useLife } from "@/lib/data/provider";
-import { ItemKind, KIND_META, SPACE_KINDS } from "@/lib/types";
+import { Item, ItemKind, KIND_META, SPACE_KINDS } from "@/lib/types";
 import { Button, Chip, EmptyState } from "@/components/ui";
 import { ItemSheet } from "@/components/items";
 
@@ -21,6 +21,7 @@ export default function SpacePage() {
   const { db, deleteItem } = useLife();
   const [filter, setFilter] = useState<ItemKind | "all">("all");
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Item | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const entries = useMemo(
@@ -98,12 +99,14 @@ export default function SpacePage() {
                     </button>
                   </span>
                 ) : (
-                  <button
-                    onClick={() => setConfirmingId(e.id)}
-                    className="touch-visible opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:text-danger"
-                  >
-                    remove
-                  </button>
+                  <span className="touch-visible flex items-center gap-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                    <button onClick={() => setEditing(e)} className="hover:text-ink-2">
+                      edit
+                    </button>
+                    <button onClick={() => setConfirmingId(e.id)} className="hover:text-danger">
+                      remove
+                    </button>
+                  </span>
                 )}
               </div>
             </div>
@@ -112,6 +115,7 @@ export default function SpacePage() {
       )}
 
       <ItemSheet open={adding} onClose={() => setAdding(false)} />
+      <ItemSheet open={editing !== null} onClose={() => setEditing(null)} editing={editing} />
     </div>
   );
 }
