@@ -24,15 +24,20 @@ export default function LifePage() {
   // quotes/principles/promises/etc already have a home in Quiet Space,
   // and notes/folders already have a home in Notes — neither needs to
   // also hang loose in "not filed anywhere" here
-  const unfiled = db.items.filter(
-    (i) =>
-      !i.areaId &&
-      !i.parentId &&
-      i.status === "active" &&
-      !SPACE_KINDS.includes(i.kind) &&
-      i.kind !== "note" &&
-      i.kind !== "folder"
-  );
+  const unfiled = db.items
+    .filter(
+      (i) =>
+        !i.areaId &&
+        !i.parentId &&
+        (i.status === "active" || i.status === "done") &&
+        !SPACE_KINDS.includes(i.kind) &&
+        i.kind !== "note" &&
+        i.kind !== "folder"
+    )
+    // marking something done here shouldn't make it vanish — every other
+    // list (Today, Week, Month, Quarter, Year) keeps completed items
+    // visible, just struck through, instead of hiding them outright
+    .sort((a, b) => (a.status === "done" ? 1 : 0) - (b.status === "done" ? 1 : 0));
 
   const closeAdding = () => {
     setAdding(false);
@@ -96,7 +101,9 @@ export default function LifePage() {
               <Link
                 key={i.id}
                 href={`/item/${i.id}`}
-                className="block rounded-xl border border-line-soft bg-surface px-4 py-2.5 text-[0.95rem] text-ink shadow-(--shadow-card)"
+                className={`block rounded-xl border border-line-soft bg-surface px-4 py-2.5 text-[0.95rem] shadow-(--shadow-card) ${
+                  i.status === "done" ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"
+                }`}
               >
                 {i.title}
               </Link>
