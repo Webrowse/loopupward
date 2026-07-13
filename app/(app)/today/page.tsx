@@ -69,6 +69,7 @@ function Today() {
   const [focusingId, setFocusingId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [hideDone, setHideDone] = useState(false);
   // each period tab remembers its own place for smooth in-session switching;
   // only the currently active one also needs to live in the URL
   const [anchors, setAnchors] = useState<Record<Period, string>>({
@@ -244,6 +245,13 @@ function Today() {
                             >
                               Custom order (drag)
                             </button>
+                            <button
+                              onClick={() => setHideDone((v) => !v)}
+                              className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-sm text-ink hover:bg-surface-2 border-t border-line-soft"
+                            >
+                              Hide completed
+                              {hideDone && <span className="text-accent-deep">✓</span>}
+                            </button>
                           </div>
                         </>
                       )}
@@ -266,11 +274,13 @@ function Today() {
                 Browse your life →
               </Link>
             </EmptyState>
+          ) : hideDone && done === total ? (
+            <EmptyState emoji="✓" title="Everything's done" body="Turn off &ldquo;Hide completed&rdquo; in Sort to see it all again." />
           ) : (
             <TaskList
               day={day}
               reordering={reordering}
-              rows={entries.map((e) => ({
+              rows={(hideDone ? entries.filter((e) => !e.action.done) : entries).map((e) => ({
                 entry: e,
                 onToggle: () => toggleEntry(e, day),
                 onDelete: e.virtualHabit || e.virtualItemTask ? undefined : () => deleteAction(e.action.id),

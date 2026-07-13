@@ -87,8 +87,10 @@ export function ItemCard({ item, hideLabelIds }: { item: Item; hideLabelIds?: st
 export function HorizonList({ period, anchor }: { period: Period; anchor: string }) {
   const { db, updateItem } = useLife();
   const [adding, setAdding] = useState(false);
+  const [hideDone, setHideDone] = useState(false);
   const [justMoved, setJustMoved] = useState<{ title: string; undo: () => void } | null>(null);
   const entries = useMemo(() => horizonEntries(db, period, anchor), [db, period, anchor]);
+  const visible = hideDone ? entries.filter((i) => i.status !== "done") : entries;
   const label = HORIZON_META.find((h) => h.value === period)?.label ?? period;
 
   // moving something to Today drops it out of this list — a schedule left
@@ -119,7 +121,17 @@ export function HorizonList({ period, anchor }: { period: Period; anchor: string
         <p className="text-sm text-ink-2">
           {entries.length === 0 ? `Nothing planned for ${label.toLowerCase()}` : `${entries.length} for ${label.toLowerCase()}`}
         </p>
-        <Button small variant="ghost" onClick={() => setAdding(true)}>+ Add</Button>
+        <div className="flex items-center gap-3">
+          {entries.some((i) => i.status === "done") && (
+            <button
+              onClick={() => setHideDone((v) => !v)}
+              className="pressable text-xs font-medium text-ink-3 hover:text-ink-2"
+            >
+              {hideDone ? "Show completed" : "Hide completed"}
+            </button>
+          )}
+          <Button small variant="ghost" onClick={() => setAdding(true)}>+ Add</Button>
+        </div>
       </div>
 
       {entries.length === 0 ? (
@@ -128,9 +140,11 @@ export function HorizonList({ period, anchor }: { period: Period; anchor: string
           title={`Nothing tagged "${label}"`}
           body={`Add something here, or open any goal and set its planning horizon to ${label.toLowerCase()}.`}
         />
+      ) : visible.length === 0 ? (
+        <EmptyState emoji="✓" title="Everything's done" body="Show completed to see it all again." />
       ) : (
         <div className="space-y-2">
-          {entries.map((item) => (
+          {visible.map((item) => (
             <HorizonRow key={item.id} item={item} onMoveToday={moveToToday} />
           ))}
         </div>
