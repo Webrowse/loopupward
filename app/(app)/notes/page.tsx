@@ -3,10 +3,12 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useLife } from "@/lib/data/provider";
+import { Item } from "@/lib/types";
 import { children as childrenOf } from "@/lib/progress";
 import { deriveNoteFields, NOTE_HEADING_MAX } from "@/components/items";
 import { RichTextEditor } from "@/components/richtext";
 import { Button, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
+import { NoteMoveSheet } from "./[id]/page";
 
 function preview(html: string | null): string {
   if (!html) return "";
@@ -14,7 +16,7 @@ function preview(html: string | null): string {
 }
 
 export default function NotesRootPage() {
-  const { db, addItem } = useLife();
+  const { db, addItem, deleteItem } = useLife();
   const [addingFolder, setAddingFolder] = useState(false);
   const [addingNote, setAddingNote] = useState(false);
   const [folderName, setFolderName] = useState("");
@@ -24,6 +26,23 @@ export default function NotesRootPage() {
   const [noteTitleError, setNoteTitleError] = useState(false);
   const folderNameRef = useRef<HTMLInputElement>(null);
   const noteTitleRef = useRef<HTMLInputElement>(null);
+
+  // Keep-style selection: as soon as one note is checked, tapping any other
+  // note toggles it too instead of opening it — no separate "select mode"
+  // toggle needed
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [movingItem, setMovingItem] = useState<Item | null>(null);
+  const [menuForId, setMenuForId] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<string[] | null>(null);
+
+  const toggleSelected = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const folders = db.items
     .filter((i) => i.kind === "folder" && i.status === "active")
@@ -79,14 +98,28 @@ export default function NotesRootPage() {
   return (
     <div className="rise-in lg:max-w-3xl">
       <header className="pt-6 pb-6 flex items-end justify-between gap-2">
-        <div>
-          <p className="text-sm text-ink-3">Capture, then sort later</p>
-          <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">Notes</h1>
-        </div>
-        <div className="flex gap-2">
-          <Button small variant="ghost" onClick={() => setAddingFolder(true)}>+ Folder</Button>
-          <Button small variant="soft" onClick={() => setAddingNote(true)}>+ Note</Button>
-        </div>
+        {selected.size > 0 ? (
+          <>
+            <p className="text-sm font-medium text-ink">{selected.size} selected</p>
+            <div className="flex gap-2">
+              <Button small variant="ghost" onClick={() => setSelected(new Set())}>Cancel</Button>
+              <Button small variant="danger" onClick={() => setConfirmingDelete([...selected])}>
+                Delete
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <p className="text-sm text-ink-3">Capture, then sort later</p>
+              <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">Notes</h1>
+            </div>
+            <div className="flex gap-2">
+              <Button small variant="ghost" onClick={() => setAddingFolder(true)}>+ Folder</Button>
+              <Button small variant="soft" onClick={() => setAddingNote(true)}>+ Note</Button>
+            </div>
+          </>
+        )}
       </header>
 
       {folders.length > 0 && (
@@ -121,18 +154,75 @@ export default function NotesRootPage() {
         <p className="text-sm text-ink-3">No loose notes right now. They&rsquo;ll show up here.</p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {freeNotes.map((n) => (
-            <Link
-              key={n.id}
-              href={`/notes/${n.id}`}
-              className="pressable flex flex-col rounded-(--radius-card) border border-line-soft bg-surface p-3.5 shadow-(--shadow-card) min-h-28"
-            >
-              <span className="min-w-0 truncate text-[0.95rem] font-medium text-ink">{n.title}</span>
-              {preview(n.richBody) && (
-                <span className="mt-1 text-xs text-ink-3 leading-relaxed line-clamp-4">{preview(n.richBody)}</span>
-              )}
-            </Link>
-          ))}
+          {freeNotes.map((n) => {
+            const isSelected = selected.has(n.id);
+            return (
+              <Link
+                key={n.id}
+                href={`/notes/${n.id}`}
+                onClick={(e) => {
+                  if (selected.size > 0) {
+                    e.preventDefault();
+                    toggleSelected(n.id);
+                  }
+                }}
+                className="pressable group relative flex flex-col rounded-(--radius-card) border border-line-soft bg-surface p-3.5 pt-7 shadow-(--shadow-card) min-h-28"
+              >
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleSelected(n.id); }}
+                  aria-label={isSelected ? "Deselect note" : "Select note"}
+                  className={`touch-visible absolute left-2 top-2 z-10 grid h-5 w-5 place-items-center rounded-full border-2 transition-colors ${
+                    isSelected
+                      ? "border-accent bg-accent text-white dark:text-[#10160f]"
+                      : "border-line bg-surface opacity-0 group-hover:opacity-100"
+                  }`}
+                >
+                  {isSelected && (
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </button>
+                {selected.size === 0 && (
+                  <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuForId(menuForId === n.id ? null : n.id); }}
+                    aria-label="More actions"
+                    className="touch-visible absolute right-1.5 top-1.5 z-10 grid h-6 w-6 place-items-center rounded-full text-ink-3 opacity-0 group-hover:opacity-100 hover:bg-surface-2 hover:text-ink-2"
+                  >
+                    ⋮
+                  </button>
+                )}
+                {menuForId === n.id && (
+                  <>
+                    <button
+                      aria-hidden
+                      tabIndex={-1}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuForId(null); }}
+                      className="fixed inset-0 z-20 cursor-default"
+                    />
+                    <div className="absolute right-1.5 top-8 z-30 w-40 overflow-hidden rounded-xl border border-line-soft bg-surface shadow-(--shadow-float)">
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMovingItem(n); setMenuForId(null); }}
+                        className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-surface-2"
+                      >
+                        Move to folder
+                      </button>
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmingDelete([n.id]); setMenuForId(null); }}
+                        className="block w-full px-3.5 py-2.5 text-left text-sm text-danger hover:bg-surface-2"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+                <span className="min-w-0 truncate text-[0.95rem] font-medium text-ink">{n.title}</span>
+                {preview(n.richBody) && (
+                  <span className="mt-1 text-xs text-ink-3 leading-relaxed line-clamp-4">{preview(n.richBody)}</span>
+                )}
+              </Link>
+            );
+          })}
         </div>
       )}
 
@@ -184,6 +274,32 @@ export default function NotesRootPage() {
         </Field>
         <p className="text-xs text-ink-3">
           It stays loose here until you drop it into a folder, or never do.
+        </p>
+      </Sheet>
+
+      {movingItem && <NoteMoveSheet open onClose={() => setMovingItem(null)} item={movingItem} />}
+
+      <Sheet
+        open={confirmingDelete !== null}
+        onClose={() => setConfirmingDelete(null)}
+        title="Let this go?"
+        cancelLabel="Keep"
+        primary={{
+          label: "Delete",
+          danger: true,
+          onClick: () => {
+            if (confirmingDelete) {
+              for (const id of confirmingDelete) deleteItem(id);
+              setSelected(new Set());
+            }
+            setConfirmingDelete(null);
+          },
+        }}
+      >
+        <p className="text-sm text-ink-2">
+          {confirmingDelete && confirmingDelete.length > 1
+            ? `${confirmingDelete.length} notes will be removed.`
+            : "This note will be removed."}
         </p>
       </Sheet>
     </div>

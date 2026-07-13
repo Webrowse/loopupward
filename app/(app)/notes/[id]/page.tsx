@@ -298,7 +298,7 @@ function NewChildSheet({
   );
 }
 
-function NoteMoveSheet({ open, onClose, item }: { open: boolean; onClose: () => void; item: Item }) {
+export function NoteMoveSheet({ open, onClose, item }: { open: boolean; onClose: () => void; item: Item }) {
   const { db, moveItem, addItem } = useLife();
   const [newFolderName, setNewFolderName] = useState("");
   const [creating, setCreating] = useState(false);
