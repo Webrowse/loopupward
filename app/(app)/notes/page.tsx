@@ -6,14 +6,11 @@ import { useLife } from "@/lib/data/provider";
 import { Item } from "@/lib/types";
 import { children as childrenOf } from "@/lib/progress";
 import { deriveNoteFields, NOTE_HEADING_MAX } from "@/components/items";
-import { RichTextEditor } from "@/components/richtext";
+import { MarkdownEditor, noteSnippet } from "@/components/markdown";
 import { Button, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 import { NoteMoveSheet } from "./[id]/page";
 
-function preview(html: string | null): string {
-  if (!html) return "";
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
+const preview = noteSnippet;
 
 export default function NotesRootPage() {
   const { db, addItem, deleteItem, moveItem } = useLife();
@@ -36,22 +33,90 @@ export default function NotesRootPage() {
   const [confirmingDelete, setConfirmingDelete] = useState<string[] | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  // Drag a note card onto a folder chip to file it there.
+  // Drag a note card onto a folder chip to file it there. Mouse drags use
+  // the browser's native drag-and-drop; fingers get a long-press drag below,
+  // because HTML5 drag events simply never fire on touch screens.
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
 
-  // Close the 3-dot menu on any outside click. A `fixed inset-0` overlay
+  // touch drag: hold a card ~a third of a second (without moving, so scrolls
+  // stay scrolls), then slide it onto a folder chip
+  const touchDrag = useRef<{ id: string; started: boolean; startX: number; startY: number; timer: number } | null>(null);
+  const [touchGhost, setTouchGhost] = useState<{ title: string; x: number; y: number } | null>(null);
+
+  // while a touch drag is live, the finger must move the card, not the page
+  useEffect(() => {
+    if (!touchGhost) return;
+    const stop = (e: TouchEvent) => e.preventDefault();
+    document.addEventListener("touchmove", stop, { passive: false });
+    return () => document.removeEventListener("touchmove", stop);
+  }, [touchGhost]);
+
+  const folderUnderPoint = (x: number, y: number): string | null => {
+    const el = document.elementFromPoint(x, y);
+    return el?.closest?.("[data-folder-id]")?.getAttribute("data-folder-id") ?? null;
+  };
+
+  const beginTouchDrag = (e: React.PointerEvent, n: Item) => {
+    if (e.pointerType === "mouse" || selected.size > 0) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const timer = window.setTimeout(() => {
+      const d = touchDrag.current;
+      if (d && d.id === n.id) {
+        d.started = true;
+        setTouchGhost({ title: n.title, x: startX, y: startY });
+        navigator.vibrate?.(10);
+      }
+    }, 350);
+    touchDrag.current = { id: n.id, started: false, startX, startY, timer };
+  };
+
+  const moveTouchDrag = (e: React.PointerEvent, n: Item) => {
+    const d = touchDrag.current;
+    if (!d || d.id !== n.id) return;
+    if (!d.started) {
+      // moved before the hold completed: this is a scroll, not a drag
+      if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 10) {
+        clearTimeout(d.timer);
+        touchDrag.current = null;
+      }
+      return;
+    }
+    setTouchGhost({ title: n.title, x: e.clientX, y: e.clientY });
+    setDragOverFolder(folderUnderPoint(e.clientX, e.clientY));
+  };
+
+  /** Ends a touch drag. Returns true when a real drag happened, so the
+   *  card's click (it's a link) must be swallowed instead of navigating. */
+  const endTouchDrag = (e: React.PointerEvent): boolean => {
+    const d = touchDrag.current;
+    touchDrag.current = null;
+    if (!d) return false;
+    clearTimeout(d.timer);
+    if (!d.started) return false;
+    const target = folderUnderPoint(e.clientX, e.clientY);
+    if (target) moveItem(d.id, { parentId: target });
+    setDragOverFolder(null);
+    setTouchGhost(null);
+    return true;
+  };
+  const suppressClick = useRef(false);
+
+  // Close the 3-dot menu on any outside press. A `fixed inset-0` overlay
   // button doesn't work here: the note card's `.pressable:active` transform
   // makes the card a CSS containing block for its fixed children mid-click,
   // shrinking the overlay's hit area to just the card's own box.
+  // pointerdown, not mousedown: a finger on a phone fires pointer events
+  // reliably, while the synthesized mousedown may never come.
   useEffect(() => {
     if (!menuForId) return;
-    const handler = (e: MouseEvent) => {
+    const handler = (e: PointerEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuForId(null);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("pointerdown", handler);
+    return () => document.removeEventListener("pointerdown", handler);
   }, [menuForId]);
 
   const toggleSelected = (id: string) => {
@@ -106,7 +171,7 @@ export default function NotesRootPage() {
     // short title stays untouched — it's not also duplicated into the body.
     if (trimmedTitle.length > NOTE_HEADING_MAX || trimmedTitle.includes("\n")) {
       const split = deriveNoteFields(trimmedTitle);
-      const richBody = noteBody ? `${split.richBody}<br>${noteBody}` : split.richBody;
+      const richBody = noteBody ? `${split.richBody}\n\n${noteBody}` : split.richBody;
       addItem({ title: split.title, richBody, kind: "note", tracker: "none" });
     } else {
       addItem({ title: trimmedTitle, richBody: noteBody, kind: "note", tracker: "none" });
@@ -157,6 +222,7 @@ export default function NotesRootPage() {
                 <Link
                   key={f.id}
                   href={`/notes/${f.id}`}
+                  data-folder-id={f.id}
                   onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverFolder(f.id); }}
                   onDragLeave={() => setDragOverFolder((cur) => (cur === f.id ? null : cur))}
                   onDrop={(e) => {
@@ -197,6 +263,12 @@ export default function NotesRootPage() {
                 key={n.id}
                 href={`/notes/${n.id}`}
                 onClick={(e) => {
+                  if (suppressClick.current) {
+                    // this "click" is the tail of a finished touch drag
+                    suppressClick.current = false;
+                    e.preventDefault();
+                    return;
+                  }
                   if (selected.size > 0) {
                     e.preventDefault();
                     toggleSelected(n.id);
@@ -204,7 +276,17 @@ export default function NotesRootPage() {
                 }}
                 draggable={selected.size === 0}
                 onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", n.id); }}
-                className="pressable group relative flex flex-col rounded-(--radius-card) border border-line-soft bg-surface p-3.5 pt-7 shadow-(--shadow-card) min-h-28"
+                onPointerDown={(e) => beginTouchDrag(e, n)}
+                onPointerMove={(e) => moveTouchDrag(e, n)}
+                onPointerUp={(e) => { if (endTouchDrag(e)) suppressClick.current = true; }}
+                onPointerCancel={() => {
+                  if (touchDrag.current) clearTimeout(touchDrag.current.timer);
+                  touchDrag.current = null;
+                  setTouchGhost(null);
+                  setDragOverFolder(null);
+                }}
+                onContextMenu={(e) => { if (touchDrag.current || touchGhost) e.preventDefault(); }}
+                className="pressable group relative flex select-none flex-col rounded-(--radius-card) border border-line-soft bg-surface p-3.5 pt-7 shadow-(--shadow-card) min-h-28"
               >
                 <button
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleSelected(n.id); }}
@@ -302,12 +384,22 @@ export default function NotesRootPage() {
           )}
         </Field>
         <Field label="Note">
-          <RichTextEditor value={noteBody} onChange={setNoteBody} placeholder="Write it all here…" minHeightClass="min-h-40" />
+          <MarkdownEditor value={noteBody} onChange={setNoteBody} placeholder="Write it all here…" minHeightClass="min-h-40" />
         </Field>
         <p className="text-xs text-ink-3">
           It stays loose here until you drop it into a folder, or never do.
         </p>
       </Sheet>
+
+      {/* the card in flight during a touch drag */}
+      {touchGhost && (
+        <div
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full rounded-xl border border-accent bg-surface px-3.5 py-2 text-sm font-medium text-ink shadow-(--shadow-float)"
+          style={{ left: touchGhost.x, top: touchGhost.y - 12 }}
+        >
+          🗒 {touchGhost.title}
+        </div>
+      )}
 
       {movingItems && (
         <NoteMoveSheet

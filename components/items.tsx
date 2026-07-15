@@ -556,24 +556,20 @@ const isPeriodHorizon = (h: Horizon): h is Period => (PERIOD_HORIZONS as string[
 
 export const NOTE_HEADING_MAX = 60;
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
 /** Organizing a seed into a note should keep the whole captured thought as
  *  the note's content — a long capture shouldn't get jammed whole into a
  *  single-line title and cut off. The full text always lands in the body,
  *  even a short one (so it's never "only in the heading"); the heading is
  *  just a short label pulled from the start, identical to the body when
- *  the thought was already short enough to need no trimming. */
+ *  the thought was already short enough to need no trimming. Note bodies
+ *  are markdown now, so the captured text goes in verbatim. */
 export function deriveNoteFields(text: string): { title: string; richBody: string } {
   const trimmed = text.trim();
   const firstLine = trimmed.split("\n")[0].trim();
   const heading = firstLine.length > NOTE_HEADING_MAX
     ? `${firstLine.slice(0, NOTE_HEADING_MAX).replace(/\s+\S*$/, "").trim()}…`
     : firstLine;
-  const richBody = trimmed.split("\n").map(escapeHtml).join("<br>");
-  return { title: heading || "Untitled note", richBody };
+  return { title: heading || "Untitled note", richBody: trimmed };
 }
 
 export function ItemSheet({

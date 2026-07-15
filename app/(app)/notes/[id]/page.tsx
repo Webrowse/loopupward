@@ -7,7 +7,7 @@ import { useLife } from "@/lib/data/provider";
 import { destinationFor, Item } from "@/lib/types";
 import { children as childrenOf } from "@/lib/progress";
 import { ItemSheet } from "@/components/items";
-import { RichTextEditor } from "@/components/richtext";
+import { htmlToMd, isLegacyHtml, MarkdownEditor, noteSnippet } from "@/components/markdown";
 import { BackLink, Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
 export default function NotePage() {
@@ -133,8 +133,18 @@ function NotePageBody({ item }: { item: Item }) {
   const { db, updateItem, deleteItem } = useLife();
   const router = useRouter();
 
+  // notes from the old rich-text editor hold HTML — convert to markdown so
+  // it's editable here; the store is only rewritten on the next save. This
+  // component never server-renders (data loads client-side), so the DOM
+  // parser behind htmlToMd is always available.
+  const editableBody = (i: Item) =>
+    isLegacyHtml(i.richBody) ? htmlToMd(i.richBody ?? "") : i.richBody ?? "";
+
   const [title, setTitle] = useState(item.title);
-  const [richBody, setRichBody] = useState(item.richBody ?? "");
+  const [richBody, setRichBody] = useState(() => editableBody(item));
+  // what "unchanged" means for the dirty check — differs from item.richBody
+  // while a converted legacy note hasn't been saved yet
+  const [baseline, setBaseline] = useState(richBody);
   const [justSaved, setJustSaved] = useState(false);
   const [moving, setMoving] = useState(false);
   const [organizing, setOrganizing] = useState(false);
@@ -145,19 +155,22 @@ function NotePageBody({ item }: { item: Item }) {
   if (item.id !== lastId) {
     setLastId(item.id);
     setTitle(item.title);
-    setRichBody(item.richBody ?? "");
+    const body = editableBody(item);
+    setRichBody(body);
+    setBaseline(body);
     setJustSaved(false);
   }
 
   const folder = item.parentId ? db.items.find((i) => i.id === item.parentId) : null;
-  const dirty = title !== item.title || richBody !== (item.richBody ?? "");
+  const dirty = title !== item.title || richBody !== baseline;
 
   const save = () => {
     if (!dirty) return;
     updateItem(item.id, {
       ...(title.trim() && title !== item.title ? { title: title.trim() } : {}),
-      ...(richBody !== (item.richBody ?? "") ? { richBody } : {}),
+      ...(richBody !== baseline ? { richBody } : {}),
     });
+    setBaseline(richBody);
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 1800);
   };
@@ -192,7 +205,7 @@ function NotePageBody({ item }: { item: Item }) {
       </div>
 
       <div className="mt-4">
-        <RichTextEditor
+        <MarkdownEditor
           value={richBody}
           onChange={setRichBody}
           placeholder="Write whatever this note needs to hold…"
@@ -250,10 +263,7 @@ function NotePageBody({ item }: { item: Item }) {
   );
 }
 
-function preview(html: string | null | undefined): string {
-  if (!html) return "";
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
+const preview = noteSnippet;
 
 function NewChildSheet({
   open, onClose, parentId, areaId,
