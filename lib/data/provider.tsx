@@ -15,7 +15,7 @@ import { LocalRepo, clearLocalDB, localHasData, readLocalDB } from "./local";
 import { Repo } from "./repo";
 import { today } from "../dates";
 import { TodayEntry } from "../progress";
-import { FREE_LIMITS } from "../limits";
+import { FREE_LIMITS, PREMIUM_TRASH_DAYS } from "../limits";
 import { DEFAULT_FONT, FontId, isFontId } from "../fonts";
 
 interface LifeContextValue {
@@ -54,7 +54,14 @@ interface LifeContextValue {
   addItem: (partial: Partial<Item> & { title: string }) => Item | null;
   updateItem: (id: string, patch: Partial<Item>) => void;
   moveItem: (id: string, dest: { areaId?: string | null; parentId?: string | null }) => void;
+  /** moves the item to Trash rather than destroying it outright */
   deleteItem: (id: string) => void;
+  /** items currently in Trash, most recently deleted first */
+  trashedItems: Item[];
+  /** brings a trashed item back to where it can be seen again */
+  restoreItem: (id: string) => void;
+  /** destroys a trashed item for good, ahead of its retention window */
+  purgeItem: (id: string) => void;
   completeItem: (id: string) => void;
   reopenItem: (id: string) => void;
   setTracker: (item: Item, value: number) => void;
@@ -221,12 +228,20 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   const premium = user?.premium ?? false;
   const owner = user?.role === "owner";
   const limits = useMemo(() => {
-    const activeItems = db.items.filter((i) => i.status === "active").length;
+    const activeItems = db.items.filter((i) => i.status === "active" && !i.deletedAt).length;
     return {
       canAddArea: premium || db.areas.length < FREE_LIMITS.areas,
       canAddItem: premium || activeItems < FREE_LIMITS.activeItems,
     };
   }, [db, premium]);
+
+  // trashed items are kept around (for restore/the retention sweep) but
+  // hidden from every normal view — filtered once here rather than at each
+  // of the many call sites that read db.items directly
+  const visibleDb = useMemo(
+    () => ({ ...db, items: db.items.filter((i) => !i.deletedAt) }),
+    [db]
+  );
 
   /* ————— seeds ————— */
   const addSeed = useCallback((text: string): Seed => {
@@ -338,7 +353,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       richBody: null,
       status: "active", cadence: null, cadenceDays: null, cadenceCount: null,
       labels: [], pinned: false,
-      position: db.items.length, createdAt: Date.now(), completedAt: null,
+      position: db.items.length, createdAt: Date.now(), completedAt: null, deletedAt: null,
       ...partial,
       title: partial.title.trim(),
     };
@@ -360,12 +375,35 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       .filter((i) => i.parentId === id)
       .map((i) => ({ ...i, parentId: item.parentId, areaId: i.areaId ?? item.areaId }));
     if (kids.length) upsertRows("items", kids);
+    // actions/logs don't carry their own trash UX, so they're cleared now,
+    // same as before this item could be recovered
     const actionIds = db.actions.filter((a) => a.itemId === id).map((a) => a.id);
     if (actionIds.length) removeRows("actions", actionIds);
     const logIds = db.logs.filter((l) => l.itemId === id).map((l) => l.id);
     if (logIds.length) removeRows("logs", logIds);
-    removeRows("items", [id]);
+    upsertRows("items", [{ ...item, deletedAt: Date.now() }]);
   }, [db, upsertRows, removeRows]);
+
+  const trashedItems = useMemo(
+    () => db.items.filter((i) => i.deletedAt).sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)),
+    [db.items]
+  );
+
+  const restoreItem = useCallback((id: string) => {
+    const item = db.items.find((i) => i.id === id);
+    if (item) upsertRows("items", [{ ...item, deletedAt: null }]);
+  }, [db.items, upsertRows]);
+
+  const purgeItem = useCallback((id: string) => removeRows("items", [id]), [removeRows]);
+
+  // Trash empties itself after the retention window — no server cron needed,
+  // this just sweeps whatever's overdue whenever the item list changes.
+  useEffect(() => {
+    const retentionDays = premium ? PREMIUM_TRASH_DAYS : FREE_LIMITS.trashDays;
+    const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    const expired = db.items.filter((i) => i.deletedAt && i.deletedAt < cutoff).map((i) => i.id);
+    if (expired.length) removeRows("items", expired);
+  }, [db.items, premium, removeRows]);
 
   /** Reorganize the life tree: change area and/or parent. Guards against cycles. */
   const moveItem = useCallback((id: string, dest: { areaId?: string | null; parentId?: string | null }) => {
@@ -554,7 +592,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   const dismissSyncError = useCallback(() => setSyncError(null), []);
 
   const value: LifeContextValue = {
-    ready, db, mode, cloudAvailable, user, premium, owner, limits,
+    ready, db: visibleDb, mode, cloudAvailable, user, premium, owner, limits,
     syncError, dismissSyncError,
     theme, setTheme,
     font, setFont,
@@ -562,7 +600,8 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     saveJournal,
     addLabel, updateLabel, deleteLabel,
     addArea, updateArea, deleteArea,
-    addItem, updateItem, moveItem, deleteItem, completeItem, reopenItem, setTracker,
+    addItem, updateItem, moveItem, deleteItem, trashedItems, restoreItem, purgeItem,
+    completeItem, reopenItem, setTracker,
     addAction, updateAction, deleteAction, toggleEntry, toggleHabitDay, reorderDay,
     saveReflection,
     setHabitDayNote,

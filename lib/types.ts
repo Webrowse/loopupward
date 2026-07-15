@@ -107,6 +107,9 @@ export interface Item {
   position: number;
   createdAt: number;
   completedAt: number | null;
+  /** set when moved to trash; item is hidden from normal views but kept
+   *  around for recovery until the retention window purges it for good. */
+  deletedAt: number | null;
 }
 
 /** A quick capture. Personal thoughts never vanish silently:

@@ -65,6 +65,9 @@ pub struct Item {
     pub position: i32,
     pub created_at: i64,
     pub completed_at: Option<i64>,
+    /// set when moved to Trash; retention/purge is enforced client-side
+    #[serde(default)]
+    pub deleted_at: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -420,8 +423,8 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
         sqlx::query(
             "insert into items (id, user_id, area_id, parent_id, kind, tracker, title, note,
                target, current, unit, horizon, horizon_period, date_repeats_yearly, rich_body, status, cadence,
-               cadence_days, cadence_count, labels, pinned, position, created_at_ms, completed_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+               cadence_days, cadence_count, labels, pinned, position, created_at_ms, completed_at_ms, deleted_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
              on conflict (id) do update set
                area_id = excluded.area_id, parent_id = excluded.parent_id,
                kind = excluded.kind, tracker = excluded.tracker, title = excluded.title,
@@ -433,7 +436,8 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
                cadence = excluded.cadence, cadence_days = excluded.cadence_days,
                cadence_count = excluded.cadence_count, labels = excluded.labels,
                pinned = excluded.pinned,
-               position = excluded.position, completed_at_ms = excluded.completed_at_ms
+               position = excluded.position, completed_at_ms = excluded.completed_at_ms,
+               deleted_at_ms = excluded.deleted_at_ms
              where items.user_id = $2",
         )
         .bind(r.id).bind(user).bind(r.area_id).bind(r.parent_id).bind(&r.kind)
@@ -442,7 +446,7 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
         .bind(&r.rich_body).bind(&r.status)
         .bind(&r.cadence)
         .bind(&r.cadence_days).bind(r.cadence_count).bind(&r.labels).bind(r.pinned)
-        .bind(r.position).bind(r.created_at).bind(r.completed_at)
+        .bind(r.position).bind(r.created_at).bind(r.completed_at).bind(r.deleted_at)
         .execute(&mut *conn)
         .await?;
     }
@@ -657,7 +661,7 @@ async fn enforce_caps(
     }
     if tables.contains(&"items") {
         let row = sqlx::query(
-            "select count(*) as n from items where user_id = $1 and status = 'active'",
+            "select count(*) as n from items where user_id = $1 and status = 'active' and deleted_at_ms is null",
         )
         .bind(user.id)
         .fetch_one(&mut *conn)
@@ -711,6 +715,7 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             cadence_count: r.get("cadence_count"), labels: r.get("labels"),
             pinned: r.get("pinned"), position: r.get("position"),
             created_at: r.get("created_at_ms"), completed_at: r.get("completed_at_ms"),
+            deleted_at: r.get("deleted_at_ms"),
         }).collect();
     let seeds = sqlx::query("select * from seeds where user_id = $1 order by created_at_ms desc")
         .bind(user).fetch_all(&state.pool).await?

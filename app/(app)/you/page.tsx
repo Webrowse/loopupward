@@ -19,7 +19,7 @@ const FONT_VARS: Record<FontId, string> = {
 export default function YouPage() {
   const {
     db, user, premium, owner, mode, cloudAvailable,
-    theme, setTheme, font, setFont, signOut, exportJSON,
+    theme, setTheme, font, setFont, signOut, exportJSON, trashedItems,
   } = useLife();
   const [exporting, setExporting] = useState(false);
 
@@ -165,6 +165,18 @@ export default function YouPage() {
             <p className="text-xs text-ink-3">Capture → organize → act → reflect</p>
           </div>
           <Link href="/guide"><Button small variant="soft">How it works</Button></Link>
+        </div>
+      </Card>
+
+      <Card className="p-5 mb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-ink">Trash</p>
+            <p className="text-xs text-ink-3">
+              {trashedItems.length > 0 ? `${trashedItems.length} deleted item${trashedItems.length === 1 ? "" : "s"}` : "Recently deleted items"}
+            </p>
+          </div>
+          <Link href="/trash"><Button small variant="soft">Open trash</Button></Link>
         </div>
       </Card>
 

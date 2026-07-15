@@ -7,7 +7,13 @@ export const FREE_LIMITS = {
   historyDays: 84, // ~12 weeks
   /** review periods available on free */
   periods: ["week", "month"] as const,
+  /** days a deleted item stays recoverable in Trash */
+  trashDays: 7,
 };
+
+/** premium keeps trashed items around longer, not forever — bounded so
+ *  storage doesn't grow without limit */
+export const PREMIUM_TRASH_DAYS = 30;
 
 export const PLANS = [
   {
