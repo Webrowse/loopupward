@@ -82,6 +82,17 @@ export function HabitIcon({ className }: { className?: string }) {
   );
 }
 
+/** A routine: a sunrise over a checklist — the daily script, run in order. */
+export function RoutineIcon({ className }: { className?: string }) {
+  return (
+    <svg {...base(className)}>
+      <path d="M8.5 9.5a3.5 3.5 0 0 1 7 0" />
+      <path d="M12 4v2M6.3 6.8l1.4 1.4M17.7 6.8l-1.4 1.4" />
+      <path d="M4.5 13h15M7 16.5h10M9.5 20h5" />
+    </svg>
+  );
+}
+
 export function ProjectIcon({ className }: { className?: string }) {
   return (
     <svg {...base(className)}>
@@ -236,6 +247,7 @@ export const KIND_ICONS: Record<ItemKind, ComponentType<{ className?: string }>>
   dream: DreamIcon,
   goal: GoalIcon,
   habit: HabitIcon,
+  routine: RoutineIcon,
   project: ProjectIcon,
   book: BookIcon,
   milestone: MilestoneIcon,

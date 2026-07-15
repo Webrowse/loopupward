@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TodayEntry } from "@/lib/progress";
+import { routineMinutes, TodayEntry } from "@/lib/progress";
 import { Chip, Field, Sheet, inputCls } from "@/components/ui";
 
 const PRESETS = [5, 10, 15, 25, 45];
@@ -83,11 +83,20 @@ export function FocusTimer({
   const [pickingNext, setPickingNext] = useState(false);
   const [wasOpen, setWasOpen] = useState(open);
 
+  // a routine knows how long it should take — the sum of its steps' minutes
+  // arrives as the suggested length instead of the generic default
+  const suggestedFor = (entryId: string | null): number => {
+    const e = entryId ? entries.find((x) => x.action.id === entryId) : null;
+    const total = e?.item && e.item.kind === "routine" ? routineMinutes(e.item) : null;
+    return total != null ? Math.max(1, Math.min(480, Math.round(total))) : 25;
+  };
+
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
       // freshly opened — pick up whichever row was tapped
       setActiveId(initialEntryId);
+      setMinutes(suggestedFor(initialEntryId));
       setPickingNext(false);
       setRunning(false);
       setFinished(false);
@@ -152,6 +161,7 @@ export function FocusTimer({
 
   const pickNext = (entry: TodayEntry) => {
     setActiveId(entry.action.id);
+    setMinutes(suggestedFor(entry.action.id));
     setPickingNext(false);
     setRunning(false);
     setFinished(false);
@@ -220,6 +230,8 @@ export function FocusTimer({
   };
 
   const { title, subtitle } = entryText(current);
+  const steps = current.item?.kind === "routine" ? current.item.steps ?? [] : [];
+  const routineTotal = current.item ? routineMinutes(current.item) : null;
 
   if (!running) {
     return (
@@ -230,6 +242,23 @@ export function FocusTimer({
         primary={{ label: "Start", onClick: start }}
       >
         <p className="text-sm text-ink-2 leading-relaxed mb-1">&ldquo;{title}&rdquo;</p>
+        {steps.length > 0 && (
+          <div className="mb-3 rounded-xl border border-line-soft bg-surface-2/50 px-3.5 py-2.5">
+            {steps.map((s, i) => (
+              <div key={s.id} className="flex items-baseline justify-between gap-3 py-0.5 text-sm">
+                <span className="min-w-0 truncate text-ink-2">{i + 1}. {s.title}</span>
+                {s.minutes != null && (
+                  <span className="shrink-0 text-xs text-ink-3 tabular-nums">{s.minutes} min</span>
+                )}
+              </div>
+            ))}
+            {routineTotal != null && (
+              <p className="mt-1.5 border-t border-line-soft pt-1.5 text-right text-xs font-medium text-accent-deep tabular-nums">
+                {routineTotal} min all together
+              </p>
+            )}
+          </div>
+        )}
         <Field label="How many minutes?">
           <div className="flex flex-wrap gap-1.5 mb-2">
             {PRESETS.map((m) => (
@@ -268,6 +297,11 @@ export function FocusTimer({
         <h1 className="font-display text-[2rem] sm:text-[2.75rem] leading-tight text-ink max-w-3xl">
           {title}
         </h1>
+        {steps.length > 0 && (
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-3">
+            {steps.map((s) => `${s.title}${s.minutes != null ? ` ${s.minutes}′` : ""}`).join("  ·  ")}
+          </p>
+        )}
       </div>
 
       <div className="relative" style={{ width: RING_SIZE, height: RING_SIZE, maxWidth: "82vw", maxHeight: "82vw" }}>

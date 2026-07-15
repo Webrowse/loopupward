@@ -4,11 +4,12 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
-import { Horizon, HORIZON_META, Item, KIND_META } from "@/lib/types";
+import { Horizon, HORIZON_META, Item, KIND_META, RoutineStep } from "@/lib/types";
 import {
   ancestors, bestStreak, children as childrenOf, currentStreak, dayLogged, descendants,
-  formatValue, habitDailyTarget, habitDays, itemProgress, scheduleLabel,
+  formatValue, habitDailyTarget, habitDays, itemProgress, routineMinutes, scheduleLabel,
 } from "@/lib/progress";
+import { uid } from "@/lib/uid";
 import { areaColor } from "@/lib/palette";
 import {
   boundingRange, dayFromMs, firstAnchorWithin, nextAnchor, Period, previousAnchor, prettyDay, prettyPeriod,
@@ -188,6 +189,9 @@ export default function ItemPage() {
         </div>
       )}
 
+      {/* a routine's script: its steps and their minutes */}
+      {item.kind === "routine" && <RoutineStepsEditor item={item} />}
+
       {/* the next small step */}
       {item.status === "active" && !isHabit && (
         <div className="mb-6">
@@ -282,7 +286,9 @@ export default function ItemPage() {
       <div className="flex flex-wrap gap-2 border-t border-line-soft pt-4">
         {item.status === "active" ? (
           isHabit ? (
-            <Button small variant="ghost" onClick={() => setConfirmRetire(true)}>Retire habit</Button>
+            <Button small variant="ghost" onClick={() => setConfirmRetire(true)}>
+              {item.kind === "routine" ? "Retire routine" : "Retire habit"}
+            </Button>
           ) : (
             <Button small variant="soft" onClick={() => completeItem(item.id)}>Mark complete</Button>
           )
@@ -343,10 +349,10 @@ export default function ItemPage() {
         <Sheet
           open={confirmRetire}
           onClose={() => setConfirmRetire(false)}
-          title="Retire this habit?"
+          title={item.kind === "routine" ? "Retire this routine?" : "Retire this habit?"}
           cancelLabel="Keep going"
           primary={{
-            label: "Retire habit",
+            label: item.kind === "routine" ? "Retire routine" : "Retire habit",
             danger: true,
             onClick: () => { completeItem(item.id); setConfirmRetire(false); },
           }}
@@ -359,6 +365,131 @@ export default function ItemPage() {
         </Sheet>
       )}
     </div>
+  );
+}
+
+/* ————— a routine's steps: its ordered script, each optionally timed ————— */
+
+function RoutineStepsEditor({ item }: { item: Item }) {
+  const { updateItem } = useLife();
+  const steps = item.steps ?? [];
+  const [newTitle, setNewTitle] = useState("");
+  const [newMinutes, setNewMinutes] = useState("");
+  const total = routineMinutes(item);
+
+  const save = (next: RoutineStep[]) => updateItem(item.id, { steps: next });
+
+  const parseMin = (v: string): number | null => {
+    const m = parseFloat(v);
+    return Number.isFinite(m) && m > 0 ? Math.min(1440, Math.round(m)) : null;
+  };
+
+  const add = () => {
+    if (!newTitle.trim()) return;
+    save([...steps, { id: uid(), title: newTitle.trim(), minutes: parseMin(newMinutes) }]);
+    setNewTitle("");
+    setNewMinutes("");
+  };
+
+  const move = (index: number, dir: -1 | 1) => {
+    const next = [...steps];
+    const target = index + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    save(next);
+  };
+
+  return (
+    <section className="mb-6">
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-3">
+        The script
+        {steps.length > 0 && ` · ${steps.length} step${steps.length === 1 ? "" : "s"}`}
+        {total != null && ` · ${total} min`}
+      </p>
+
+      {steps.length > 0 && (
+        <div className="mb-2 divide-y divide-line-soft rounded-(--radius-card) border border-line-soft bg-surface shadow-(--shadow-card)">
+          {steps.map((s, i) => (
+            <div key={s.id} className="flex items-center gap-2 px-3 py-2">
+              <div className="flex shrink-0 flex-col">
+                <button
+                  onClick={() => move(i, -1)}
+                  disabled={i === 0}
+                  aria-label="Move step up"
+                  className="pressable px-1 text-xs leading-none text-ink-3 hover:text-ink disabled:opacity-25"
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={() => move(i, 1)}
+                  disabled={i === steps.length - 1}
+                  aria-label="Move step down"
+                  className="pressable px-1 text-xs leading-none text-ink-3 hover:text-ink disabled:opacity-25"
+                >
+                  ▼
+                </button>
+              </div>
+              {/* commit on blur, not per keystroke — every save syncs to the cloud */}
+              <input
+                defaultValue={s.title}
+                onBlur={(e) => {
+                  const t = e.target.value.trim();
+                  if (t && t !== s.title) save(steps.map((x) => (x.id === s.id ? { ...x, title: t } : x)));
+                  else e.target.value = s.title;
+                }}
+                aria-label={`Step ${i + 1} title`}
+                className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none"
+              />
+              <input
+                type="number"
+                min={1}
+                defaultValue={s.minutes ?? ""}
+                onBlur={(e) => {
+                  const m = parseMin(e.target.value);
+                  if (m !== s.minutes) save(steps.map((x) => (x.id === s.id ? { ...x, minutes: m } : x)));
+                }}
+                placeholder="–"
+                aria-label={`Step ${i + 1} minutes`}
+                className="w-14 shrink-0 rounded-lg border border-line bg-bg px-2 py-1 text-right text-sm text-ink tabular-nums outline-none focus:border-accent"
+              />
+              <span className="shrink-0 text-xs text-ink-3">min</span>
+              <button
+                onClick={() => save(steps.filter((x) => x.id !== s.id))}
+                aria-label="Remove step"
+                className="pressable shrink-0 px-1 text-ink-3 hover:text-danger"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <input
+          className={inputCls}
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+          placeholder={steps.length === 0 ? 'e.g. "Wash face"' : "Next step…"}
+        />
+        <input
+          type="number"
+          min={1}
+          value={newMinutes}
+          onChange={(e) => setNewMinutes(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+          placeholder="min"
+          aria-label="Minutes for the new step"
+          className="w-20 shrink-0 rounded-xl border border-line bg-bg px-3 py-2.5 text-sm text-ink tabular-nums outline-none focus:border-accent"
+        />
+        <Button small onClick={add} disabled={!newTitle.trim()}>Add</Button>
+      </div>
+      <p className="mt-2 text-xs text-ink-3">
+        Steps are this routine&rsquo;s script — on Today it stays one single entry.
+        {total != null && ` The minutes add up to ${total}, which the focus timer suggests when you run it.`}
+      </p>
+    </section>
   );
 }
 

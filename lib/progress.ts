@@ -139,9 +139,17 @@ function monthLoggedDays(logs: Log[], itemId: string, day: string): number {
   ).size;
 }
 
-/** Habits default to daily; anything else needs an explicit schedule. */
+/** Habits and routines default to daily; anything else needs an explicit schedule. */
 export function effectiveCadence(item: Item): Cadence {
-  return item.cadence ?? (item.kind === "habit" ? "daily" : null);
+  return item.cadence ?? (item.kind === "habit" || item.kind === "routine" ? "daily" : null);
+}
+
+/** Total expected length of a routine — the sum of its steps' minutes.
+ *  Null when nothing is timed yet, so callers can fall back to a default. */
+export function routineMinutes(item: Item): number | null {
+  if (!item.steps || item.steps.length === 0) return null;
+  const total = item.steps.reduce((sum, s) => sum + (s.minutes ?? 0), 0);
+  return total > 0 ? total : null;
 }
 
 const DOW_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

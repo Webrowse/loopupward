@@ -14,6 +14,7 @@ export type ItemKind =
   | "dream"
   | "goal"
   | "habit"
+  | "routine"
   | "project"
   | "book"
   | "milestone"
@@ -21,6 +22,16 @@ export type ItemKind =
   | "promise"
   | "lesson"
   | "memory";
+
+/** One step of a routine: "face wash — 5 minutes". Steps aren't separate
+ *  todos — the routine is checked off as one thing; steps are its script,
+ *  and their minutes sum into the routine's expected length. */
+export interface RoutineStep {
+  id: string;
+  title: string;
+  /** how long this step takes, in minutes — null when untimed */
+  minutes: number | null;
+}
 
 export type TrackerType =
   | "none" // just exists (note, quote…) or measured by its children
@@ -101,6 +112,8 @@ export interface Item {
   cadenceDays: number[] | null;
   /** for cadence "weekly": how many times per week */
   cadenceCount: number | null;
+  /** routine kind only: the ordered script of the routine (see RoutineStep) */
+  steps: RoutineStep[] | null;
   /** user-created label ids (labels are tags, independent of areas) */
   labels: string[];
   pinned: boolean;
@@ -265,6 +278,7 @@ export const KIND_META: Record<ItemKind, { label: string; emoji: string }> = {
   dream: { label: "Dream", emoji: "🌅" },
   goal: { label: "Goal", emoji: "🎯" },
   habit: { label: "Habit", emoji: "🔁" },
+  routine: { label: "Routine", emoji: "🌄" },
   project: { label: "Project", emoji: "🧩" },
   book: { label: "Book", emoji: "📖" },
   milestone: { label: "Milestone", emoji: "🏔" },

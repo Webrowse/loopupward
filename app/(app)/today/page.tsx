@@ -10,7 +10,7 @@ import {
 } from "@/lib/dates";
 import { useToday } from "@/lib/useToday";
 import { areaColor } from "@/lib/palette";
-import { sortedByDone, todayEntries, TodayEntry } from "@/lib/progress";
+import { routineMinutes, sortedByDone, todayEntries, TodayEntry } from "@/lib/progress";
 import { Action, Cadence, HORIZON_META, Item } from "@/lib/types";
 import { DailyJournal } from "@/components/journal";
 import { FocusTimer } from "@/components/focustimer";
@@ -1031,6 +1031,12 @@ function ActionRow({
               </span>
             );
           })}
+          {/* a routine wears its length: "3 steps · 25 min" */}
+          {item?.kind === "routine" && item.steps && item.steps.length > 0 && (
+            <span className="shrink-0 tabular-nums">
+              {item.steps.length} steps{routineMinutes(item) != null ? ` · ${routineMinutes(item)} min` : ""}
+            </span>
+          )}
           {scheduleLabel && <span className="shrink-0">{scheduleLabel}</span>}
           {virtualHabit && !scheduleLabel && <span>habit</span>}
           {virtualItemTask && <span>🎯 today</span>}

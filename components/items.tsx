@@ -7,7 +7,7 @@ import { useLife } from "@/lib/data/provider";
 import { Cadence, destinationFor, Horizon, HORIZON_META, Item, ItemKind, KIND_META, SPACE_KINDS, TrackerType } from "@/lib/types";
 import {
   children as childrenOf, currentStreak, dayLogged, formatValue, habitDailyTarget, habitDays,
-  horizonEntries, itemProgress, ownProgress, scheduleLabel,
+  horizonEntries, itemProgress, ownProgress, routineMinutes, scheduleLabel,
 } from "@/lib/progress";
 import {
   addDays, addMonths, addYears, boundingRange, firstAnchorWithin, fromDay, nextAnchor, Period,
@@ -93,7 +93,7 @@ export function ItemCard({ item, hideLabelIds }: { item: Item; hideLabelIds?: st
   const c = areaColor(area?.color);
   const color = theme === "dark" ? c.fgDark : c.fg;
   const streak =
-    item.kind === "habit" ? currentStreak(habitDays(db.logs, item.id, habitDailyTarget(item))) : 0;
+    item.tracker === "habit" ? currentStreak(habitDays(db.logs, item.id, habitDailyTarget(item))) : 0;
   // defensive dedupe: a label id should never repeat, but never show it twice if it does
   const visibleLabels = [...new Set(item.labels)].filter((lid) => !hideLabelIds?.includes(lid));
 
@@ -118,7 +118,12 @@ export function ItemCard({ item, hideLabelIds }: { item: Item; hideLabelIds?: st
               </span>
             )}
             {kids.length > 0 && <span>{kids.length} inside</span>}
-            {item.kind === "habit" && streak > 0 && (
+            {item.kind === "routine" && item.steps && item.steps.length > 0 && (
+              <span>
+                {item.steps.length} steps{routineMinutes(item) != null ? ` · ${routineMinutes(item)} min` : ""}
+              </span>
+            )}
+            {streak > 0 && (
               <span className="text-amber font-medium">{streak} day streak</span>
             )}
             {trackerCaption(item)}
@@ -538,13 +543,16 @@ export function DateGridPicker({ value, onChange }: { value: string; onChange: (
 
 /** The four kinds that cover most captures — shown first so the common path
  *  stays a single tap. Everything else lives behind "More". */
-const COMMON_KINDS: ItemKind[] = ["goal", "habit", "project", "note"];
+const COMMON_KINDS: ItemKind[] = ["goal", "habit", "routine", "project", "note"];
 const MORE_KINDS: ItemKind[] = [
   "book", "dream", "idea", "quote", "milestone", "principle", "promise", "lesson", "memory",
 ];
 
 const KIND_DEFAULT_TRACKER: Partial<Record<ItemKind, TrackerType>> = {
   habit: "habit",
+  // a routine is checked off per day exactly like a habit — one entry on
+  // Today, streaks, never "completed" by accident; its steps live on the item
+  routine: "habit",
   book: "book",
   goal: "check",
   project: "none",
@@ -677,7 +685,7 @@ export function ItemSheet({
   const pickKind = (k: ItemKind) => {
     setKind(k);
     if (!touchedTracker) setTracker(KIND_DEFAULT_TRACKER[k] ?? "none");
-    if (k === "habit" && !schedule.cadence) {
+    if ((k === "habit" || k === "routine") && !schedule.cadence) {
       setSchedule({ cadence: "daily", cadenceDays: null, cadenceCount: null });
     }
   };

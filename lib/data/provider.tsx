@@ -423,12 +423,14 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       dateRepeatsYearly: false,
       richBody: null,
       status: "active", cadence: null, cadenceDays: null, cadenceCount: null,
+      steps: null,
       labels: [], pinned: false,
       position: db.items.length, createdAt: Date.now(), completedAt: null, deletedAt: null,
       ...partial,
       title: partial.title.trim(),
     };
-    if (item.kind === "habit" && !item.cadence) item.cadence = "daily";
+    // habits and routines live on their schedule — default to every day
+    if ((item.kind === "habit" || item.kind === "routine") && !item.cadence) item.cadence = "daily";
     upsertRows("items", [item]);
     return item;
   }, [db.items.length, upsertRows]);

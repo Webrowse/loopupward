@@ -23,6 +23,15 @@ pub struct Area {
     pub created_at: i64,
 }
 
+/// One step of a routine's script: "face wash — 5 minutes".
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutineStep {
+    pub id: String,
+    pub title: String,
+    pub minutes: Option<f64>,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Item {
@@ -53,6 +62,10 @@ pub struct Item {
     pub rich_body: Option<String>,
     pub status: String,
     pub cadence: Option<String>,
+    /// routine kind only: the ordered script of the routine, each step
+    /// optionally timed in minutes — stored as jsonb, travels as JSON
+    #[serde(default)]
+    pub steps: Option<sqlx::types::Json<Vec<RoutineStep>>>,
     #[serde(default)]
     pub cadence_days: Option<Vec<i32>>,
     #[serde(default)]
@@ -207,9 +220,10 @@ pub struct DbPayload {
 /* ————— validation ————— */
 
 const KINDS: &[&str] = &[
-    "note", "folder", "quote", "idea", "dream", "goal", "habit", "project", "book",
+    "note", "folder", "quote", "idea", "dream", "goal", "habit", "routine", "project", "book",
     "milestone", "principle", "promise", "lesson", "memory",
 ];
+const MAX_ROUTINE_STEPS: usize = 50;
 const TRACKERS: &[&str] = &["none", "check", "counter", "percent", "money", "habit", "book"];
 const STATUSES: &[&str] = &["active", "done", "someday", "archived"];
 const HORIZONS: &[&str] = &["someday", "life", "year", "quarter", "month", "week", "today", "date"];
@@ -283,6 +297,23 @@ impl Item {
             ck_len("richBody", b, MAX_RICH_BODY)?;
         }
         ck_opt_in("cadence", &self.cadence, CADENCES)?;
+        if let Some(steps) = &self.steps {
+            if steps.0.len() > MAX_ROUTINE_STEPS {
+                return Err(bad("too many routine steps"));
+            }
+            for s in &steps.0 {
+                if s.title.trim().is_empty() {
+                    return Err(bad("every routine step needs a title"));
+                }
+                ck_len("step title", &s.title, MAX_TITLE)?;
+                ck_len("step id", &s.id, 64)?;
+                if let Some(m) = s.minutes {
+                    if !m.is_finite() || !(0.0..=1440.0).contains(&m) {
+                        return Err(bad("step minutes must be between 0 and 1440"));
+                    }
+                }
+            }
+        }
         if let Some(days) = &self.cadence_days {
             if days.len() > 7 || days.iter().any(|d| !(0..=6).contains(d)) {
                 return Err(bad("cadenceDays must be weekday numbers 0–6"));
@@ -423,8 +454,8 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
         sqlx::query(
             "insert into items (id, user_id, area_id, parent_id, kind, tracker, title, note,
                target, current, unit, horizon, horizon_period, date_repeats_yearly, rich_body, status, cadence,
-               cadence_days, cadence_count, labels, pinned, position, created_at_ms, completed_at_ms, deleted_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+               steps, cadence_days, cadence_count, labels, pinned, position, created_at_ms, completed_at_ms, deleted_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
              on conflict (id) do update set
                area_id = excluded.area_id, parent_id = excluded.parent_id,
                kind = excluded.kind, tracker = excluded.tracker, title = excluded.title,
@@ -433,7 +464,8 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
                horizon_period = excluded.horizon_period, date_repeats_yearly = excluded.date_repeats_yearly,
                rich_body = excluded.rich_body,
                status = excluded.status,
-               cadence = excluded.cadence, cadence_days = excluded.cadence_days,
+               cadence = excluded.cadence, steps = excluded.steps,
+               cadence_days = excluded.cadence_days,
                cadence_count = excluded.cadence_count, labels = excluded.labels,
                pinned = excluded.pinned,
                position = excluded.position, completed_at_ms = excluded.completed_at_ms,
@@ -444,7 +476,7 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
         .bind(&r.tracker).bind(&r.title).bind(&r.note).bind(r.target).bind(r.current)
         .bind(&r.unit).bind(&r.horizon).bind(&r.horizon_period).bind(r.date_repeats_yearly)
         .bind(&r.rich_body).bind(&r.status)
-        .bind(&r.cadence)
+        .bind(&r.cadence).bind(&r.steps)
         .bind(&r.cadence_days).bind(r.cadence_count).bind(&r.labels).bind(r.pinned)
         .bind(r.position).bind(r.created_at).bind(r.completed_at).bind(r.deleted_at)
         .execute(&mut *conn)
@@ -711,7 +743,8 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             horizon_period: r.get("horizon_period"), date_repeats_yearly: r.get("date_repeats_yearly"),
             rich_body: r.get("rich_body"),
             status: r.get("status"),
-            cadence: r.get("cadence"), cadence_days: r.get("cadence_days"),
+            cadence: r.get("cadence"), steps: r.get("steps"),
+            cadence_days: r.get("cadence_days"),
             cadence_count: r.get("cadence_count"), labels: r.get("labels"),
             pinned: r.get("pinned"), position: r.get("position"),
             created_at: r.get("created_at_ms"), completed_at: r.get("completed_at_ms"),

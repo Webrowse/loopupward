@@ -15,7 +15,7 @@ The default view is today: a short list of concrete actions, a progress bar, and
 
 - **Square checkbox** — one-time thing; checking completes it (and the goal it belongs to, when it was the goal's last open piece).
 - **Round checkbox** — a repeat; checking logs *today* and feeds the streak. Tomorrow it returns. See [The completion rule](./completion.md).
-- **⭐** — priority. **+2 chapters** — how much this task moves its goal's meter. **"carried from Mon"** — an unfinished task following you, without shame, until done. Finishing it on a later day keeps the record honest ("done Wed" shows on its planned day).
+- **⭐** — priority. **+2 chapters** — how much this task moves its goal's meter. **"3 steps · 25 min"** — a routine wearing its script's total length; open its focus timer and 25 minutes is already suggested, with the steps listed. **"carried from Mon"** — an unfinished task following you, without shame, until done. Finishing it on a later day keeps the record honest ("done Wed" shows on its planned day).
 - The little icons: open the linked goal, plan what a habit means today ("clean" → "clean desk"), edit, focus timer, remove.
 
 Completing a task never reshuffles the list — rows move only when you drag them or use **Sort** (unfinished first, custom order, hide completed).
