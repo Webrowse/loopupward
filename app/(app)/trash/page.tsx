@@ -25,7 +25,7 @@ export default function TrashPage() {
   return (
     <div className="rise-in lg:max-w-2xl">
       <div className="pt-2">
-        <BackLink fallback="/you" label="You" />
+        <BackLink fallback="/you" label="Settings" />
       </div>
 
       <header className="pt-4 pb-4">

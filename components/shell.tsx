@@ -6,18 +6,23 @@ import { ReactNode } from "react";
 import { useLife } from "@/lib/data/provider";
 import { MiniCalendar } from "@/components/minicalendar";
 
+/** Labels name what you'll find (or do) there — a first-time user should be
+ *  able to predict each section from its word alone. Routes stay unchanged. */
 const TABS = [
-  { href: "/home", label: "Mind", icon: MindIcon },
-  { href: "/today", label: "Today", icon: SunIcon },
+  { href: "/home", label: "Capture", icon: MindIcon },
+  { href: "/today", label: "Plan", icon: SunIcon },
   { href: "/life", label: "Life", icon: LifeIcon },
   { href: "/notes", label: "Notes", icon: NotesIcon },
   { href: "/reflect", label: "Reflect", icon: MirrorIcon },
-  { href: "/you", label: "You", icon: YouIcon },
+  { href: "/you", label: "Settings", icon: YouIcon },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { ready, syncError, dismissSyncError } = useLife();
+  const { ready, syncError, dismissSyncError, simple } = useLife();
+  // simple mode trims the map, not the territory: /reflect stays reachable
+  // by URL and by every "Reflect on this week" link — it just leaves the nav
+  const tabs = simple ? TABS.filter((t) => t.href !== "/reflect") : TABS;
 
   return (
     <div className="relative z-[1] min-h-dvh lg:flex">
@@ -51,7 +56,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="font-display text-xl text-ink">LoopUpward</span>
         </Link>
         <nav className="mt-8 flex flex-col gap-1">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const active = pathname === tab.href || pathname.startsWith(tab.href + "/");
             const Icon = tab.icon;
             return (
@@ -88,7 +93,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* mobile: bottom tab bar */}
       <nav className="no-print fixed bottom-0 left-1/2 z-40 w-full max-w-lg -translate-x-1/2 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden">
         <div className="flex items-center justify-around rounded-3xl border border-line-soft bg-surface/90 px-2 py-2 shadow-(--shadow-float) backdrop-blur-xl">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const active = pathname === tab.href || pathname.startsWith(tab.href + "/");
             const Icon = tab.icon;
             return (

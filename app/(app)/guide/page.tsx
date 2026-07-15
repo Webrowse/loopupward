@@ -6,7 +6,7 @@ import { BackLink } from "@/components/ui";
 const STEPS = [
   {
     emoji: "💭",
-    title: "Mind: capture anything",
+    title: "Capture: get it out of your head",
     body:
       "A goal, a book, a quote, “learn guitar someday.” Write it in five seconds and let it go. Nothing needs a category yet.",
     href: "/home",
@@ -22,7 +22,7 @@ const STEPS = [
   },
   {
     emoji: "☀️",
-    title: "Today: small actions",
+    title: "Plan: today, and further out",
     body:
       "Schedules put things on Today automatically: every day, Mon/Wed/Fri, 4× a week, monthly. Completing a small action updates the habit's streak and the goal it belongs to. Progress flows upward. The Week, Month, Quarter, and Year tabs hold the same view for anything planned further out. Pull any of them into Today when you're ready to act on it.",
     href: "/today",

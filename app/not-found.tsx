@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 const DESTINATIONS = [
-  { href: "/home", label: "Mind", hint: "capture a thought" },
-  { href: "/today", label: "Today", hint: "your small actions" },
+  { href: "/home", label: "Capture", hint: "get a thought down" },
+  { href: "/today", label: "Plan", hint: "today and further ahead" },
   { href: "/life", label: "Life", hint: "everything you're growing" },
   { href: "/reflect", label: "Reflect", hint: "how far you've come" },
 ];

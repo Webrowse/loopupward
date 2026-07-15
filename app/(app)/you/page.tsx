@@ -19,7 +19,7 @@ const FONT_VARS: Record<FontId, string> = {
 export default function YouPage() {
   const {
     db, user, premium, owner, mode, cloudAvailable,
-    theme, setTheme, font, setFont, signOut, exportJSON, trashedItems,
+    theme, setTheme, font, setFont, simple, setSimple, signOut, exportJSON, trashedItems,
   } = useLife();
   const [exporting, setExporting] = useState(false);
 
@@ -46,8 +46,8 @@ export default function YouPage() {
   return (
     <div className="rise-in lg:max-w-2xl">
       <header className="pt-6 pb-6">
-        <p className="text-sm text-ink-3">The person behind all this</p>
-        <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">You</h1>
+        <p className="text-sm text-ink-3">Your account, plan &amp; preferences</p>
+        <h1 className="font-display text-[2rem] leading-tight text-ink mt-1">Settings</h1>
       </header>
 
       {/* account */}
@@ -107,6 +107,23 @@ export default function YouPage() {
             complete history, for people serious about becoming someone.
           </p>
         )}
+      </Card>
+
+      {/* how much of the machinery shows */}
+      <Card className="p-5 mb-3">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm font-medium text-ink">How the app feels</p>
+          <Segmented
+            options={[{ value: "simple", label: "Simple" }, { value: "full", label: "Full" }]}
+            value={simple ? "simple" : "full"}
+            onChange={(v) => setSimple(v === "simple")}
+          />
+        </div>
+        <p className="text-sm text-ink-2 mt-2 leading-relaxed">
+          {simple
+            ? "Simple keeps it to to-dos, notes and your day: adding something asks only for a name, when, and where it belongs. Every advanced tool (types, progress meters, labels, reviews) is still here — one tap under “More options”, and switching back to Full any time."
+            : "Full shows everything: goal types, progress meters, labels and reviews. Prefer just to-dos and notes? Simple hides the machinery without deleting anything."}
+        </p>
       </Card>
 
       {/* appearance */}
