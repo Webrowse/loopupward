@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { useLife } from "@/lib/data/provider";
 import { MiniCalendar } from "@/components/minicalendar";
 
@@ -16,6 +16,47 @@ const TABS = [
   { href: "/reflect", label: "Reflect", icon: MirrorIcon },
   { href: "/you", label: "Settings", icon: YouIcon },
 ];
+
+/** One tap pulls the freshest data (phone edits → laptop screen) without
+ *  the browser's own reload. Shows a spin while fetching, a brief ✓ after. */
+function SyncButton({ className = "" }: { className?: string }) {
+  const { refresh, syncing, mode } = useLife();
+  const [justDone, setJustDone] = useState(false);
+  const wasSyncing = useRef(false);
+  useEffect(() => {
+    const was = wasSyncing.current;
+    wasSyncing.current = syncing;
+    if (was && !syncing) {
+      setJustDone(true);
+      const t = setTimeout(() => setJustDone(false), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [syncing]);
+
+  return (
+    <button
+      onClick={refresh}
+      aria-label="Sync now"
+      title={mode === "cloud" ? "Pull the latest from your cloud" : "Reload from this device"}
+      className={`pressable grid h-9 w-9 place-items-center rounded-full text-ink-3 hover:bg-surface-2 hover:text-ink-2 ${className}`}
+    >
+      {justDone ? (
+        <svg width="15" height="15" viewBox="0 0 12 12" fill="none" className="text-accent-deep">
+          <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <svg
+          width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+          strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"
+          className={syncing ? "animate-spin" : ""}
+        >
+          <path d="M16.5 10a6.5 6.5 0 1 1-1.9-4.6" />
+          <path d="M16.5 2.5v3h-3" />
+        </svg>
+      )}
+    </button>
+  );
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -41,20 +82,30 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
+      {/* mobile: floating sync, clear of the bottom tab bar */}
+      <div className="no-print fixed right-3 top-[max(0.6rem,env(safe-area-inset-top))] z-40 lg:hidden">
+        <div className="rounded-full border border-line-soft bg-surface/90 shadow-(--shadow-card) backdrop-blur-xl">
+          <SyncButton />
+        </div>
+      </div>
+
       {/* desktop: quiet left rail */}
       <aside className="no-print hidden lg:flex sticky top-0 h-dvh w-56 shrink-0 flex-col border-r border-line-soft px-4 py-8">
-        <Link href="/home" className="flex items-center gap-2.5 px-3">
-          <span
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] text-white"
-            style={{ background: "linear-gradient(135deg, var(--accent), var(--accent-deep))" }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 20c-4-1-7-5-6-11 6-1 10 2 11 6 1 4-1 5-5 5Z" />
-              <path d="M6 9c3 3 5 7 6 11" />
-            </svg>
-          </span>
-          <span className="font-display text-xl text-ink">LoopUpward</span>
-        </Link>
+        <div className="flex items-center justify-between pl-3 pr-1">
+          <Link href="/home" className="flex items-center gap-2.5">
+            <span
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] text-white"
+              style={{ background: "linear-gradient(135deg, var(--accent), var(--accent-deep))" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20c-4-1-7-5-6-11 6-1 10 2 11 6 1 4-1 5-5 5Z" />
+                <path d="M6 9c3 3 5 7 6 11" />
+              </svg>
+            </span>
+            <span className="font-display text-xl text-ink">LoopUpward</span>
+          </Link>
+          <SyncButton />
+        </div>
         <nav className="mt-8 flex flex-col gap-1">
           {tabs.map((tab) => {
             const active = pathname === tab.href || pathname.startsWith(tab.href + "/");

@@ -38,6 +38,11 @@ interface LifeContextValue {
    *  underneath, nothing is deleted or disabled. */
   simple: boolean;
   setSimple: (v: boolean) => void;
+  /** Pull the freshest data from wherever it lives (cloud rows, or this
+   *  device's store) without reloading the page — phone edits show up on
+   *  the laptop. Also runs by itself when the tab regains focus. */
+  refresh: () => Promise<void>;
+  syncing: boolean;
 
   addSeed: (text: string) => Seed;
   updateSeed: (id: string, text: string) => void;
@@ -200,16 +205,67 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   /* ————— persistence helpers ————— */
+  // writes still on their way to the repo — a refresh while one is in
+  // flight could pull a snapshot from just before it and clobber the
+  // change on screen, so refresh waits these out
+  const pendingWrites = useRef(0);
   const persist = useCallback((fn: (repo: Repo) => Promise<void>) => {
-    fn(repoRef.current).catch((e) => {
-      console.error("[lifeos] sync failed", e);
-      if (e instanceof ApiRequestError && e.code === "limit") {
-        setSyncError(e.message);
-      } else {
-        setSyncError("A change couldn't be saved to the cloud. It's still on this device — refresh to retry.");
-      }
-    });
+    pendingWrites.current += 1;
+    fn(repoRef.current)
+      .catch((e) => {
+        console.error("[lifeos] sync failed", e);
+        if (e instanceof ApiRequestError && e.code === "limit") {
+          setSyncError(e.message);
+        } else {
+          setSyncError("A change couldn't be saved to the cloud. It's still on this device — refresh to retry.");
+        }
+      })
+      .finally(() => {
+        pendingWrites.current -= 1;
+      });
   }, []);
+
+  /* ————— pull-to-fresh: manual button + automatic on returning to the tab ————— */
+  const [syncing, setSyncing] = useState(false);
+  const readyRef = useRef(false);
+  useEffect(() => { readyRef.current = ready; }, [ready]);
+  const lastRefreshRef = useRef(0);
+
+  const refresh = useCallback(async () => {
+    if (!readyRef.current || pendingWrites.current > 0) return;
+    setSyncing(true);
+    lastRefreshRef.current = Date.now();
+    try {
+      const data = await repoRef.current.load();
+      // a write may have started while the load was in the air — its
+      // optimistic state is newer than this snapshot, keep it instead
+      if (pendingWrites.current === 0) {
+        setDb(data);
+        setSyncError(null);
+      }
+    } catch (e) {
+      console.error("[lifeos] refresh failed", e);
+      setSyncError("Couldn't fetch the latest. Check your connection and try again.");
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
+  // coming back to the app (phone → laptop, or another tab) pulls what
+  // changed elsewhere, at most once a minute — the button covers "now!"
+  useEffect(() => {
+    const onReturn = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastRefreshRef.current < 60_000) return;
+      refresh();
+    };
+    window.addEventListener("focus", onReturn);
+    document.addEventListener("visibilitychange", onReturn);
+    return () => {
+      window.removeEventListener("focus", onReturn);
+      document.removeEventListener("visibilitychange", onReturn);
+    };
+  }, [refresh]);
 
   const upsertRows = useCallback(
     <T extends TableName>(table: T, rows: DB[T][number][]) => {
@@ -623,6 +679,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     theme, setTheme,
     font, setFont,
     simple, setSimple,
+    refresh, syncing,
     addSeed, updateSeed, setSeedStatus, deleteSeed, plantSeed, unplantSeed,
     saveJournal,
     addLabel, updateLabel, deleteLabel,
