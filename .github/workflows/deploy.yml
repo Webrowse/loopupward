@@ -1,0 +1,39 @@
+# Push to main → the frontend deploys to Cloudflare Workers.
+# (The Rust backend deploys separately: Railway watches this repo and
+# rebuilds backend/ on its own when it changes.)
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN          API token with "Workers Scripts: Edit"
+#   CLOUDFLARE_ACCOUNT_ID         the Cloudflare account id
+#   NEXT_PUBLIC_API_URL           the backend URL (inlined into the client bundle)
+#   NEXT_PUBLIC_GOOGLE_CLIENT_ID  the Google OAuth client id (also public)
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build and deploy to Cloudflare
+        run: npx opennextjs-cloudflare build && npx opennextjs-cloudflare deploy
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
