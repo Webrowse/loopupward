@@ -30,7 +30,16 @@ jobs:
           node-version: 24
           cache: npm
 
-      - run: npm ci
+      # on failure, surface npm's real complaint as an annotation — step
+      # logs need admin auth to read, annotations are visible to anyone
+      - name: Install dependencies
+        run: |
+          npm ci || {
+            msg=$(grep -hE "npm (error|warn)" /home/runner/.npm/_logs/*-debug-0.log 2>/dev/null | head -c 900)
+            [ -z "$msg" ] && msg=$(tail -c 900 /home/runner/.npm/_logs/*-debug-0.log 2>/dev/null)
+            echo "::error title=npm ci failed::${msg}"
+            exit 1
+          }
 
       - name: Build and deploy to Cloudflare
         run: npx opennextjs-cloudflare build && npx opennextjs-cloudflare deploy
