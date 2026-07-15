@@ -16,7 +16,7 @@ function preview(html: string | null): string {
 }
 
 export default function NotesRootPage() {
-  const { db, addItem, deleteItem } = useLife();
+  const { db, addItem, deleteItem, moveItem } = useLife();
   const [addingFolder, setAddingFolder] = useState(false);
   const [addingNote, setAddingNote] = useState(false);
   const [folderName, setFolderName] = useState("");
@@ -35,6 +35,9 @@ export default function NotesRootPage() {
   const [menuForId, setMenuForId] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string[] | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Drag a note card onto a folder chip to file it there.
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
 
   // Close the 3-dot menu on any outside click. A `fixed inset-0` overlay
   // button doesn't work here: the note card's `.pressable:active` transform
@@ -154,7 +157,17 @@ export default function NotesRootPage() {
                 <Link
                   key={f.id}
                   href={`/notes/${f.id}`}
-                  className="pressable flex items-center gap-1.5 rounded-full border border-line-soft bg-surface px-3.5 py-2 text-sm text-ink shadow-(--shadow-card)"
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverFolder(f.id); }}
+                  onDragLeave={() => setDragOverFolder((cur) => (cur === f.id ? null : cur))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const id = e.dataTransfer.getData("text/plain");
+                    if (id) moveItem(id, { parentId: f.id });
+                    setDragOverFolder(null);
+                  }}
+                  className={`pressable flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm text-ink shadow-(--shadow-card) ${
+                    dragOverFolder === f.id ? "border-accent bg-accent-soft" : "border-line-soft bg-surface"
+                  }`}
                 >
                   🗂️ {f.title}
                   {kids.length > 0 && <span className="text-xs text-ink-3">{kids.length}</span>}
@@ -189,6 +202,8 @@ export default function NotesRootPage() {
                     toggleSelected(n.id);
                   }
                 }}
+                draggable={selected.size === 0}
+                onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", n.id); }}
                 className="pressable group relative flex flex-col rounded-(--radius-card) border border-line-soft bg-surface p-3.5 pt-7 shadow-(--shadow-card) min-h-28"
               >
                 <button
