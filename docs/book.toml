@@ -1,0 +1,10 @@
+[book]
+title = "LoopUpward — User Guide"
+authors = ["LoopUpward"]
+language = "en"
+src = "src"
+description = "Everything about using LoopUpward, from the first captured thought to a year-long goal, explained from the user's side with examples."
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "ayu"
