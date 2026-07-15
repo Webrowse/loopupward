@@ -23,9 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # node 24 = npm 11, the same npm generation that writes this repo's
+      # lockfile — npm 10 (node 22) rejects it over optional @emnapi entries
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - run: npm ci
