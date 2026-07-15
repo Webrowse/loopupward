@@ -228,7 +228,7 @@ function NotePageBody({ item }: { item: Item }) {
         }}
       />
 
-      <NoteMoveSheet open={moving} onClose={() => setMoving(false)} item={item} />
+      <NoteMoveSheet open={moving} onClose={() => setMoving(false)} items={[item]} />
 
       <Sheet
         open={confirmDelete}
@@ -298,32 +298,47 @@ function NewChildSheet({
   );
 }
 
-export function NoteMoveSheet({ open, onClose, item }: { open: boolean; onClose: () => void; item: Item }) {
+export function NoteMoveSheet({ open, onClose, items }: { open: boolean; onClose: () => void; items: Item[] }) {
   const { db, moveItem, addItem } = useLife();
   const [newFolderName, setNewFolderName] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // `items` may be a snapshot the caller took when opening the sheet, so
+  // re-resolve each one against the live db to keep the active chip correct
+  // after a move (moveItem doesn't mutate the caller's array in place).
+  const liveItems = items.map((i) => db.items.find((x) => x.id === i.id) ?? i);
 
   const folders = db.items
     .filter((i) => i.kind === "folder" && i.status === "active")
     .sort((a, b) => a.title.localeCompare(b.title));
 
+  const moveAllTo = (parentId: string | null) => {
+    for (const item of items) moveItem(item.id, { parentId });
+  };
+
   const createAndMove = () => {
     if (!newFolderName.trim()) return;
     const folder = addItem({ title: newFolderName.trim(), kind: "folder", tracker: "none" });
-    if (folder) moveItem(item.id, { parentId: folder.id });
+    if (folder) moveAllTo(folder.id);
     setNewFolderName("");
     setCreating(false);
   };
 
   return (
-    <Sheet open={open} onClose={onClose} title="Move" cancelLabel="Close" primary={{ label: "Done", onClick: onClose }}>
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={items.length > 1 ? `Move ${items.length} notes` : "Move"}
+      cancelLabel="Close"
+      primary={{ label: "Done", onClick: onClose }}
+    >
       <Field label="Move into">
         <div className="flex flex-wrap gap-1.5">
-          <Chip active={item.parentId === null} onClick={() => moveItem(item.id, { parentId: null })}>
+          <Chip active={liveItems.every((i) => i.parentId === null)} onClick={() => moveAllTo(null)}>
             No folder
           </Chip>
           {folders.map((f) => (
-            <Chip key={f.id} active={item.parentId === f.id} onClick={() => moveItem(item.id, { parentId: f.id })}>
+            <Chip key={f.id} active={liveItems.every((i) => i.parentId === f.id)} onClick={() => moveAllTo(f.id)}>
               🗂️ {f.title}
             </Chip>
           ))}

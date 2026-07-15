@@ -31,7 +31,7 @@ export default function NotesRootPage() {
   // note toggles it too instead of opening it — no separate "select mode"
   // toggle needed
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [movingItem, setMovingItem] = useState<Item | null>(null);
+  const [movingItems, setMovingItems] = useState<Item[] | null>(null);
   const [menuForId, setMenuForId] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string[] | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -119,6 +119,13 @@ export default function NotesRootPage() {
             <p className="text-sm font-medium text-ink">{selected.size} selected</p>
             <div className="flex gap-2">
               <Button small variant="ghost" onClick={() => setSelected(new Set())}>Cancel</Button>
+              <Button
+                small
+                variant="soft"
+                onClick={() => setMovingItems(freeNotes.filter((n) => selected.has(n.id)))}
+              >
+                Move to folder
+              </Button>
               <Button small variant="danger" onClick={() => setConfirmingDelete([...selected])}>
                 Delete
               </Button>
@@ -211,7 +218,7 @@ export default function NotesRootPage() {
                     {menuForId === n.id && (
                       <div className="absolute right-1.5 top-8 z-30 w-40 overflow-hidden rounded-xl border border-line-soft bg-surface shadow-(--shadow-float)">
                         <button
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMovingItem(n); setMenuForId(null); }}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMovingItems([n]); setMenuForId(null); }}
                           className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-surface-2"
                         >
                           Move to folder
@@ -287,7 +294,13 @@ export default function NotesRootPage() {
         </p>
       </Sheet>
 
-      {movingItem && <NoteMoveSheet open onClose={() => setMovingItem(null)} item={movingItem} />}
+      {movingItems && (
+        <NoteMoveSheet
+          open
+          onClose={() => { setMovingItems(null); setSelected(new Set()); }}
+          items={movingItems}
+        />
+      )}
 
       <Sheet
         open={confirmingDelete !== null}
