@@ -30,16 +30,17 @@ jobs:
           node-version: 24
           cache: npm
 
-      # on failure, surface npm's real complaint as an annotation — step
-      # logs need admin auth to read, annotations are visible to anyone
+      # npm install, not npm ci: the runner's npm and the npm that writes
+      # this lockfile disagree about optional @emnapi entries (a wasm
+      # tailwind package), and ci refuses where install just resolves.
+      # Locked versions are still respected. On failure, npm's complaint
+      # surfaces as an annotation readable without admin rights.
       - name: Install dependencies
         run: |
-          npm ci 2>npm-stderr.txt || {
-            # annotations are single line — flatten; stderr carries npm's
-            # human-readable complaint, the debug log its stack
-            msg=$(tr '\n' ' | ' < npm-stderr.txt | head -c 850)
-            [ -z "$msg" ] && msg=$(grep -hE "error|Missing" /home/runner/.npm/_logs/*-debug-0.log 2>/dev/null | tr '\n' ' ' | head -c 850)
-            echo "::error title=npm ci failed::${msg}"
+          echo "node $(node -v) npm $(npm -v)"
+          npm install --no-audit --no-fund 2>npm-stderr.txt || {
+            msg=$(tr '\n' ' ' < npm-stderr.txt | head -c 850)
+            echo "::error title=npm install failed::${msg}"
             exit 1
           }
 
