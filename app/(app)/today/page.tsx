@@ -16,7 +16,7 @@ import { DailyJournal } from "@/components/journal";
 import { FocusTimer } from "@/components/focustimer";
 import { HorizonList, ScheduleEditor, ScheduleValue } from "@/components/items";
 import { Bar } from "@/components/progress";
-import { EmptyState, Field, Segmented, Sheet, inputCls } from "@/components/ui";
+import { Chip, EmptyState, Field, Segmented, Sheet, inputCls } from "@/components/ui";
 
 const DOW_LETTER = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -382,16 +382,18 @@ function DayJump({ label, onClick, active }: { label: string; onClick: () => voi
 /* ————— task creation: once, or on a schedule, with priority and a note ————— */
 
 function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void; day: string }) {
-  const { addAction, addItem } = useLife();
+  const { db, addAction, addItem } = useLife();
   const realToday = useToday();
   const [title, setTitle] = useState("");
   const [taskDate, setTaskDate] = useState(day);
   const [dateTouched, setDateTouched] = useState(false);
   const [schedule, setSchedule] = useState<ScheduleValue>({ cadence: null, cadenceDays: null, cadenceCount: null });
+  const [areaId, setAreaId] = useState<string | null>(null);
   const [priority, setPriority] = useState(0);
   const [note, setNote] = useState("");
   const [titleError, setTitleError] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
+  const sortedAreas = useMemo(() => [...db.areas].sort((a, b) => a.position - b.position), [db.areas]);
 
   // jump to whatever day is on screen each time the sheet opens fresh,
   // but leave a date the user picked mid-session alone
@@ -404,6 +406,7 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
     setTaskDate(day);
     setDateTouched(false);
     setSchedule({ cadence: null, cadenceDays: null, cadenceCount: null });
+    setAreaId(null);
     setPriority(0);
     setNote("");
     setTitleError(false);
@@ -419,12 +422,15 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
       // one time — on whichever date was chosen, not necessarily today's view
       addAction(title, taskDate, null, 1, { priority, note });
     } else {
-      // recurring: becomes a scheduled life node that feeds Today automatically
+      // recurring: becomes a scheduled life node that feeds Today automatically —
+      // filed under a life area right away, so it lives with your other goals
+      // instead of floating loose at the top level
       addItem({
         title,
         kind: "habit",
         tracker: "habit",
         note,
+        areaId,
         cadence: schedule.cadence as Cadence,
         cadenceDays: schedule.cadence === "days" ? schedule.cadenceDays : null,
         cadenceCount: schedule.cadence === "weekly" ? schedule.cadenceCount : null,
@@ -459,6 +465,19 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
       <Field label="How often?">
         <ScheduleEditor value={schedule} onChange={setSchedule} noneLabel="Just once" />
       </Field>
+
+      {schedule.cadence !== null && sortedAreas.length > 0 && (
+        <Field label="Which part of life is this for?">
+          <div className="flex flex-wrap gap-1.5">
+            <Chip active={areaId === null} onClick={() => setAreaId(null)}>None</Chip>
+            {sortedAreas.map((a) => (
+              <Chip key={a.id} active={areaId === a.id} onClick={() => setAreaId(a.id)}>
+                {a.emoji} {a.name}
+              </Chip>
+            ))}
+          </div>
+        </Field>
+      )}
 
       {schedule.cadence === null && (
         <Field label="On which day?">
@@ -511,10 +530,11 @@ function PriorityChip({ label, active, onClick }: { label: string; active: boole
 /* ————— editing a one-time task (no linked item) ————— */
 
 function EditActionSheet({ action, onClose }: { action: Action | null; onClose: () => void }) {
-  const { updateAction, deleteAction } = useLife();
+  const { db, updateAction, deleteAction } = useLife();
   const [title, setTitle] = useState("");
   const [priority, setPriority] = useState(0);
   const [note, setNote] = useState("");
+  const [amount, setAmount] = useState("1");
   const [titleError, setTitleError] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -525,9 +545,16 @@ function EditActionSheet({ action, onClose }: { action: Action | null; onClose: 
     setTitle(action.title);
     setPriority(action.priority);
     setNote(action.note);
+    setAmount(String(action.amount));
     setTitleError(false);
     setConfirmDelete(false);
   }
+
+  // a task linked to a counter/book goal carries how much finishing it moves
+  // that goal's meter — editable here until it's done (afterwards the amount
+  // has already been applied, and changing it would desync the meter)
+  const linked = action?.itemId ? db.items.find((i) => i.id === action.itemId) ?? null : null;
+  const metered = linked != null && (linked.tracker === "counter" || linked.tracker === "book");
 
   const close = () => { onClose(); setConfirmDelete(false); };
 
@@ -538,7 +565,12 @@ function EditActionSheet({ action, onClose }: { action: Action | null; onClose: 
       titleRef.current?.focus();
       return;
     }
-    updateAction(action.id, { title: title.trim(), priority, note });
+    updateAction(action.id, {
+      title: title.trim(),
+      priority,
+      note,
+      ...(metered && !action.done ? { amount: Math.max(1, Math.round(parseFloat(amount) || 1)) } : {}),
+    });
     close();
   };
 
@@ -569,6 +601,23 @@ function EditActionSheet({ action, onClose }: { action: Action | null; onClose: 
           <PriorityChip label="⭐ Important" active={priority === 1} onClick={() => setPriority(1)} />
         </div>
       </Field>
+
+      {metered && linked && action && !action.done && (
+        <Field label={`Counts toward "${linked.title}"`}>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              className={`${inputCls} w-24 tabular-nums`}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+            <span className="text-sm text-ink-3">
+              {linked.unit ?? (linked.tracker === "book" ? "chapters" : "units")} when done
+            </span>
+          </div>
+        </Field>
+      )}
 
       <Field label="Small note">
         <textarea
@@ -905,7 +954,10 @@ function ActionRow({
         aria-label={
           action.done ? "Undo" : multi ? `Log one (${dayValue} of ${dayTarget})` : "Mark done"
         }
-        className={`pressable relative grid h-6 w-6 shrink-0 place-items-center rounded-lg border-2 transition-colors ${
+        title={virtualHabit ? "Repeats — checking logs this day" : undefined}
+        className={`pressable relative grid h-6 w-6 shrink-0 place-items-center border-2 transition-colors ${
+          virtualHabit ? "rounded-full" : "rounded-lg"
+        } ${
           action.done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
         }`}
       >
@@ -955,6 +1007,13 @@ function ActionRow({
             <span className="tabular-nums font-medium text-accent-deep">
               {Math.min(dayValue, dayTarget)}/{dayTarget}
               {item?.unit ? ` ${item.unit}` : ""}
+            </span>
+          )}
+          {/* how much finishing this moves the linked goal's meter */}
+          {item && !virtualHabit && action.amount > 1 &&
+            (item.tracker === "counter" || item.tracker === "book") && (
+            <span className="shrink-0 tabular-nums font-medium text-accent-deep">
+              +{action.amount}{item.unit ? ` ${item.unit}` : ""}
             </span>
           )}
           {!dayPlanned && action.note && <span className="truncate">{action.note}</span>}

@@ -4,9 +4,9 @@ import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
-import { Cadence, destinationFor, Horizon, HORIZON_META, Item, ItemKind, KIND_META, TrackerType } from "@/lib/types";
+import { Cadence, destinationFor, Horizon, HORIZON_META, Item, ItemKind, KIND_META, SPACE_KINDS, TrackerType } from "@/lib/types";
 import {
-  children as childrenOf, currentStreak, formatValue, habitDailyTarget, habitDays,
+  children as childrenOf, currentStreak, dayLogged, formatValue, habitDailyTarget, habitDays,
   horizonEntries, itemProgress, ownProgress, scheduleLabel,
 } from "@/lib/progress";
 import {
@@ -17,6 +17,70 @@ import { AREA_COLORS, areaColor } from "@/lib/palette";
 import { KindIcon } from "./icons";
 import { Bar } from "./progress";
 import { Button, Chip, EmptyState, Field, MovedNotice, Sheet, inputCls } from "./ui";
+
+/* ————— One checkbox, one meaning — everywhere an item shows up ————— */
+
+/** Kinds that are "done-able" work. Notes, folders and keepsakes (quotes,
+ *  lessons…) just exist — a checkbox on them would be noise. */
+function isCheckable(item: Item): boolean {
+  return item.kind !== "note" && item.kind !== "folder" && !SPACE_KINDS.includes(item.kind);
+}
+
+/**
+ * The single completion control, shared by every list an item appears in
+ * (Life tree, "Inside this", week/month lists). One rule, learned once:
+ * — a repeating item (round checkbox) logs *this day*; it never retires
+ *   the item itself.
+ * — everything else (square checkbox) completes the item itself, the same
+ *   as "Mark complete" on its page, so it reads done everywhere at once.
+ */
+export function ItemCheck({ item, className = "" }: { item: Item; className?: string }) {
+  const { db, completeItem, reopenItem, toggleHabitDay } = useLife();
+  const repeating = item.tracker === "habit" && item.status === "active";
+  const day = today();
+  const dayTarget = habitDailyTarget(item);
+  const dayValue = repeating ? dayLogged(db.logs, item.id, day) : 0;
+  const checked = repeating ? dayValue >= dayTarget : item.status === "done";
+
+  const toggle = () => {
+    if (repeating) toggleHabitDay(item, day, checked);
+    else if (item.status === "done") reopenItem(item.id);
+    else completeItem(item.id);
+  };
+
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); toggle(); }}
+      aria-label={
+        repeating
+          ? checked ? "Undo today" : dayTarget > 1 ? `Log one (${dayValue} of ${dayTarget})` : "Mark done today"
+          : checked ? "Undo" : "Mark done"
+      }
+      title={repeating ? "Repeats — checking logs this day" : undefined}
+      className={`pressable relative grid h-6 w-6 shrink-0 place-items-center border-2 transition-colors ${
+        repeating ? "rounded-full" : "rounded-lg"
+      } ${
+        checked ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
+      } ${className}`}
+    >
+      {checked ? (
+        <svg className="bloom" width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : repeating && dayValue > 0 ? (
+        <svg className="absolute inset-[-2px]" width="24" height="24" viewBox="0 0 24 24">
+          <circle
+            cx="12" cy="12" r="10" fill="none" stroke="var(--accent)" strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray={2 * Math.PI * 10}
+            strokeDashoffset={2 * Math.PI * 10 * (1 - Math.min(1, dayValue / dayTarget))}
+            transform="rotate(-90 12 12)"
+          />
+        </svg>
+      ) : null}
+    </button>
+  );
+}
 
 /* ————— Item card ————— */
 
@@ -34,10 +98,12 @@ export function ItemCard({ item, hideLabelIds }: { item: Item; hideLabelIds?: st
   const visibleLabels = [...new Set(item.labels)].filter((lid) => !hideLabelIds?.includes(lid));
 
   return (
-    <button
-      onClick={() => router.push(`/item/${item.id}`)}
-      className="pressable block w-full text-left bg-surface rounded-(--radius-card) border border-line-soft shadow-(--shadow-card) px-4 py-3.5"
-    >
+    <div className="flex items-start gap-3 bg-surface rounded-(--radius-card) border border-line-soft shadow-(--shadow-card) px-4 py-3.5">
+      {isCheckable(item) && <ItemCheck item={item} className="mt-0.5" />}
+      <button
+        onClick={() => router.push(`/item/${item.id}`)}
+        className="pressable block min-w-0 flex-1 text-left"
+      >
       <div className="flex items-start gap-3">
         <KindIcon kind={item.kind} className="mt-0.5 h-[18px] w-[18px] shrink-0 text-ink-2" />
         <div className="min-w-0 flex-1">
@@ -79,7 +145,8 @@ export function ItemCard({ item, hideLabelIds }: { item: Item; hideLabelIds?: st
           <Bar value={progress} color={color} height={6} />
         </div>
       )}
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -162,7 +229,7 @@ export function HorizonList({ period, anchor }: { period: Period; anchor: string
 }
 
 function HorizonRow({ item, onMoveToday }: { item: Item; onMoveToday: (item: Item) => void }) {
-  const { db, theme, completeItem, reopenItem } = useLife();
+  const { db, theme } = useLife();
   const progress = itemProgress(db, item);
   const kids = childrenOf(db, item.id);
   const area = db.areas.find((a) => a.id === item.areaId);
@@ -172,19 +239,7 @@ function HorizonRow({ item, onMoveToday }: { item: Item; onMoveToday: (item: Ite
 
   return (
     <div className={`flex items-center gap-3 rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3 shadow-(--shadow-card) transition-opacity ${done ? "opacity-60" : ""}`}>
-      <button
-        onClick={() => (done ? reopenItem(item.id) : completeItem(item.id))}
-        aria-label={done ? "Undo" : "Mark done"}
-        className={`pressable relative grid h-6 w-6 shrink-0 place-items-center rounded-lg border-2 transition-colors ${
-          done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
-        }`}
-      >
-        {done && (
-          <svg className="bloom" width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </button>
+      <ItemCheck item={item} />
       <Link href={`/item/${item.id}`} className="min-w-0 flex-1">
         <div className={`truncate text-[0.95rem] leading-snug ${done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}>
           {item.title}
@@ -199,6 +254,7 @@ function HorizonRow({ item, onMoveToday }: { item: Item; onMoveToday: (item: Ite
           {kids.length > 0 && progress !== null && (
             <span className="tabular-nums">{Math.round(progress * 100)}% · {kids.length} inside</span>
           )}
+          {trackerCaption(item)}
           {scheduleLabel(item) && <span>{scheduleLabel(item)}</span>}
         </div>
       </Link>
@@ -538,7 +594,7 @@ export function ItemSheet({
   defaultHorizonPeriod?: string | null;
   onCreated?: (item: Item) => void;
 }) {
-  const { db, addItem, updateItem, limits, addArea, addLabel } = useLife();
+  const { db, addItem, updateItem, limits, addArea, addLabel, simple } = useLife();
   const [title, setTitle] = useState(editing?.title ?? initial ?? "");
   const [kind, setKind] = useState<ItemKind>(editing?.kind ?? "goal");
   const [tracker, setTracker] = useState<TrackerType>(editing?.tracker ?? "check");
@@ -559,6 +615,11 @@ export function ItemSheet({
   const [note, setNote] = useState(editing?.note ?? "");
   const [touchedTracker, setTouchedTracker] = useState(Boolean(editing));
   const [showMore, setShowMore] = useState(Boolean(editing && MORE_KINDS.includes(editing.kind)));
+  // simple mode keeps capture down to: name, when, where it belongs. The
+  // full machinery (kinds, trackers, labels…) stays one tap away — hidden,
+  // not gone. Editing always shows everything: the item may already use it.
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const full = !simple || Boolean(editing) || showAdvanced;
   const [titleError, setTitleError] = useState(false);
   const [addingArea, setAddingArea] = useState(false);
   const [newAreaName, setNewAreaName] = useState("");
@@ -589,6 +650,7 @@ export function ItemSheet({
     setNote(editing?.note ?? "");
     setTouchedTracker(Boolean(editing));
     setShowMore(Boolean(editing && MORE_KINDS.includes(editing.kind)));
+    setShowAdvanced(false);
     setTitleError(false);
     setAddingArea(false);
     setNewAreaName("");
@@ -640,6 +702,13 @@ export function ItemSheet({
 
   const pickHorizon = (h: Horizon) => {
     setHorizon(h);
+    // "Today" and a repeat never coexist: a repeating thing reaches Today by
+    // itself, and its checkbox means "done for the day" — while a Today item's
+    // checkbox completes it for good. Keeping both would silently change what
+    // checking it off does.
+    if (h === "today" && schedule.cadence !== null) {
+      setSchedule({ cadence: null, cadenceDays: null, cadenceCount: null });
+    }
     if (h && isPeriodHorizon(h)) {
       if (h === defaultHorizon && defaultHorizonPeriod) {
         setHorizonPeriod(defaultHorizonPeriod);
@@ -682,10 +751,14 @@ export function ItemSheet({
     // organizing a seed into a note: the captured text is content, not a
     // heading — split it so nothing long gets cut off as a single line title
     const noteSplit = !editing && kind === "note" ? deriveNoteFields(title) : null;
+    // simple mode hides the kind/tracker pickers, so a repeat chosen there
+    // means "this is a routine" — give it the habit shape (round per-day
+    // checkbox, streaks) instead of a check goal it can never complete
+    const asHabit = !full && !editing && schedule.cadence !== null && !touchedTracker;
     const patch = {
       title: noteSplit ? noteSplit.title : title.trim(),
-      kind,
-      tracker,
+      kind: asHabit ? ("habit" as ItemKind) : kind,
+      tracker: asHabit ? ("habit" as TrackerType) : tracker,
       areaId,
       horizon,
       horizonPeriod,
@@ -714,8 +787,8 @@ export function ItemSheet({
     <Sheet
       open={open}
       onClose={onClose}
-      title={editing ? "Edit" : "Give it a shape"}
-      primary={{ label: editing ? "Save" : "Plant it", onClick: save }}
+      title={editing ? "Edit" : "Add to your life"}
+      primary={{ label: editing ? "Save" : "Add", onClick: save }}
       primaryDisabled={atLimit}
     >
       <Field label="What is it?">
@@ -733,6 +806,7 @@ export function ItemSheet({
         )}
       </Field>
 
+      {full && (
       <Field label="It's a…">
         <div className="flex flex-wrap gap-1.5">
           {COMMON_KINDS.map((k) => (
@@ -755,7 +829,9 @@ export function ItemSheet({
         )}
         <p className="mt-2 text-xs text-ink-3">{destinationFor(kind).hint}</p>
       </Field>
+      )}
 
+      {full && (
       <Field label="How do you want to track it?">
         <div className="space-y-1.5">
           {TRACKER_OPTIONS.map((o) => (
@@ -773,8 +849,9 @@ export function ItemSheet({
           ))}
         </div>
       </Field>
+      )}
 
-      {needsTarget && (
+      {full && needsTarget && (
         <div className="grid grid-cols-2 gap-3">
           <Field label={tracker === "book" ? "Chapters" : tracker === "percent" ? "Target %" : "Target"}>
             <input
@@ -796,7 +873,7 @@ export function ItemSheet({
         </div>
       )}
 
-      {isHabit && (
+      {full && isHabit && (
         <div className="grid grid-cols-2 gap-3">
           <Field label="Amount per day">
             <input
@@ -819,7 +896,24 @@ export function ItemSheet({
       )}
 
       <Field label="When does it appear?">
-        <ScheduleEditor value={schedule} onChange={setSchedule} />
+        <ScheduleEditor
+          value={schedule}
+          onChange={(v) => {
+            setSchedule(v);
+            // mirror of pickHorizon: choosing a repeat takes over the "Today"
+            // marker — the repeat itself puts this on Today from now on
+            if (v.cadence !== null && horizon === "today") {
+              setHorizon(null);
+              setHorizonPeriod(null);
+            }
+          }}
+        />
+        {schedule.cadence !== null && (
+          <p className="mt-1.5 text-xs text-ink-3">
+            Repeats appear on Today by themselves. Checking one off there logs that day —
+            it never closes the whole thing.
+          </p>
+        )}
       </Field>
 
       <Field label="Planning horizon">
@@ -912,6 +1006,7 @@ export function ItemSheet({
         </Field>
       )}
 
+      {full && (
       <Field label="Labels">
         <div className="flex flex-wrap gap-1.5">
           {[...db.labels].sort((a, b) => a.position - b.position).map((l) => {
@@ -948,7 +1043,9 @@ export function ItemSheet({
           </div>
         )}
       </Field>
+      )}
 
+      {full && (
       <Field label="Notes">
         <textarea
           className={`${inputCls} min-h-20 resize-none`}
@@ -957,6 +1054,17 @@ export function ItemSheet({
           placeholder="Why does this matter to you?"
         />
       </Field>
+      )}
+
+      {!full && (
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(true)}
+          className="pressable text-sm font-medium text-accent-deep"
+        >
+          More options: type, progress meter, labels…
+        </button>
+      )}
 
       {atLimit && (
         <p className="text-sm text-amber mb-3">

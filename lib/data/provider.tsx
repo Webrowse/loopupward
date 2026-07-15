@@ -33,6 +33,11 @@ interface LifeContextValue {
   setTheme: (t: "light" | "dark") => void;
   font: FontId;
   setFont: (f: FontId) => void;
+  /** Simple mode hides the advanced planning machinery (kinds, trackers,
+   *  horizons) from creation flows and the nav — the full app keeps working
+   *  underneath, nothing is deleted or disabled. */
+  simple: boolean;
+  setSimple: (v: boolean) => void;
 
   addSeed: (text: string) => Seed;
   updateSeed: (id: string, text: string) => void;
@@ -133,6 +138,16 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     setFontState(f);
     document.documentElement.dataset.font = f;
     try { localStorage.setItem("lifeos-font", f); } catch {}
+  }, []);
+
+  /* ————— simple mode ————— */
+  const [simple, setSimpleState] = useState(false);
+  useEffect(() => {
+    try { setSimpleState(localStorage.getItem("lifeos-simple") === "1"); } catch {}
+  }, []);
+  const setSimple = useCallback((v: boolean) => {
+    setSimpleState(v);
+    try { localStorage.setItem("lifeos-simple", v ? "1" : "0"); } catch {}
   }, []);
 
   /* ————— session & data bootstrap ————— */
@@ -526,11 +541,22 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         upsertRows("logs", [{
           id: uid(), itemId: item.id, date: day, op: "add", value: delta, createdAt: Date.now(),
         }]);
+      } else if (item && item.tracker === "check") {
+        // a leaf item whose only open piece this was: checking the piece IS
+        // checking the thing — completing it here must show up completed in
+        // the Life tree too, without a second manual visit. Items with
+        // children or with other open pieces still complete deliberately.
+        const hasKids = db.items.some(
+          (k) => k.parentId === item.id && !k.deletedAt && k.status !== "archived"
+        );
+        const otherOpen = db.actions.some((x) => x.itemId === item.id && x.id !== a.id && !x.done);
+        if (!hasKids && !otherOpen) {
+          if (nowDone && item.status === "active") completeItem(item.id);
+          else if (!nowDone && item.status === "done") reopenItem(item.id);
+        }
       }
-      // check-tracked items are completed deliberately from their own page,
-      // never as a side effect of finishing one small piece
     }
-  }, [db.items, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem]);
+  }, [db.items, db.actions, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem]);
 
   const reorderDay = useCallback((day: string, orderedEntryIds: string[]) => {
     const existing = db.dayOrder.find((d) => d.date === day);
@@ -596,6 +622,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     syncError, dismissSyncError,
     theme, setTheme,
     font, setFont,
+    simple, setSimple,
     addSeed, updateSeed, setSeedStatus, deleteSeed, plantSeed, unplantSeed,
     saveJournal,
     addLabel, updateLabel, deleteLabel,

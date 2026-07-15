@@ -6,6 +6,7 @@ import { useLife } from "@/lib/data/provider";
 import { SPACE_KINDS } from "@/lib/types";
 import { AREA_COLORS, areaColor } from "@/lib/palette";
 import { itemProgress } from "@/lib/progress";
+import { ItemCheck } from "@/components/items";
 import { Bar } from "@/components/progress";
 import { Button, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
@@ -98,15 +99,20 @@ export default function LifePage() {
           </h2>
           <div className="space-y-2">
             {unfiled.slice(0, 8).map((i) => (
-              <Link
+              <div
                 key={i.id}
-                href={`/item/${i.id}`}
-                className={`block rounded-xl border border-line-soft bg-surface px-4 py-2.5 text-[0.95rem] shadow-(--shadow-card) ${
-                  i.status === "done" ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"
-                }`}
+                className="flex items-center gap-3 rounded-xl border border-line-soft bg-surface px-4 py-2.5 shadow-(--shadow-card)"
               >
-                {i.title}
-              </Link>
+                <ItemCheck item={i} />
+                <Link
+                  href={`/item/${i.id}`}
+                  className={`min-w-0 flex-1 text-[0.95rem] ${
+                    i.status === "done" ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"
+                  }`}
+                >
+                  {i.title}
+                </Link>
+              </div>
             ))}
           </div>
         </section>

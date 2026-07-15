@@ -33,6 +33,7 @@ export default function ItemPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmRetire, setConfirmRetire] = useState(false);
   const [todayPiece, setTodayPiece] = useState("");
+  const [pieceAmount, setPieceAmount] = useState("1");
   const [showHistory, setShowHistory] = useState(false);
 
   const item = db.items.find((i) => i.id === id);
@@ -57,12 +58,18 @@ export default function ItemPage() {
   const color = theme === "dark" ? c.fgDark : c.fg;
   const meta = KIND_META[item.kind];
   const isHabit = item.tracker === "habit";
+  // counter/book goals have a meter a piece can move: "read 2 chapters"
+  // done on Today adds 2 here, so a weekly "read 5 chapters" reads 2/5 by
+  // itself — no second manual update
+  const metered = item.tracker === "counter" || item.tracker === "book";
   const openActions = db.actions.filter((a) => a.itemId === item.id && !a.done);
 
   const addPiece = () => {
     if (!todayPiece.trim()) return;
-    addAction(todayPiece, today(), item.id);
+    const amt = metered ? Math.max(1, Math.round(parseFloat(pieceAmount) || 1)) : 1;
+    addAction(todayPiece, today(), item.id, amt);
     setTodayPiece("");
+    setPieceAmount("1");
   };
 
   /* history: completed actions + log events for this node, newest first */
@@ -205,6 +212,20 @@ export default function ItemPage() {
             />
             <Button small onClick={addPiece} disabled={!todayPiece.trim()}>Today</Button>
           </div>
+          {metered && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-ink-3">
+              <span>Finishing it moves the meter by</span>
+              <input
+                type="number"
+                min={1}
+                value={pieceAmount}
+                onChange={(e) => setPieceAmount(e.target.value)}
+                aria-label="How much this piece moves the meter"
+                className="w-16 rounded-lg border border-line bg-bg px-2 py-1 text-sm text-ink tabular-nums outline-none focus:border-accent"
+              />
+              <span>{item.unit ?? (item.tracker === "book" ? "chapters" : "")}</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -536,6 +557,13 @@ function ScheduleSheet({
                 onSave({
                   horizon: h.value,
                   horizonPeriod,
+                  // "Today" and a repeat never coexist: a repeat reaches Today
+                  // by itself, and its checkbox logs a day instead of
+                  // completing the item — keeping both would silently change
+                  // what checking it off means
+                  ...(h.value === "today" && item.cadence !== null
+                    ? { cadence: null, cadenceDays: null, cadenceCount: null }
+                    : {}),
                   // this picker only ever labels a timeframe; shelving (status)
                   // stays a separate, deliberate action via the Someday/Make
                   // active buttons — otherwise a cadence on a "someday" item
@@ -609,9 +637,20 @@ function ScheduleSheet({
               cadence: v.cadence,
               cadenceDays: v.cadence === "days" ? v.cadenceDays : null,
               cadenceCount: v.cadence === "weekly" ? v.cadenceCount : null,
+              // mirror of the Today chip above: a repeat takes over the
+              // "Today" marker — it puts this on Today by itself from now on
+              ...(v.cadence !== null && item.horizon === "today"
+                ? { horizon: null as Horizon, horizonPeriod: null }
+                : {}),
             })
           }
         />
+        {item.cadence !== null && (
+          <p className="mt-1.5 text-xs text-ink-3">
+            This appears on Today by itself. Checking it off there logs that day —
+            it never closes the whole thing.
+          </p>
+        )}
       </Field>
 
     </Sheet>
