@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useLife } from "@/lib/data/provider";
 import { Item } from "@/lib/types";
@@ -34,6 +34,22 @@ export default function NotesRootPage() {
   const [movingItem, setMovingItem] = useState<Item | null>(null);
   const [menuForId, setMenuForId] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string[] | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close the 3-dot menu on any outside click. A `fixed inset-0` overlay
+  // button doesn't work here: the note card's `.pressable:active` transform
+  // makes the card a CSS containing block for its fixed children mid-click,
+  // shrinking the overlay's hit area to just the card's own box.
+  useEffect(() => {
+    if (!menuForId) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuForId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuForId]);
 
   const toggleSelected = (id: string) => {
     setSelected((prev) => {
@@ -184,37 +200,31 @@ export default function NotesRootPage() {
                   )}
                 </button>
                 {selected.size === 0 && (
-                  <button
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuForId(menuForId === n.id ? null : n.id); }}
-                    aria-label="More actions"
-                    className="touch-visible absolute right-1.5 top-1.5 z-10 grid h-6 w-6 place-items-center rounded-full text-ink-3 opacity-0 group-hover:opacity-100 hover:bg-surface-2 hover:text-ink-2"
-                  >
-                    ⋮
-                  </button>
-                )}
-                {menuForId === n.id && (
-                  <>
+                  <div className="contents" ref={menuForId === n.id ? menuRef : undefined}>
                     <button
-                      aria-hidden
-                      tabIndex={-1}
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuForId(null); }}
-                      className="fixed inset-0 z-20 cursor-default"
-                    />
-                    <div className="absolute right-1.5 top-8 z-30 w-40 overflow-hidden rounded-xl border border-line-soft bg-surface shadow-(--shadow-float)">
-                      <button
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMovingItem(n); setMenuForId(null); }}
-                        className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-surface-2"
-                      >
-                        Move to folder
-                      </button>
-                      <button
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmingDelete([n.id]); setMenuForId(null); }}
-                        className="block w-full px-3.5 py-2.5 text-left text-sm text-danger hover:bg-surface-2"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </>
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuForId(menuForId === n.id ? null : n.id); }}
+                      aria-label="More actions"
+                      className="touch-visible absolute right-1.5 top-1.5 z-10 grid h-6 w-6 place-items-center rounded-full text-ink-3 opacity-0 group-hover:opacity-100 hover:bg-surface-2 hover:text-ink-2"
+                    >
+                      ⋮
+                    </button>
+                    {menuForId === n.id && (
+                      <div className="absolute right-1.5 top-8 z-30 w-40 overflow-hidden rounded-xl border border-line-soft bg-surface shadow-(--shadow-float)">
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMovingItem(n); setMenuForId(null); }}
+                          className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-surface-2"
+                        >
+                          Move to folder
+                        </button>
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmingDelete([n.id]); setMenuForId(null); }}
+                          className="block w-full px-3.5 py-2.5 text-left text-sm text-danger hover:bg-surface-2"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
                 <span className="min-w-0 truncate text-[0.95rem] font-medium text-ink">{n.title}</span>
                 {preview(n.richBody) && (
