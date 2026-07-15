@@ -1,0 +1,643 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>LoopUpward — User Guide</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Everything about using LoopUpward, from the first captured thought to a year-long goal, explained from the user&#x27;s side with examples.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "searchindex-bd27ed54.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-bfe6f83d.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">LoopUpward — User Guide</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="welcome"><a class="header" href="#welcome">Welcome</a></h1>
+<p>LoopUpward is a place to put the things your brain keeps generating — ideas, worries, goals, plans, half-thoughts on a staircase — so they stop circling in your head and start lining up into days you can actually live.</p>
+<p>This guide explains <strong>every part of the app from your side of the screen</strong>: what each section is for, what every button does, and how the pieces connect. Each chapter ends with concrete examples.</p>
+<h2 id="the-app-in-one-paragraph"><a class="header" href="#the-app-in-one-paragraph">The app in one paragraph</a></h2>
+<p>You <strong>capture</strong> a thought the moment it appears (before it evaporates). When a thought keeps coming back, you give it a shape in <strong>Life</strong> — a goal, a habit, a book you’re reading — and file it under the part of life it belongs to. <strong>Plan</strong> turns those shapes into concrete days: a short list every morning of what would make today a win. <strong>Notes</strong> hold the longer thoughts that don’t need doing, and <strong>Reflect</strong> shows you, with your own real history, that you’re moving.</p>
+<h2 id="the-six-sections"><a class="header" href="#the-six-sections">The six sections</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Section</th><th>What it holds</th><th>When you open it</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Capture</strong></td><td>Raw, unsorted thoughts (“seeds”)</td><td>The second an idea strikes</td></tr>
+<tr><td><strong>Plan</strong></td><td>Today’s list, plus this week / month / quarter / year</td><td>Every morning, and when planning ahead</td></tr>
+<tr><td><strong>Life</strong></td><td>Your life areas and everything you’re growing in them</td><td>When organizing or checking a goal</td></tr>
+<tr><td><strong>Notes</strong></td><td>Longer writing that isn’t a task — markdown, in folders</td><td>When a thought needs paragraphs</td></tr>
+<tr><td><strong>Reflect</strong></td><td>Daily journal, weekly and monthly reviews</td><td>End of the day, end of the week</td></tr>
+<tr><td><strong>Settings</strong></td><td>Account, sync, appearance, Simple mode, your data</td><td>Rarely</td></tr>
+</tbody>
+</table>
+</div>
+<p>Start with <a href="#the-idea-behind-loopupward">The idea behind LoopUpward</a> if you want the philosophy, or jump straight to <a href="#getting-started-in-ten-minutes">Getting started</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="the-idea-behind-loopupward"><a class="header" href="#the-idea-behind-loopupward">The idea behind LoopUpward</a></h1>
+<h2 id="thoughts-disappear-thats-the-whole-problem"><a class="header" href="#thoughts-disappear-thats-the-whole-problem">Thoughts disappear. That’s the whole problem.</a></h2>
+<p>If your brain produces more thoughts than you can act on — career worries while brushing your teeth, a gift idea in traffic, “I should really exercise” while climbing stairs — you know the two failure modes:</p>
+<ol>
+<li><strong>You forget.</strong> The good idea from Tuesday is simply gone.</li>
+<li><strong>You don’t forget.</strong> Everything stays in your head at once, nothing has an order, and choosing what to do first becomes so heavy that you do nothing. Overthinking paralysis.</li>
+</ol>
+<p>LoopUpward is built on a simple deal with your brain: <em>write it down the moment it appears, and you’re allowed to stop thinking about it.</em> The thought isn’t lost — it’s waiting, and there’s a path that takes it from “waiting” to “done.”</p>
+<h2 id="the-loop"><a class="header" href="#the-loop">The loop</a></h2>
+<p>Everything in the app is one repeating loop:</p>
+<p><strong>Capture → Organize → Act → Reflect</strong></p>
+<ul>
+<li><strong>Capture</strong> — get the thought out of your head in five seconds. No categories, no decisions.</li>
+<li><strong>Organize</strong> — later, calmly, decide what it is: a goal? a habit? just a note? File it where it belongs.</li>
+<li><strong>Act</strong> — every day, Plan shows a short list. You work the list, not your anxiety.</li>
+<li><strong>Reflect</strong> — the journal and reviews turn your history into proof that the loop works.</li>
+</ul>
+<p>You don’t have to use all of it. Capturing alone already helps. But each part feeds the next, and the further a thought travels around the loop, the less it weighs.</p>
+<h2 id="one-consistent-rule-set"><a class="header" href="#one-consistent-rule-set">One consistent rule set</a></h2>
+<p>The app tries hard to behave the same way everywhere, so you learn it once:</p>
+<ul>
+<li><strong>Everything you create is a “thing” (an item).</strong> A goal, a habit, a note, a book — same object, different clothing. Any thing can live inside any other thing, move between areas, and change its shape later. Nothing is locked in.</li>
+<li><strong>Progress flows upward.</strong> Finish a chapter and the book moves; the book moves and the yearly goal moves. You never update a percentage by hand unless you want to.</li>
+<li><strong>Checking a box means the same thing wherever you see it.</strong> One rule, explained in <a href="#the-completion-rule">The completion rule</a>.</li>
+<li><strong>Nothing vanishes silently.</strong> Completed items stay visible (struck through), deleted items go to a recoverable Trash, unfinished tasks carry forward without shame.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="getting-started-in-ten-minutes"><a class="header" href="#getting-started-in-ten-minutes">Getting started in ten minutes</a></h1>
+<p>A first session that touches every part of the app once.</p>
+<h2 id="1-capture-three-thoughts-1-minute"><a class="header" href="#1-capture-three-thoughts-1-minute">1. Capture three thoughts (1 minute)</a></h2>
+<p>Open <strong>Capture</strong> and type whatever is on your mind right now, one thought per entry:</p>
+<blockquote>
+<p>“need to fix my sleep”
+“mom’s birthday — plan something”
+“that book about deep work everyone mentions”</p>
+</blockquote>
+<p>That’s it. They’re safe. Notice how your head feels slightly quieter.</p>
+<h2 id="2-make-a-life-area-1-minute"><a class="header" href="#2-make-a-life-area-1-minute">2. Make a life area (1 minute)</a></h2>
+<p>Open <strong>Life</strong> → <strong>+ Area</strong>. Areas are the big departments of your life — most people want 3 or 4 to start:</p>
+<ul>
+<li>💪 Health</li>
+<li>💼 Career</li>
+<li>❤️ Family</li>
+<li>💰 Money</li>
+</ul>
+<p>(The free plan includes 4 areas, which is plenty to begin.)</p>
+<h2 id="3-give-one-thought-a-shape-2-minutes"><a class="header" href="#3-give-one-thought-a-shape-2-minutes">3. Give one thought a shape (2 minutes)</a></h2>
+<p>Back in <strong>Capture</strong>, take “need to fix my sleep” and organize it. Choose what it is — say, a <strong>habit</strong>: “In bed by 11pm”, repeating <strong>every day</strong>, in your <strong>Health</strong> area.</p>
+<p>The moment it has a repeat, it will show up on your day list automatically. You never have to remember it again.</p>
+<h2 id="4-plan-today-2-minutes"><a class="header" href="#4-plan-today-2-minutes">4. Plan today (2 minutes)</a></h2>
+<p>Open <strong>Plan</strong>. Your new habit is already there. Add one or two one-time tasks with <em>“Add something for today…”</em>:</p>
+<blockquote>
+<p>“Call about mom’s birthday” ⭐ Important</p>
+</blockquote>
+<p>That’s a complete day plan. Two or three things. The morning question — <em>“what should I do today?”</em> — now has a written answer.</p>
+<h2 id="5-do-one-check-one-1-minute"><a class="header" href="#5-do-one-check-one-1-minute">5. Do one, check one (1 minute)</a></h2>
+<p>Do the easiest thing on the list, then tap its checkbox. The progress bar moves. If the task belonged to a goal, the goal moved too — everywhere at once.</p>
+<h2 id="6-close-the-day-2-minutes"><a class="header" href="#6-close-the-day-2-minutes">6. Close the day (2 minutes)</a></h2>
+<p>In the evening, Plan has a small journal on the same screen: how the day went, mood, energy. Two sentences is enough. On Sunday, open <strong>Reflect</strong> and it will show you the week you actually had.</p>
+<h2 id="where-to-go-deeper"><a class="header" href="#where-to-go-deeper">Where to go deeper</a></h2>
+<ul>
+<li>Every capture-related detail: <a href="#capture-emptying-your-head">Capture</a></li>
+<li>Structuring goals inside goals: <a href="#life-everything-youre-growing">Life</a></li>
+<li>A full year-goal walkthrough: <a href="#one-goal-top-to-bottom--a-worked-example">One goal, top to bottom</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="capture-emptying-your-head"><a class="header" href="#capture-emptying-your-head">Capture: emptying your head</a></h1>
+<p>Capture is the front door of the app, and the only part you must use <em>fast</em>. A thought lives here as a <strong>seed</strong>: raw text, no category, no decision made.</p>
+<h2 id="capturing"><a class="header" href="#capturing">Capturing</a></h2>
+<p>Type the thought, press enter, done. Capture on the go — waiting for coffee, mid-walk, the second the idea appears. The bar for what “deserves” capturing should be on the floor: if it occupied your mind, it qualifies.</p>
+<p>Good seeds look like:</p>
+<blockquote>
+<p>“gift for Ravi — something with cycling?”
+“why am I always tired at 4pm”
+“learn enough Spanish for the Mexico trip”
+“cancel that subscription”</p>
+</blockquote>
+<h2 id="what-happens-to-a-seed"><a class="header" href="#what-happens-to-a-seed">What happens to a seed</a></h2>
+<p>Seeds wait in the inbox until you decide, and a seed only ever moves when <em>you</em> move it:</p>
+<ul>
+<li><strong>Organize it</strong> — turn it into a real thing: a goal, habit, note, task for a specific day. The seed archives itself and the new thing lands in its section (the app tells you where, with a link). There’s an undo right after, if you regret the shape you chose.</li>
+<li><strong>Later</strong> — not ready to decide? Park it. It moves out of the inbox but stays reachable.</li>
+<li><strong>Archive</strong> — the thought mattered enough to write but needs nothing. Kept, hidden.</li>
+<li><strong>Delete</strong> — gone, but only ever with a confirmation. Personal thoughts never vanish silently.</li>
+</ul>
+<h2 id="the-inbox-habit"><a class="header" href="#the-inbox-habit">The inbox habit</a></h2>
+<p>The inbox works best <strong>emptied regularly, not instantly</strong>. Capture all day without deciding anything; then once a day or every few days, sit down calm and sort. Deciding is a different mental mode than capturing — the app deliberately doesn’t ask you to do both at once.</p>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>You captured</th><th>A good shape for it</th></tr>
+</thead>
+<tbody>
+<tr><td>“gift for Ravi — cycling?”</td><td>One-time task on a date a week before the birthday</td></tr>
+<tr><td>“why am I always tired at 4pm”</td><td>A note — it needs thinking, not scheduling</td></tr>
+<tr><td>“learn Spanish for the Mexico trip”</td><td>A goal in your Travel/Growth area, horizon “This year”</td></tr>
+<tr><td>“cancel that subscription”</td><td>Task on Today. Two minutes. Just do it.</td></tr>
+<tr><td>“in bed by 11”</td><td>A habit, repeats every day</td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="notes-longer-thoughts"><a class="header" href="#notes-longer-thoughts">Notes: longer thoughts</a></h1>
+<p>Notes are for writing that isn’t a task: journal-adjacent thinking, lists that aren’t to-do lists, research, recipes, meeting notes, anything with paragraphs. A note never nags you — it has no checkbox, no schedule, no progress bar.</p>
+<h2 id="writing-in-markdown"><a class="header" href="#writing-in-markdown">Writing in markdown</a></h2>
+<p>Notes are written in <strong>markdown</strong>: plain text with a few symbols for structure. The editor shows two panes — <strong>Write</strong> (your markdown) and <strong>Preview</strong> (how it renders). On a desktop screen both are visible side by side and the preview updates while you type; on a phone, Write and Preview are two tabs above the editor.</p>
+<p>Everything supported:</p>
+<pre><code class="language-text"># Big heading
+## Medium heading
+### Small heading
+
+Normal paragraph text.
+
+**bold** and *italic* and ~~struck out~~ and `code`
+
+- a bullet list
+- second bullet
+
+1. a numbered list
+2. second entry
+
+&gt; a quote, or something worth setting apart
+
+[a link](https://example.com)
+
+---   (a horizontal line)
+</code></pre>
+<p>Nothing converts behind your back: what you type is exactly what’s stored, and the preview is just a rendering of it. Notes you wrote in the app’s old formatting editor open normally — they’re converted to markdown the first time you edit them.</p>
+<h2 id="folders"><a class="header" href="#folders">Folders</a></h2>
+<p>Folders group notes: “July 2026”, “Recipes”, “Project X research”. On the Notes screen, folders sit as chips at the top; loose notes float below in a grid.</p>
+<p>Filing a note into a folder, three ways:</p>
+<ol>
+<li><strong>Drag it</strong> — on a computer, drag the card onto a folder chip. On a phone, <strong>press and hold the card for a moment</strong> (it lifts and buzzes), then slide it onto the chip and let go.</li>
+<li><strong>The ⋮ menu</strong> on the card → <em>Move to folder</em>.</li>
+<li><strong>Select several</strong> — tap the small circle on a card to enter selection, tap more cards, then <em>Move to folder</em> moves the whole batch at once.</li>
+</ol>
+<p>Deleting a folder never deletes its notes — they become loose notes again.</p>
+<h2 id="when-a-note-grows-up"><a class="header" href="#when-a-note-grows-up">When a note grows up</a></h2>
+<p>Some notes turn out to be plans in disguise. <em>Organize into something</em> (on the note’s page) creates a real goal/habit/task from it — the note itself stays exactly where it was, unchanged. The note was thinking; the new thing is doing.</p>
+<h2 id="examples-1"><a class="header" href="#examples-1">Examples</a></h2>
+<ul>
+<li><strong>A packing list</strong> — one note, bullets, done. It doesn’t need to be twelve tasks.</li>
+<li><strong>“Thoughts on quitting my job”</strong> — a note this month. Maybe a goal next month. <em>Organize into something</em> when it’s time.</li>
+<li><strong>Book quotes</strong> — a “Reading” folder, one note per book, <code>&gt;</code> quotes inside.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="life-everything-youre-growing"><a class="header" href="#life-everything-youre-growing">Life: everything you’re growing</a></h1>
+<p>Life is the map. Where Plan asks <em>“what today?”</em>, Life asks <em>“what, at all?”</em> — every goal, habit, and project you’re carrying, arranged by the part of life it serves.</p>
+<h2 id="areas"><a class="header" href="#areas">Areas</a></h2>
+<p>Areas are the top level: Health, Career, Family, Money, French, whatever your life is actually made of. Each area page lists everything filed under it with a progress bar per item. Items don’t need an area (“not filed anywhere yet” collects the loose ones), but areas are what make five hundred ambitions feel like six shelves.</p>
+<h2 id="things-items"><a class="header" href="#things-items">Things (items)</a></h2>
+<p>Everything you create is the same kind of object wearing different clothes. When you add something you pick what it is:</p>
+<ul>
+<li><strong>Goal</strong> — has an end. “Run a half marathon.” Done when it’s done.</li>
+<li><strong>Habit</strong> — has no end. “Meditate.” Lives on repeats; measured in streaks.</li>
+<li><strong>Project</strong> — a container of steps. “Renovate kitchen.”</li>
+<li><strong>Book</strong> — tracked chapter by chapter.</li>
+<li><strong>Milestone</strong> — a marker inside something bigger. “First 10k run.”</li>
+<li><strong>Note / Folder</strong> — live in Notes (see that chapter).</li>
+<li>Quotes, principles, lessons, memories, ideas, dreams — keepsakes; they live in a quiet space of their own, out of the execution flow.</li>
+</ul>
+<p>Don’t overthink the choice — you can change kind, area, parent, and everything else later. Nothing is locked.</p>
+<h2 id="how-a-thing-is-measured"><a class="header" href="#how-a-thing-is-measured">How a thing is measured</a></h2>
+<p>Each thing tracks progress in one of a few ways:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tracker</th><th>Feels like</th><th>Example</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Done / not done</strong></td><td>A checkbox</td><td>“Get the visa”</td></tr>
+<tr><td><strong>Counter</strong></td><td>n of a target</td><td>132 / 200 workouts</td></tr>
+<tr><td><strong>Book</strong></td><td>chapter n of m</td><td>chapter 7 / 20</td></tr>
+<tr><td><strong>Money</strong></td><td>amount saved</td><td>₹25,000 / ₹100,000</td></tr>
+<tr><td><strong>Percent</strong></td><td>your own estimate</td><td>45% of the course</td></tr>
+<tr><td><strong>Habit</strong></td><td>days logged, streaks</td><td>meditated 12 days straight</td></tr>
+<tr><td><strong>Nothing</strong></td><td>it just exists</td><td>a note</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="nesting-things-inside-things"><a class="header" href="#nesting-things-inside-things">Nesting: things inside things</a></h2>
+<p>Any thing can live inside any other. This is the app’s spine:</p>
+<pre><code>🎯 Reach conversational Spanish        (year)
+   🎯 Finish beginner course           (this quarter)
+      📖 Textbook, 20 chapters         (book: chapter 9/20)
+   🔁 15 minutes of practice           (habit, daily)
+</code></pre>
+<p><strong>Progress flows upward automatically.</strong> A thing with its own tracker reports that; a thing without one averages its children. Tick the textbook forward and the course, and the year goal above it, both move. You never do bookkeeping upward.</p>
+<p>Open any item to see what’s inside it, its history, streaks and heatmap (for habits), and the <em>“break off a piece for today”</em> box — the bridge to Plan, covered in the next chapter.</p>
+<h2 id="moving-things"><a class="header" href="#moving-things">Moving things</a></h2>
+<p><em>Move</em> on an item’s page relocates it: pick a <strong>life area</strong> and/or the thing it should <strong>live inside</strong>. The list shows everything you have (goals and projects first, searchable) with each candidate’s area and time horizon, so you can tell your yearly goals apart. Picking a parent also adopts that parent’s area, which is almost always what you meant — override it with the chips if not. <strong>Nothing moves until you press Move</strong>; Cancel really cancels.</p>
+<h2 id="completed-someday-trash"><a class="header" href="#completed-someday-trash">Completed, someday, trash</a></h2>
+<ul>
+<li><strong>Mark complete</strong> retires a thing with dignity — struck through, still visible, reopenable.</li>
+<li><strong>Someday</strong> shelves a thing you’re not working on without deleting the ambition.</li>
+<li><strong>Delete</strong> moves it to Trash (in Settings), recoverable for 7 days (30 with Premium). Children of a deleted thing move up a level — they aren’t lost.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="plan-today-and-further-out"><a class="header" href="#plan-today-and-further-out">Plan: today, and further out</a></h1>
+<p>Plan is the control room. It answers one question at five zoom levels: <em>what am I doing — today, this week, this month, this quarter, this year?</em></p>
+<h2 id="the-today-list"><a class="header" href="#the-today-list">The Today list</a></h2>
+<p>The default view is today: a short list of concrete actions, a progress bar, and the day’s journal beside it. Things land on today four ways:</p>
+<ol>
+<li><strong>You add one directly</strong> — <em>“Add something for today…”</em>: a title, optionally a date (plant a task on any future day — a birthday, a deadline), a priority star, a small note. If you give it a repeat instead, it becomes a routine and files itself under a life area of your choice.</li>
+<li><strong>A repeat puts it there</strong> — anything with a schedule (every day, weekdays, Mon/Wed/Fri, 4× a week, monthly) appears on its days automatically. This is the “set it once, never think again” path.</li>
+<li><strong>You break a piece off a goal</strong> — on any goal’s page, <em>“break off a piece for today”</em> creates a small task linked to that goal. For metered goals (counters, books) you say how much the piece is worth — “Read 2 chapters” moves the meter by 2 when done.</li>
+<li><strong>A goal is marked for today</strong> — setting a thing’s planning horizon to <em>Today</em> keeps it on the list until you complete it.</li>
+</ol>
+<h2 id="reading-a-row"><a class="header" href="#reading-a-row">Reading a row</a></h2>
+<ul>
+<li><strong>Square checkbox</strong> — one-time thing; checking completes it (and the goal it belongs to, when it was the goal’s last open piece).</li>
+<li><strong>Round checkbox</strong> — a repeat; checking logs <em>today</em> and feeds the streak. Tomorrow it returns. See <a href="#the-completion-rule">The completion rule</a>.</li>
+<li><strong>⭐</strong> — priority. <strong>+2 chapters</strong> — how much this task moves its goal’s meter. <strong>“carried from Mon”</strong> — an unfinished task following you, without shame, until done. Finishing it on a later day keeps the record honest (“done Wed” shows on its planned day).</li>
+<li>The little icons: open the linked goal, plan what a habit means today (“clean” → “clean desk”), edit, focus timer, remove.</li>
+</ul>
+<p>Completing a task never reshuffles the list — rows move only when you drag them or use <strong>Sort</strong> (unfinished first, custom order, hide completed).</p>
+<h2 id="the-focus-timer"><a class="header" href="#the-focus-timer">The focus timer</a></h2>
+<p>The timer icon on any row opens a full-screen timer for that one task — for when starting is the hard part. Finish, check it off from inside, move to the next.</p>
+<h2 id="week-month-quarter-year"><a class="header" href="#week-month-quarter-year">Week, month, quarter, year</a></h2>
+<p>The tabs across the top hold standing lists for each period, navigable like a calendar (July, August… 2026, 2027…). Anything whose planning horizon is “this week” appears in that specific week’s list — with its progress, and a <strong>→ Today</strong> button that pulls it onto the day when you’re ready to act.</p>
+<p>These lists are the planning layer: on Sunday, look at the week list; each morning, pull from it. Nothing here nags — it waits.</p>
+<h2 id="browsing-days"><a class="header" href="#browsing-days">Browsing days</a></h2>
+<p>The week strip and Yesterday / Today / Tomorrow jumps let you look back (what did Tuesday look like?) or plan ahead (load Saturday with errands). Only the real today shows carried-over tasks; other days show just what belongs to them.</p>
+<h2 id="the-journal-on-the-same-screen"><a class="header" href="#the-journal-on-the-same-screen">The journal on the same screen</a></h2>
+<p>The right side of today (below, on a phone) is the daily journal: a “thinking about…” box for the morning, an end-of-day reflection, mood and energy. It lives here, not in a separate app section, because closing the day is part of the day. Reflect (next chapters) is built from what you write here.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="one-goal-top-to-bottom--a-worked-example"><a class="header" href="#one-goal-top-to-bottom--a-worked-example">One goal, top to bottom — a worked example</a></h1>
+<p>The promise: <em>if I do my small list today, I am provably moving toward my year goal.</em> Here is the full setup, once, so the shape is clear. It takes about three minutes.</p>
+<h2 id="the-ambition"><a class="header" href="#the-ambition">The ambition</a></h2>
+<blockquote>
+<p>“I want to read 5 books this year.”</p>
+</blockquote>
+<h2 id="build-the-ladder"><a class="header" href="#build-the-ladder">Build the ladder</a></h2>
+<p><strong>1. The year goal.</strong> In Life, add a goal to your Growth area:</p>
+<ul>
+<li><em>Read 5 books in 2026</em> — kind <strong>Goal</strong>, tracker <strong>Counter</strong>, target <strong>5</strong>, unit “books”, planning horizon <strong>This year</strong>.</li>
+</ul>
+<p><strong>2. The current book.</strong> Add a thing <em>inside</em> it:</p>
+<ul>
+<li><em>Finish “Linchpin”</em> — kind <strong>Book</strong>, tracker chapter <strong>0 / 20</strong>, horizon <strong>This month</strong>.</li>
+</ul>
+<p><strong>3. This week’s slice.</strong> You want 7 chapters this week. Open the book, <em>break off a piece for today</em>:</p>
+<ul>
+<li><em>“Read chapter 1”</em> — moves the meter by <strong>1</strong>.</li>
+</ul>
+<p>That’s the whole setup. No week-goal object is even required — the book’s meter <em>is</em> the week’s scoreboard. (If you like an explicit weekly target, nest a counter “7 chapters this week”, horizon <strong>This week</strong>, inside the book. The horizon stepper knows a week inside a month stays inside that month.)</p>
+<h2 id="live-a-day-of-it"><a class="header" href="#live-a-day-of-it">Live a day of it</a></h2>
+<p>Tomorrow morning, Plan shows <em>Read chapter 1</em> with a “+1 chapters” tag. You read, you check it:</p>
+<ul>
+<li>the task completes,</li>
+<li><em>Linchpin</em> becomes chapter 1/20 — visible in Life, in the month list, everywhere,</li>
+<li><em>Read 5 books in 2026</em> nudges forward, because progress flows upward through the nesting.</li>
+</ul>
+<p>Each day, break off the next chapter — or set a <strong>repeat</strong> on the book (“weekdays”) so a reading row appears by itself and you log chapters as you go.</p>
+<h2 id="finish-a-book"><a class="header" href="#finish-a-book">Finish a book</a></h2>
+<p>When the meter hits 20/20 the book completes itself. Bump the year counter: 1 of 5 books. Add the next book inside the year goal and the ladder keeps going.</p>
+<h2 id="when-to-trace-and-when-not-to"><a class="header" href="#when-to-trace-and-when-not-to">When to trace, and when not to</a></h2>
+<p>Not everything deserves this. “Give clothes for washing” is a task on today, full stop. The ladder is for the three or four ambitions where you genuinely want the answer to <em>“is today connected to anything?”</em> to be yes — and visible.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="the-completion-rule"><a class="header" href="#the-completion-rule">The completion rule</a></h1>
+<p>One rule, learned once, true everywhere:</p>
+<blockquote>
+<p><strong>Checking a thing checks the thing itself — everywhere it appears.</strong>
+A <strong>square</strong> checkbox completes the thing for good. A <strong>round</strong> checkbox logs <em>this day</em> of a repeating thing.</p>
+</blockquote>
+<h2 id="square-one-time-things"><a class="header" href="#square-one-time-things">Square: one-time things</a></h2>
+<p>Tasks, goals, milestones. Check one — on Today, in a Life area, inside a parent goal, in a week list — and it is done in all of those places at once, struck through but still visible. Check again to undo. The same tap as the <em>Mark complete</em> button on the item’s own page.</p>
+<p><strong>And it flows down and up:</strong></p>
+<ul>
+<li>Completing a task that was the <strong>last open piece of a goal</strong> completes the goal too. You did the thing; the app does the filing.</li>
+<li>Completing a child updates the parent’s percentage — a parent measured by its children moves the moment any of them does.</li>
+</ul>
+<h2 id="round-repeating-things"><a class="header" href="#round-repeating-things">Round: repeating things</a></h2>
+<p>Habits and anything with a schedule. The circle means “done <em>today</em>”: it feeds the streak and the heatmap, and tomorrow the circle returns empty, because the habit isn’t finished — that’s the point of a habit. Some repeats count more than once a day (“3 glasses of water”) — the circle fills as a ring, 2 of 3.</p>
+<p>Ending a habit forever is a deliberate act (<em>Retire habit</em> on its page), never a side effect of doing it today.</p>
+<h2 id="why-both-exist"><a class="header" href="#why-both-exist">Why both exist</a></h2>
+<p>If one checkbox meant both “done forever” and “done today,” you couldn’t trust it — doing your pushups once would delete the pushups habit. The shape tells you what your tap will mean <em>before</em> you tap.</p>
+<p>This is also why a thing can’t simultaneously repeat <em>and</em> be marked “do today”: the two give the checkbox different meanings, so setting one clears the other (a repeat reaches Today by itself anyway).</p>
+<h2 id="quick-reference"><a class="header" href="#quick-reference">Quick reference</a></h2>
+<p>The two symbols below are the two checkbox shapes you’ll see in the app itself:
+<strong>☐ square</strong> (one-time — completing) and <strong>◯ round</strong> (repeating — logging today).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>You check…</th><th>What happens</th></tr>
+</thead>
+<tbody>
+<tr><td>☐ a one-time task on Today</td><td>Task done. If it was its goal’s last open piece, the goal completes too</td></tr>
+<tr><td>☐ a goal in a Life list</td><td>Goal completes, everywhere. Tap again to reopen</td></tr>
+<tr><td>◯ a habit, anywhere</td><td>Today logged; streak +1; back tomorrow</td></tr>
+<tr><td>☐ a task with “+2 chapters”</td><td>Task done and the book meter moves by 2</td></tr>
+<tr><td>◯ a habit you meant to end</td><td>Just logs today — use <em>Retire habit</em> on its page to end it</td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="reflect-journal-and-reviews"><a class="header" href="#reflect-journal-and-reviews">Reflect: journal and reviews</a></h1>
+<p>Reflect is where the loop closes: the app takes the days you actually lived and shows them back to you.</p>
+<h2 id="the-daily-journal"><a class="header" href="#the-daily-journal">The daily journal</a></h2>
+<p>Lives right on the Today screen (and under Reflect):</p>
+<ul>
+<li><strong>“Today I’m thinking about…”</strong> — a morning brain-dump box. Unstructured on purpose.</li>
+<li><strong>End of day</strong> — what went well, what to try differently. Two sentences beat zero.</li>
+<li><strong>Mood and energy</strong> — a 1–5 tap each. Thirty days of these dots teach you more about your 4pm slump than any productivity article.</li>
+</ul>
+<p>One entry per day; everything is editable later. Journal pages can be exported.</p>
+<h2 id="reviews"><a class="header" href="#reviews">Reviews</a></h2>
+<p>A review assembles a period — <strong>week, month</strong> (and <strong>quarter, year</strong> with Premium) — from your real history:</p>
+<ul>
+<li>what you completed, and which life areas it served,</li>
+<li>habit consistency (days showing up, streaks),</li>
+<li>meters that moved: pages, rupees, kilometers, chapters,</li>
+<li>your mood/energy pattern,</li>
+<li>a free-writing box for the review itself.</li>
+</ul>
+<p>Navigate periods like a calendar — last week, March, Q2. From any week/month list in Plan, <em>“Reflect on this week →”</em> jumps to the matching review.</p>
+<h2 id="unfinished--failure"><a class="header" href="#unfinished--failure">Unfinished ≠ failure</a></h2>
+<p>Reviews deliberately don’t scold. An unfinished plan is <strong>information</strong>: the week was overloaded, or the goal is mis-sized, or that habit needs a different time of day. The point of reflecting is to adjust the next loop, not to grade the last one.</p>
+<h2 id="a-five-minute-sunday"><a class="header" href="#a-five-minute-sunday">A five-minute Sunday</a></h2>
+<ol>
+<li>Open Reflect → this week.</li>
+<li>Read what happened (it’s already assembled).</li>
+<li>Write three lines: proudest thing, hardest thing, one change for next week.</li>
+<li>Open Plan → Week tab → next week, and place that one change in it.</li>
+</ol>
+<p>That’s a complete personal review system, five minutes, every week.</p>
+<p><em>(Free accounts see roughly the last 12 weeks of history; Premium keeps all of it, plus quarterly and yearly reviews.)</em></p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="settings-sync-and-your-data"><a class="header" href="#settings-sync-and-your-data">Settings, sync and your data</a></h1>
+<h2 id="your-data-two-modes"><a class="header" href="#your-data-two-modes">Your data, two modes</a></h2>
+<ul>
+<li><strong>On this device</strong> — without signing in, everything lives in your browser. Fully functional, fully private, but tied to that one browser.</li>
+<li><strong>Synced</strong> — sign in with Google and your data lives in your private cloud space: phone and laptop see the same life.</li>
+</ul>
+<h2 id="keeping-devices-fresh"><a class="header" href="#keeping-devices-fresh">Keeping devices fresh</a></h2>
+<p>When you’re signed in, edits made on one device reach another two ways:</p>
+<ul>
+<li><strong>Automatically</strong> — returning to the app (switching back to the tab, waking the laptop) pulls the latest by itself.</li>
+<li><strong>The sync button 🔄</strong> — top-right on a phone, next to the logo on a desktop. Tap it to fetch <em>right now</em>; it spins while fetching and shows a ✓ when you’re current. No browser refresh needed, ever.</li>
+</ul>
+<p>Without an account the button simply re-reads this device’s storage (useful with two tabs open).</p>
+<h2 id="simple-mode"><a class="header" href="#simple-mode">Simple mode</a></h2>
+<p><strong>“How the app feels”: Simple / Full.</strong> Simple keeps the surface to to-dos, notes and your day: adding something asks only for a name, when it appears, and where it belongs; Reflect steps out of the nav. Every advanced tool — types, progress meters, labels, reviews — stays one tap away under <em>More options</em>, and switching back to Full is instant. Nothing is ever deleted by the switch; complexity is hidden, not removed.</p>
+<p>Give Simple to the friend who “just wants a to-do app.” They’re using the same engine.</p>
+<h2 id="appearance"><a class="header" href="#appearance">Appearance</a></h2>
+<p>Light/dark theme, and a choice of display fonts for headings and quotes.</p>
+<h2 id="trash"><a class="header" href="#trash">Trash</a></h2>
+<p>Deleted items rest in Trash, restorable for <strong>7 days</strong> (free) or <strong>30 days</strong> (Premium), then they’re gone for good. Deleting a parent never deletes its children — they step up a level.</p>
+<h2 id="export"><a class="header" href="#export">Export</a></h2>
+<p><em>Export everything</em> downloads your entire life as one JSON file: every item, seed, action, log, journal entry. It’s yours — feed it to a spreadsheet, an AI tool, an archive. No lock-in.</p>
+<h2 id="free-vs-premium"><a class="header" href="#free-vs-premium">Free vs Premium</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th>Free</th><th>Premium</th></tr>
+</thead>
+<tbody>
+<tr><td>Life areas</td><td>4</td><td>unlimited</td></tr>
+<tr><td>Active items</td><td>40</td><td>unlimited</td></tr>
+<tr><td>Reviews</td><td>week + month, ~12 weeks of history</td><td>+ quarter, year, full history</td></tr>
+<tr><td>Habit heatmap</td><td>8 weeks</td><td>16 weeks</td></tr>
+<tr><td>Trash retention</td><td>7 days</td><td>30 days</td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="faq-and-gotchas"><a class="header" href="#faq-and-gotchas">FAQ and gotchas</a></h1>
+<p><strong>I checked a habit off. Why isn’t it “completed” in Life?</strong>
+Round checkbox = “done <em>today</em>”, and today <em>is</em> logged (streak, heatmap). A habit never completes by checkbox — it repeats; that’s its job. To end it for good, open it and <em>Retire habit</em>. One-time things (square checkbox) do complete everywhere at once. See <a href="#the-completion-rule">The completion rule</a>.</p>
+<p><strong>I set something to “Today” — does it also need a repeat?</strong>
+No. <em>Today</em> alone puts it on the list until you complete it. A repeat alone puts it there on schedule. They’re mutually exclusive on purpose — each gives the checkbox a different meaning, so choosing one clears the other.</p>
+<p><strong>Something I expected isn’t in this week’s list.</strong>
+Week/month/quarter/year lists are real calendar instances. A goal tagged “this week” <em>last</em> week sits in last week’s list — step the arrows back and you’ll find it, then <em>→ Today</em> or re-schedule it into the current week. Old items from before this existed appear in the current period.</p>
+<p><strong>Yesterday’s unfinished task is showing today. Bug?</strong>
+Feature: tasks carry forward until done (“carried from Mon”), only on the real today. Finish it today and both days stay honest: planned Monday, done Wednesday.</p>
+<p><strong>Where did my completed things go?</strong>
+Nowhere — completed items stay in their lists, struck through. Lists with a lot done offer <em>Hide completed</em> under Sort.</p>
+<p><strong>I moved something and the area changed by itself.</strong>
+Picking a parent adopts the parent’s life area — living inside something means living where it lives. Override with the area chips in the same Move sheet before pressing Move; nothing applies until then.</p>
+<p><strong>What’s the difference between a note and a “someday” goal?</strong>
+A note is thinking (no checkbox, no guilt). Someday is a shelved <em>intention</em> — still a goal, just not now. If it will eventually be <em>done</em>, make it a goal; if it’s words you want to keep, it’s a note.</p>
+<p><strong>My phone edit isn’t on my laptop.</strong>
+Both signed in? Then tap the 🔄 sync button (or just refocus the tab — it pulls automatically). Not signed in = each device is its own island by design.</p>
+<p><strong>Markdown symbols are showing as plain text.</strong>
+You’re looking at the <strong>Write</strong> pane — tap <strong>Preview</strong> (or widen the window; desktop shows both). The symbols are supposed to stay visible where you type.</p>
+<p><strong>Can I turn a note into a goal? A goal into a habit?</strong>
+Yes and yes. <em>Organize into something</em> on a note; <em>Edit</em> on anything else. Nothing about a thing is permanent — kind, tracker, area, parent, horizon all change anytime.</p>
+<p><strong>What do the free limits actually stop?</strong>
+Creating a 5th area or a 41st active item. Completed and someday items don’t count against you. Everything you already made keeps working.</p>
+<p><strong>I deleted something by accident.</strong>
+Settings → Trash → restore, within 7 days (30 on Premium).</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>

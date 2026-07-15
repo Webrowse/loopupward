@@ -28,6 +28,9 @@ This is also why a thing can't simultaneously repeat *and* be marked "do today":
 
 ## Quick reference
 
+The two symbols below are the two checkbox shapes you'll see in the app itself:
+**☐ square** (one-time — completing) and **◯ round** (repeating — logging today).
+
 | You check… | What happens |
 |---|---|
 | ☐ a one-time task on Today | Task done. If it was its goal's last open piece, the goal completes too |

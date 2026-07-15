@@ -183,6 +183,16 @@ export default function YouPage() {
           </div>
           <Link href="/guide"><Button small variant="soft">How it works</Button></Link>
         </div>
+        <div className="mt-4 flex items-center justify-between border-t border-line-soft pt-4">
+          <div>
+            <p className="text-sm font-medium text-ink">The full guide</p>
+            <p className="text-xs text-ink-3">Every feature explained, with examples</p>
+          </div>
+          {/* a static book shipped with the app, not an app page — plain link */}
+          <a href="/docs/" target="_blank" rel="noreferrer">
+            <Button small variant="soft">Open the guide</Button>
+          </a>
+        </div>
       </Card>
 
       <Card className="p-5 mb-3">

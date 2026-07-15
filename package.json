@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "preview:cf": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy:cf": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "deploy:cf": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "docs:build": "cd docs && mdbook build --dest-dir ../public/docs"
   },
   "dependencies": {
     "next": "16.2.10",
