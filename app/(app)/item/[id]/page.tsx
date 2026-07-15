@@ -394,6 +394,9 @@ function HabitTodayControl({
 
 /* ————— Move: reorganize your life anytime ————— */
 
+/** Kinds that usually hold other things — they lead the parent list. */
+const PARENT_FIRST_KINDS = ["goal", "project", "milestone", "habit", "book"];
+
 function MoveSheet({
   open, onClose, item, onMove,
 }: {
@@ -404,6 +407,20 @@ function MoveSheet({
 }) {
   const { db } = useLife();
   const [search, setSearch] = useState("");
+  // everything is staged: nothing moves until "Move" is pressed, so Cancel
+  // really cancels — no more instant, unrevertable area hops
+  const [areaId, setAreaId] = useState<string | null>(item.areaId);
+  const [parentId, setParentId] = useState<string | null>(item.parentId);
+
+  // fresh staging every time the sheet opens for an item
+  const [lastKey, setLastKey] = useState("");
+  const key = `${open}:${item.id}`;
+  if (key !== lastKey) {
+    setLastKey(key);
+    setAreaId(item.areaId);
+    setParentId(item.parentId);
+    setSearch("");
+  }
 
   // an item can't be nested inside itself or its own descendants
   const forbidden = useMemo(() => {
@@ -412,37 +429,50 @@ function MoveSheet({
     return set;
   }, [db, item.id]);
 
-  const candidates = db.items
-    .filter(
-      (i) =>
-        !forbidden.has(i.id) &&
-        i.status !== "archived" &&
-        i.id !== item.parentId &&
-        (!search.trim() || i.title.toLowerCase().includes(search.trim().toLowerCase()))
-    )
-    .slice(0, 12);
+  // every possible parent, scrollable — goals and projects first, then the
+  // rest; the chosen area's things float up within each group
+  const q = search.trim().toLowerCase();
+  const candidates = useMemo(() => {
+    const rank = (x: Item) =>
+      (PARENT_FIRST_KINDS.includes(x.kind) ? 0 : 2) + (areaId && x.areaId === areaId ? 0 : 1);
+    return db.items
+      .filter((i) => !forbidden.has(i.id) && i.status !== "archived" && (!q || i.title.toLowerCase().includes(q)))
+      .sort((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title));
+  }, [db.items, forbidden, q, areaId]);
 
-  const parent = item.parentId ? db.items.find((i) => i.id === item.parentId) : null;
+  const pendingParent = parentId ? db.items.find((i) => i.id === parentId) ?? null : null;
+  const dirty = areaId !== item.areaId || parentId !== item.parentId;
+
+  const pickParent = (cand: Item) => {
+    if (parentId === cand.id) {
+      setParentId(null); // tap again to unpick
+      return;
+    }
+    setParentId(cand.id);
+    // living inside something means living where it lives — adopt the
+    // parent's area (the chips above can still override before saving)
+    if (cand.areaId) setAreaId(cand.areaId);
+  };
+
+  const save = () => {
+    onMove(item.id, { areaId, parentId });
+    onClose();
+  };
 
   return (
     <Sheet
       open={open}
       onClose={onClose}
       title="Move"
-      cancelLabel="Close"
-      primary={{ label: "Done", onClick: onClose }}
+      cancelLabel="Cancel"
+      primary={{ label: "Move", onClick: save }}
+      primaryDisabled={!dirty}
     >
       <Field label="Life area">
         <div className="flex flex-wrap gap-1.5">
-          <Chip active={item.areaId === null} onClick={() => onMove(item.id, { areaId: null })}>
-            None
-          </Chip>
+          <Chip active={areaId === null} onClick={() => setAreaId(null)}>None</Chip>
           {[...db.areas].sort((a, b) => a.position - b.position).map((a) => (
-            <Chip
-              key={a.id}
-              active={item.areaId === a.id}
-              onClick={() => onMove(item.id, { areaId: a.id })}
-            >
+            <Chip key={a.id} active={areaId === a.id} onClick={() => setAreaId(a.id)}>
               {a.emoji} {a.name}
             </Chip>
           ))}
@@ -450,42 +480,55 @@ function MoveSheet({
       </Field>
 
       <Field label="Lives inside">
-        {parent ? (
-          <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-line px-3.5 py-2.5">
-            <span className="min-w-0 truncate text-sm text-ink">{parent.title}</span>
-            <button
-              className="shrink-0 text-xs text-danger"
-              onClick={() => onMove(item.id, { parentId: null })}
-            >
-              remove parent
+        {pendingParent ? (
+          <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-accent bg-accent-soft px-3.5 py-2.5">
+            <span className="min-w-0 truncate text-sm text-ink">
+              <KindIcon kind={pendingParent.kind} /> {pendingParent.title}
+            </span>
+            <button className="shrink-0 text-xs font-medium text-ink-3 hover:text-ink" onClick={() => setParentId(null)}>
+              make top level
             </button>
           </div>
         ) : (
-          <p className="mb-2 text-sm text-ink-3">Top level, it belongs to no bigger thing yet.</p>
+          <p className="mb-2 text-sm text-ink-3">Top level — it belongs to no bigger thing.</p>
         )}
         <input
           className={inputCls}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search for a new parent…"
+          placeholder="Search everything you have…"
         />
-        <div className="mt-2 space-y-1.5">
-          {candidates.map((cand) => (
-            <button
-              key={cand.id}
-              onClick={() => {
-                onMove(item.id, { parentId: cand.id });
-                onClose();
-              }}
-              className="pressable block w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-left text-sm text-ink hover:border-accent"
-            >
-              <KindIcon kind={cand.kind} /> {cand.title}
-            </button>
-          ))}
-          {search.trim() && candidates.length === 0 && (
-            <p className="text-sm text-ink-3">Nothing matches.</p>
-          )}
+        <div className="mt-2 max-h-72 space-y-1.5 overflow-y-auto pr-1">
+          {candidates.map((cand) => {
+            const candArea = cand.areaId ? db.areas.find((a) => a.id === cand.areaId) : null;
+            const horizonLabel = HORIZON_META.find((h) => h.value === cand.horizon)?.label;
+            const active = parentId === cand.id;
+            return (
+              <button
+                key={cand.id}
+                onClick={() => pickParent(cand)}
+                className={`pressable block w-full rounded-xl border px-3.5 py-2.5 text-left transition-colors ${
+                  active ? "border-accent bg-accent-soft" : "border-line bg-surface hover:border-accent"
+                }`}
+              >
+                <span className="flex min-w-0 items-center gap-1.5 text-sm text-ink">
+                  <KindIcon kind={cand.kind} className="shrink-0" />
+                  <span className="min-w-0 truncate">{cand.title}</span>
+                </span>
+                {(candArea || horizonLabel) && (
+                  <span className="mt-0.5 flex gap-2 text-xs text-ink-3">
+                    {candArea && <span>{candArea.emoji} {candArea.name}</span>}
+                    {horizonLabel && <span>{horizonLabel}</span>}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          {candidates.length === 0 && <p className="text-sm text-ink-3">Nothing matches.</p>}
         </div>
+        <p className="mt-2 text-xs text-ink-3">
+          Everything you have is listed. Nothing moves until you press Move.
+        </p>
       </Field>
     </Sheet>
   );
