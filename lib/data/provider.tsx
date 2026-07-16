@@ -428,7 +428,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       dateRepeatsYearly: false,
       richBody: null,
       status: "active", cadence: null, cadenceDays: null, cadenceCount: null,
-      steps: null, windowStart: null, windowEnd: null,
+      steps: null, entries: null, windowStart: null, windowEnd: null,
       labels: [], pinned: false,
       position: db.items.length, createdAt: Date.now(), completedAt: null, deletedAt: null,
       ...partial,

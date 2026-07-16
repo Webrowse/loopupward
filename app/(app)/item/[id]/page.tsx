@@ -1,14 +1,15 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
-import { Horizon, HORIZON_META, Item, KIND_META, RoutineStep } from "@/lib/types";
+import { Horizon, HORIZON_META, Item, KIND_META, ListEntry, RoutineStep } from "@/lib/types";
 import {
   ancestors, bestStreak, children as childrenOf, currentStreak, dayLogged, descendants,
-  formatValue, habitDailyTarget, habitDays, itemProgress, routineMinutes, scheduleLabel,
+  formatValue, habitDailyTarget, habitDays, itemProgress, listTotals, routineMinutes, scheduleLabel,
 } from "@/lib/progress";
+import { useRowDrag } from "@/lib/useRowDrag";
 import { uid } from "@/lib/uid";
 import { areaColor } from "@/lib/palette";
 import {
@@ -197,6 +198,9 @@ export default function ItemPage() {
         </>
       )}
 
+      {/* a list's contents: checkable entries, optionally quantified */}
+      {item.kind === "list" && <ListEntriesEditor item={item} />}
+
       {/* the next small step */}
       {item.status === "active" && !isHabit && (
         <div className="mb-6">
@@ -373,6 +377,16 @@ export default function ItemPage() {
   );
 }
 
+function DragDots() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+      <circle cx="4" cy="3" r="1.3" /><circle cx="10" cy="3" r="1.3" />
+      <circle cx="4" cy="7" r="1.3" /><circle cx="10" cy="7" r="1.3" />
+      <circle cx="4" cy="11" r="1.3" /><circle cx="10" cy="11" r="1.3" />
+    </svg>
+  );
+}
+
 /* ————— a routine's steps: its ordered script, each optionally timed ————— */
 
 function RoutineStepsEditor({ item }: { item: Item }) {
@@ -396,63 +410,11 @@ function RoutineStepsEditor({ item }: { item: Item }) {
     setNewMinutes("");
   };
 
-  /* drag-to-reorder: same midpoint-crossing swap the Today list uses; the
-     rows sit flush (divide-y), so no gap to add to the rebase offset */
-  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const rowEls = useRef<Map<string, HTMLDivElement>>(new Map());
-  const startClientY = useRef(0);
-  const orderRef = useRef<string[]>([]);
-  const order = dragOrder ?? steps.map((s) => s.id);
-
-  const beginDrag = (id: string, clientY: number) => {
-    orderRef.current = order;
-    startClientY.current = clientY;
-    setDragOrder(order);
-    setDraggingId(id);
-  };
-
-  const moveDrag = (id: string, clientY: number) => {
-    const el = rowEls.current.get(id);
-    if (!el) return;
-    el.style.transform = `translateY(${clientY - startClientY.current}px)`;
-    const current = orderRef.current;
-    const idx = current.indexOf(id);
-    const rect = el.getBoundingClientRect();
-    const center = rect.top + rect.height / 2;
-    const swap = (withIdx: number, rebase: number) => {
-      const next = [...current];
-      [next[idx], next[withIdx]] = [next[withIdx], next[idx]];
-      orderRef.current = next;
-      setDragOrder(next);
-      startClientY.current += rebase;
-    };
-    if (idx < current.length - 1) {
-      const nextEl = rowEls.current.get(current[idx + 1]);
-      if (nextEl) {
-        const r = nextEl.getBoundingClientRect();
-        if (center > r.top + r.height / 2) return swap(idx + 1, r.height);
-      }
-    }
-    if (idx > 0) {
-      const prevEl = rowEls.current.get(current[idx - 1]);
-      if (prevEl) {
-        const r = prevEl.getBoundingClientRect();
-        if (center < r.top + r.height / 2) swap(idx - 1, -r.height);
-      }
-    }
-  };
-
-  const endDrag = (id: string) => {
-    const el = rowEls.current.get(id);
-    if (el) el.style.transform = "";
-    setDraggingId(null);
-    setDragOrder(null);
-    const reordered = orderRef.current
-      .map((sid) => steps.find((s) => s.id === sid))
-      .filter((s): s is RoutineStep => !!s);
-    if (reordered.some((s, i) => s.id !== steps[i]?.id)) save(reordered);
-  };
+  // rows sit flush (divide-y), so no gap in the rebase offset
+  const { order, draggingId, rowRef, handleProps } = useRowDrag(
+    steps.map((s) => s.id),
+    (ids) => save(ids.map((sid) => steps.find((s) => s.id === sid)).filter((s): s is RoutineStep => !!s))
+  );
 
   return (
     <section className="mb-6">
@@ -470,30 +432,16 @@ function RoutineStepsEditor({ item }: { item: Item }) {
             return (
             <div
               key={s.id}
-              ref={(el) => {
-                if (el) rowEls.current.set(s.id, el);
-                else rowEls.current.delete(s.id);
-              }}
+              ref={rowRef(s.id)}
               className={`relative flex items-center gap-2 bg-surface px-3 py-2 ${draggingId === s.id ? "z-20 shadow-(--shadow-float)" : ""}`}
             >
               {/* the order IS the routine — drag a step where it belongs */}
               <button
-                onPointerDown={(e) => {
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  beginDrag(s.id, e.clientY);
-                }}
-                onPointerMove={(e) => draggingId === s.id && moveDrag(s.id, e.clientY)}
-                onPointerUp={() => draggingId === s.id && endDrag(s.id)}
-                onPointerCancel={() => draggingId === s.id && endDrag(s.id)}
-                onLostPointerCapture={() => draggingId === s.id && endDrag(s.id)}
+                {...handleProps(s.id)}
                 aria-label={`Drag step ${i + 1} to reorder`}
                 className="shrink-0 touch-none cursor-grab px-1 text-ink-3 active:cursor-grabbing"
               >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                  <circle cx="4" cy="3" r="1.3" /><circle cx="10" cy="3" r="1.3" />
-                  <circle cx="4" cy="7" r="1.3" /><circle cx="10" cy="7" r="1.3" />
-                  <circle cx="4" cy="11" r="1.3" /><circle cx="10" cy="11" r="1.3" />
-                </svg>
+                <DragDots />
               </button>
               {/* commit on blur, not per keystroke — every save syncs to the cloud */}
               <input
@@ -555,6 +503,165 @@ function RoutineStepsEditor({ item }: { item: Item }) {
       <p className="mt-2 text-xs text-ink-3">
         Steps are this routine&rsquo;s script — on Today it stays one single entry.
         {total != null && ` The minutes add up to ${total}, which the focus timer suggests when you run it.`}
+      </p>
+    </section>
+  );
+}
+
+/* ————— a list's contents: tick, quantify, rearrange ————— */
+
+function ListEntriesEditor({ item }: { item: Item }) {
+  const { updateItem } = useLife();
+  const entries = item.entries ?? [];
+  const [newText, setNewText] = useState("");
+  const [newAmount, setNewAmount] = useState("");
+  const [newUnit, setNewUnit] = useState("");
+  const doneCount = entries.filter((e) => e.done).length;
+  const totals = listTotals(entries);
+
+  const save = (next: ListEntry[]) => updateItem(item.id, { entries: next });
+
+  const parseAmt = (v: string): number | null => {
+    const a = parseFloat(v);
+    return Number.isFinite(a) && a > 0 ? a : null;
+  };
+
+  const add = () => {
+    if (!newText.trim()) return;
+    save([...entries, {
+      id: uid(), text: newText.trim(), amount: parseAmt(newAmount),
+      unit: newUnit.trim() || null, done: false,
+    }]);
+    setNewText("");
+    setNewAmount("");
+    setNewUnit("");
+  };
+
+  const { order, draggingId, rowRef, handleProps } = useRowDrag(
+    entries.map((e) => e.id),
+    (ids) => save(ids.map((eid) => entries.find((e) => e.id === eid)).filter((e): e is ListEntry => !!e))
+  );
+
+  return (
+    <section className="mb-6">
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-3">
+        The list
+        {entries.length > 0 && ` · ${doneCount}/${entries.length} done`}
+        {totals && ` · ${totals}`}
+      </p>
+
+      {entries.length > 0 && (
+        <div className="mb-2 divide-y divide-line-soft rounded-(--radius-card) border border-line-soft bg-surface shadow-(--shadow-card)">
+          {order.map((id, i) => {
+            const e = entries.find((x) => x.id === id);
+            if (!e) return null;
+            return (
+            <div
+              key={e.id}
+              ref={rowRef(e.id)}
+              className={`relative flex items-center gap-2 bg-surface px-3 py-2 ${draggingId === e.id ? "z-20 shadow-(--shadow-float)" : ""}`}
+            >
+              <button
+                {...handleProps(e.id)}
+                aria-label={`Drag entry ${i + 1} to reorder`}
+                className="shrink-0 touch-none cursor-grab px-1 text-ink-3 active:cursor-grabbing"
+              >
+                <DragDots />
+              </button>
+              <button
+                onClick={() => save(entries.map((x) => (x.id === e.id ? { ...x, done: !x.done } : x)))}
+                aria-label={e.done ? `Untick "${e.text}"` : `Tick "${e.text}"`}
+                className={`pressable grid h-5 w-5 shrink-0 place-items-center rounded-md border-2 transition-colors ${
+                  e.done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
+                }`}
+              >
+                {e.done && (
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </button>
+              {/* commit on blur, not per keystroke — every save syncs to the cloud */}
+              <input
+                defaultValue={e.text}
+                onBlur={(ev) => {
+                  const t = ev.target.value.trim();
+                  if (t && t !== e.text) save(entries.map((x) => (x.id === e.id ? { ...x, text: t } : x)));
+                  else ev.target.value = e.text;
+                }}
+                aria-label={`Entry ${i + 1} text`}
+                className={`min-w-0 flex-1 bg-transparent text-sm outline-none ${
+                  e.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"
+                }`}
+              />
+              <input
+                type="number"
+                min={0}
+                step="any"
+                defaultValue={e.amount ?? ""}
+                onBlur={(ev) => {
+                  const a = parseAmt(ev.target.value);
+                  if (a !== e.amount) save(entries.map((x) => (x.id === e.id ? { ...x, amount: a } : x)));
+                }}
+                placeholder="–"
+                aria-label={`Entry ${i + 1} amount`}
+                className="w-16 shrink-0 rounded-lg border border-line bg-bg px-2 py-1 text-right text-sm text-ink tabular-nums outline-none focus:border-accent"
+              />
+              <input
+                defaultValue={e.unit ?? ""}
+                onBlur={(ev) => {
+                  const u = ev.target.value.trim() || null;
+                  if (u !== e.unit) save(entries.map((x) => (x.id === e.id ? { ...x, unit: u } : x)));
+                }}
+                placeholder="unit"
+                aria-label={`Entry ${i + 1} unit`}
+                className="w-14 shrink-0 rounded-lg border border-line bg-bg px-2 py-1 text-sm text-ink outline-none focus:border-accent"
+              />
+              <button
+                onClick={() => save(entries.filter((x) => x.id !== e.id))}
+                aria-label="Remove entry"
+                className="pressable shrink-0 px-1 text-ink-3 hover:text-danger"
+              >
+                ×
+              </button>
+            </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <input
+          className={inputCls}
+          value={newText}
+          onChange={(e) => setNewText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+          placeholder={entries.length === 0 ? 'e.g. "Milk"' : "Next entry…"}
+        />
+        <input
+          type="number"
+          min={0}
+          step="any"
+          value={newAmount}
+          onChange={(e) => setNewAmount(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+          placeholder="amt"
+          aria-label="Amount for the new entry"
+          className="w-20 shrink-0 rounded-xl border border-line bg-bg px-3 py-2.5 text-sm text-ink tabular-nums outline-none focus:border-accent"
+        />
+        <input
+          value={newUnit}
+          onChange={(e) => setNewUnit(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+          placeholder="unit"
+          aria-label="Unit for the new entry"
+          className="w-16 shrink-0 rounded-xl border border-line bg-bg px-3 py-2.5 text-sm text-ink outline-none focus:border-accent"
+        />
+        <Button small onClick={add} disabled={!newText.trim()}>Add</Button>
+      </div>
+      <p className="mt-2 text-xs text-ink-3">
+        Entries stay ticked once done — a list keeps its history, unlike a routine&rsquo;s daily reset.
+        {totals && ` Everything quantified adds up to ${totals}.`}
       </p>
     </section>
   );

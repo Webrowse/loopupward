@@ -217,6 +217,12 @@ function Today() {
           >
             🌄 Routines
           </Link>
+          <Link
+            href="/lists"
+            className="pressable rounded-full px-2.5 py-1 font-medium text-ink-3 hover:text-ink-2"
+          >
+            📋 Lists
+          </Link>
         </div>
       </div>
 

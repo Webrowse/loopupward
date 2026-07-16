@@ -15,6 +15,7 @@ export type ItemKind =
   | "goal"
   | "habit"
   | "routine"
+  | "list"
   | "project"
   | "book"
   | "milestone"
@@ -31,6 +32,18 @@ export interface RoutineStep {
   title: string;
   /** how long this step takes, in minutes — null when untimed */
   minutes: number | null;
+}
+
+/** One line of a list: "milk — 2 l". Entries aren't separate items — the
+ *  list is one node; its contents are ticked in place and stay ticked
+ *  (unlike routine steps, which reset with each day). */
+export interface ListEntry {
+  id: string;
+  text: string;
+  /** optional quantity — entries sharing a unit sum into the list's total line */
+  amount: number | null;
+  unit: string | null;
+  done: boolean;
 }
 
 export type TrackerType =
@@ -114,6 +127,8 @@ export interface Item {
   cadenceCount: number | null;
   /** routine kind only: the ordered script of the routine (see RoutineStep) */
   steps: RoutineStep[] | null;
+  /** list kind only: the checkable contents — array order is display order */
+  entries: ListEntry[] | null;
   /** routine kind only: when this shows on the Today list, as "HH:MM" 24h
    *  local time — a morning routine before noon, a night routine after 9pm.
    *  End may be earlier than start (21:00 → 02:00 wraps past midnight).
@@ -289,6 +304,7 @@ export const KIND_META: Record<ItemKind, { label: string; emoji: string }> = {
   goal: { label: "Goal", emoji: "🎯" },
   habit: { label: "Habit", emoji: "🔁" },
   routine: { label: "Routine", emoji: "🌄" },
+  list: { label: "List", emoji: "📋" },
   project: { label: "Project", emoji: "🧩" },
   book: { label: "Book", emoji: "📖" },
   milestone: { label: "Milestone", emoji: "🏔" },

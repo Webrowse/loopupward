@@ -93,6 +93,18 @@ export function RoutineIcon({ className }: { className?: string }) {
   );
 }
 
+export function ListIcon({ className }: { className?: string }) {
+  return (
+    <svg {...base(className)}>
+      <rect x="4.5" y="4" width="15" height="16.5" rx="1.8" />
+      <path d="m7.5 9 1.2 1.2L11 7.8" />
+      <path d="M13.5 9.2h3" />
+      <path d="m7.5 14.5 1.2 1.2 2.3-2.4" />
+      <path d="M13.5 14.7h3" />
+    </svg>
+  );
+}
+
 export function ProjectIcon({ className }: { className?: string }) {
   return (
     <svg {...base(className)}>
@@ -248,6 +260,7 @@ export const KIND_ICONS: Record<ItemKind, ComponentType<{ className?: string }>>
   goal: GoalIcon,
   habit: HabitIcon,
   routine: RoutineIcon,
+  list: ListIcon,
   project: ProjectIcon,
   book: BookIcon,
   milestone: MilestoneIcon,

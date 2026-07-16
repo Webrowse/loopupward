@@ -32,6 +32,18 @@ pub struct RoutineStep {
     pub minutes: Option<f64>,
 }
 
+/// One line of a list: "milk — 2 l". Ticked in place, not per day.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListEntry {
+    pub id: String,
+    pub text: String,
+    pub amount: Option<f64>,
+    pub unit: Option<String>,
+    #[serde(default)]
+    pub done: bool,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Item {
@@ -66,6 +78,9 @@ pub struct Item {
     /// optionally timed in minutes — stored as jsonb, travels as JSON
     #[serde(default)]
     pub steps: Option<sqlx::types::Json<Vec<RoutineStep>>>,
+    /// list kind only: the checkable contents — stored as jsonb
+    #[serde(default)]
+    pub entries: Option<sqlx::types::Json<Vec<ListEntry>>>,
     /// routine kind only: visible hours on the Today list, "HH:MM" local.
     /// End earlier than start wraps past midnight. Both null = all day.
     #[serde(default)]
@@ -229,10 +244,12 @@ pub struct DbPayload {
 /* ————— validation ————— */
 
 const KINDS: &[&str] = &[
-    "note", "folder", "quote", "idea", "dream", "goal", "habit", "routine", "project", "book",
+    "note", "folder", "quote", "idea", "dream", "goal", "habit", "routine", "list", "project", "book",
     "milestone", "principle", "promise", "lesson", "memory",
 ];
 const MAX_ROUTINE_STEPS: usize = 50;
+// shopping lists outgrow routine scripts
+const MAX_LIST_ENTRIES: usize = 200;
 const TRACKERS: &[&str] = &["none", "check", "counter", "percent", "money", "habit", "book"];
 const STATUSES: &[&str] = &["active", "done", "someday", "archived"];
 const HORIZONS: &[&str] = &["someday", "life", "year", "quarter", "month", "week", "today", "date"];
@@ -335,6 +352,24 @@ impl Item {
             if let Some(s) = v {
                 if !is_hm(s) {
                     return Err(bad(format!("{field} must be HH:MM")));
+                }
+            }
+        }
+        if let Some(entries) = &self.entries {
+            if entries.0.len() > MAX_LIST_ENTRIES {
+                return Err(bad("too many list entries"));
+            }
+            for e in &entries.0 {
+                if e.text.trim().is_empty() {
+                    return Err(bad("every list entry needs text"));
+                }
+                ck_len("entry text", &e.text, MAX_TITLE)?;
+                ck_len("entry id", &e.id, 64)?;
+                if let Some(u) = &e.unit {
+                    ck_len("entry unit", u, MAX_UNIT)?;
+                }
+                if let Some(a) = e.amount {
+                    ck_num("entry amount", a)?;
                 }
             }
         }
@@ -487,8 +522,8 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
         sqlx::query(
             "insert into items (id, user_id, area_id, parent_id, kind, tracker, title, note,
                target, current, unit, horizon, horizon_period, date_repeats_yearly, rich_body, status, cadence,
-               steps, window_start, window_end, cadence_days, cadence_count, labels, pinned, position, created_at_ms, completed_at_ms, deleted_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+               steps, entries, window_start, window_end, cadence_days, cadence_count, labels, pinned, position, created_at_ms, completed_at_ms, deleted_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
              on conflict (id) do update set
                area_id = excluded.area_id, parent_id = excluded.parent_id,
                kind = excluded.kind, tracker = excluded.tracker, title = excluded.title,
@@ -497,7 +532,7 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
                horizon_period = excluded.horizon_period, date_repeats_yearly = excluded.date_repeats_yearly,
                rich_body = excluded.rich_body,
                status = excluded.status,
-               cadence = excluded.cadence, steps = excluded.steps,
+               cadence = excluded.cadence, steps = excluded.steps, entries = excluded.entries,
                window_start = excluded.window_start, window_end = excluded.window_end,
                cadence_days = excluded.cadence_days,
                cadence_count = excluded.cadence_count, labels = excluded.labels,
@@ -510,7 +545,7 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
         .bind(&r.tracker).bind(&r.title).bind(&r.note).bind(r.target).bind(r.current)
         .bind(&r.unit).bind(&r.horizon).bind(&r.horizon_period).bind(r.date_repeats_yearly)
         .bind(&r.rich_body).bind(&r.status)
-        .bind(&r.cadence).bind(&r.steps).bind(&r.window_start).bind(&r.window_end)
+        .bind(&r.cadence).bind(&r.steps).bind(&r.entries).bind(&r.window_start).bind(&r.window_end)
         .bind(&r.cadence_days).bind(r.cadence_count).bind(&r.labels).bind(r.pinned)
         .bind(r.position).bind(r.created_at).bind(r.completed_at).bind(r.deleted_at)
         .execute(&mut *conn)
@@ -778,7 +813,7 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             horizon_period: r.get("horizon_period"), date_repeats_yearly: r.get("date_repeats_yearly"),
             rich_body: r.get("rich_body"),
             status: r.get("status"),
-            cadence: r.get("cadence"), steps: r.get("steps"),
+            cadence: r.get("cadence"), steps: r.get("steps"), entries: r.get("entries"),
             window_start: r.get("window_start"), window_end: r.get("window_end"),
             cadence_days: r.get("cadence_days"),
             cadence_count: r.get("cadence_count"), labels: r.get("labels"),

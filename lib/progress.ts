@@ -1,4 +1,4 @@
-import { Action, Cadence, DB, Item, Log } from "./types";
+import { Action, Cadence, DB, Item, ListEntry, Log } from "./types";
 import { addDays, dayFromMs, daysBetween, Period, periodKey, startOfWeek, today } from "./dates";
 
 /**
@@ -14,6 +14,11 @@ export function children(db: DB, itemId: string): Item[] {
 
 export function ownProgress(item: Item): number | null {
   if (item.status === "done") return 1;
+  // a list measures itself by its ticked entries — its tracker is "none",
+  // which would otherwise fall through to averaging children
+  if (item.kind === "list" && item.entries && item.entries.length > 0) {
+    return item.entries.filter((e) => e.done).length / item.entries.length;
+  }
   switch (item.tracker) {
     case "check":
       return item.completedAt ? 1 : 0;
@@ -193,6 +198,35 @@ export function routineWindowLabel(item: Item): string | null {
 export function routineDoneSteps(db: DB, itemId: string, day: string): Set<string> {
   const note = db.habitDayNotes.find((n) => n.itemId === itemId && n.date === day);
   return new Set(note?.doneSteps ?? []);
+}
+
+const CURRENCY_UNITS = ["₹", "$", "€", "£"];
+
+/** "1240 ₹" reads wrong and "3kg" reads cramped — currency prefixes, words suffix. */
+export function formatEntryAmount(amount: number, unit: string | null): string {
+  if (!unit) return amount.toLocaleString();
+  return CURRENCY_UNITS.includes(unit)
+    ? `${unit}${amount.toLocaleString()}`
+    : `${amount.toLocaleString()} ${unit}`;
+}
+
+/** Per-unit sums of a list's amounts: "₹1,240 · 3 kg". Only entries carrying
+ *  both an amount and a unit count; done entries still count — the total is
+ *  what the list adds up to, and shouldn't dance as things get ticked.
+ *  Null when nothing is quantified. */
+export function listTotals(entries: ListEntry[]): string | null {
+  const sums = new Map<string, number>();
+  for (const e of entries) {
+    if (e.amount != null && e.unit) {
+      sums.set(e.unit, (sums.get(e.unit) ?? 0) + e.amount);
+    }
+  }
+  if (sums.size === 0) return null;
+  return [...sums]
+    .map(([unit, sum]) =>
+      CURRENCY_UNITS.includes(unit) ? `${unit}${sum.toLocaleString()}` : `${sum.toLocaleString()} ${unit}`
+    )
+    .join(" · ");
 }
 
 const DOW_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

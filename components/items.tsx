@@ -123,6 +123,11 @@ export function ItemCard({ item, hideLabelIds }: { item: Item; hideLabelIds?: st
                 {item.steps.length} steps{routineMinutes(item) != null ? ` · ${routineMinutes(item)} min` : ""}
               </span>
             )}
+            {item.kind === "list" && item.entries && item.entries.length > 0 && (
+              <span>
+                {item.entries.length} entries · {item.entries.filter((e) => e.done).length}/{item.entries.length} done
+              </span>
+            )}
             {streak > 0 && (
               <span className="text-amber font-medium">{streak} day streak</span>
             )}
@@ -543,7 +548,7 @@ export function DateGridPicker({ value, onChange }: { value: string; onChange: (
 
 /** The four kinds that cover most captures — shown first so the common path
  *  stays a single tap. Everything else lives behind "More". */
-const COMMON_KINDS: ItemKind[] = ["goal", "habit", "routine", "project", "note"];
+const COMMON_KINDS: ItemKind[] = ["goal", "habit", "routine", "list", "project", "note"];
 const MORE_KINDS: ItemKind[] = [
   "book", "dream", "idea", "quote", "milestone", "principle", "promise", "lesson", "memory",
 ];
@@ -553,6 +558,8 @@ const KIND_DEFAULT_TRACKER: Partial<Record<ItemKind, TrackerType>> = {
   // a routine is checked off per day exactly like a habit — one entry on
   // Today, streaks, never "completed" by accident; its steps live on the item
   routine: "habit",
+  // a list's progress comes from its ticked entries, not a tracker
+  list: "none",
   book: "book",
   goal: "check",
   project: "none",
