@@ -114,6 +114,12 @@ export interface Item {
   cadenceCount: number | null;
   /** routine kind only: the ordered script of the routine (see RoutineStep) */
   steps: RoutineStep[] | null;
+  /** routine kind only: when this shows on the Today list, as "HH:MM" 24h
+   *  local time — a morning routine before noon, a night routine after 9pm.
+   *  End may be earlier than start (21:00 → 02:00 wraps past midnight).
+   *  Both null = visible all day. */
+  windowStart: string | null;
+  windowEnd: string | null;
   /** user-created label ids (labels are tags, independent of areas) */
   labels: string[];
   pinned: boolean;
@@ -215,6 +221,10 @@ export interface HabitDayNote {
   /** ISO date YYYY-MM-DD */
   date: string;
   text: string;
+  /** routines only: ids of the steps already done on this day — the same
+   *  one-row-per-item-per-day home the day's plan text lives in. When every
+   *  step is here, the routine's day is logged like any habit. */
+  doneSteps: string[] | null;
   createdAt: number;
   updatedAt: number;
 }

@@ -66,6 +66,12 @@ pub struct Item {
     /// optionally timed in minutes — stored as jsonb, travels as JSON
     #[serde(default)]
     pub steps: Option<sqlx::types::Json<Vec<RoutineStep>>>,
+    /// routine kind only: visible hours on the Today list, "HH:MM" local.
+    /// End earlier than start wraps past midnight. Both null = all day.
+    #[serde(default)]
+    pub window_start: Option<String>,
+    #[serde(default)]
+    pub window_end: Option<String>,
     #[serde(default)]
     pub cadence_days: Option<Vec<i32>>,
     #[serde(default)]
@@ -184,6 +190,9 @@ pub struct HabitDayNote {
     pub date: String,
     #[serde(default)]
     pub text: String,
+    /// routines only: ids of the steps done on this day
+    #[serde(default)]
+    pub done_steps: Option<Vec<String>>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -264,6 +273,14 @@ fn ck_date(s: &str) -> ApiResult<()> {
     if ok { Ok(()) } else { Err(bad("date must be YYYY-MM-DD")) }
 }
 
+/// "HH:MM" (or "H:MM") on a 24-hour clock.
+fn is_hm(s: &str) -> bool {
+    let Some((h, m)) = s.split_once(':') else { return false };
+    let hours_ok = matches!(h.len(), 1 | 2) && h.chars().all(|c| c.is_ascii_digit());
+    let mins_ok = m.len() == 2 && m.chars().all(|c| c.is_ascii_digit());
+    hours_ok && mins_ok && h.parse::<u32>().is_ok_and(|v| v <= 23) && m.parse::<u32>().is_ok_and(|v| v <= 59)
+}
+
 fn ck_num(field: &str, v: f64) -> ApiResult<()> {
     if v.is_finite() && v.abs() < 1e15 { Ok(()) } else { Err(bad(format!("{field} is out of range"))) }
 }
@@ -311,6 +328,13 @@ impl Item {
                     if !m.is_finite() || !(0.0..=1440.0).contains(&m) {
                         return Err(bad("step minutes must be between 0 and 1440"));
                     }
+                }
+            }
+        }
+        for (field, v) in [("windowStart", &self.window_start), ("windowEnd", &self.window_end)] {
+            if let Some(s) = v {
+                if !is_hm(s) {
+                    return Err(bad(format!("{field} must be HH:MM")));
                 }
             }
         }
@@ -410,7 +434,16 @@ impl Reflection {
 impl HabitDayNote {
     fn validate(&self) -> ApiResult<()> {
         ck_date(&self.date)?;
-        ck_len("text", &self.text, MAX_HABIT_DAY_NOTE)
+        ck_len("text", &self.text, MAX_HABIT_DAY_NOTE)?;
+        if let Some(steps) = &self.done_steps {
+            if steps.len() > MAX_ROUTINE_STEPS {
+                return Err(bad("too many done steps"));
+            }
+            for id in steps {
+                ck_len("done step id", id, 64)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -454,8 +487,8 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
         sqlx::query(
             "insert into items (id, user_id, area_id, parent_id, kind, tracker, title, note,
                target, current, unit, horizon, horizon_period, date_repeats_yearly, rich_body, status, cadence,
-               steps, cadence_days, cadence_count, labels, pinned, position, created_at_ms, completed_at_ms, deleted_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+               steps, window_start, window_end, cadence_days, cadence_count, labels, pinned, position, created_at_ms, completed_at_ms, deleted_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
              on conflict (id) do update set
                area_id = excluded.area_id, parent_id = excluded.parent_id,
                kind = excluded.kind, tracker = excluded.tracker, title = excluded.title,
@@ -465,6 +498,7 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
                rich_body = excluded.rich_body,
                status = excluded.status,
                cadence = excluded.cadence, steps = excluded.steps,
+               window_start = excluded.window_start, window_end = excluded.window_end,
                cadence_days = excluded.cadence_days,
                cadence_count = excluded.cadence_count, labels = excluded.labels,
                pinned = excluded.pinned,
@@ -476,7 +510,7 @@ async fn upsert_items(conn: &mut PgConnection, user: Uuid, rows: &[Item]) -> Api
         .bind(&r.tracker).bind(&r.title).bind(&r.note).bind(r.target).bind(r.current)
         .bind(&r.unit).bind(&r.horizon).bind(&r.horizon_period).bind(r.date_repeats_yearly)
         .bind(&r.rich_body).bind(&r.status)
-        .bind(&r.cadence).bind(&r.steps)
+        .bind(&r.cadence).bind(&r.steps).bind(&r.window_start).bind(&r.window_end)
         .bind(&r.cadence_days).bind(r.cadence_count).bind(&r.labels).bind(r.pinned)
         .bind(r.position).bind(r.created_at).bind(r.completed_at).bind(r.deleted_at)
         .execute(&mut *conn)
@@ -618,13 +652,14 @@ async fn upsert_habit_day_notes(
         // one row per habit per day: a second device writing the same
         // item + date merges into it
         sqlx::query(
-            "insert into habit_day_notes (id, user_id, item_id, date, text, created_at_ms, updated_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7)
+            "insert into habit_day_notes (id, user_id, item_id, date, text, done_steps, created_at_ms, updated_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7,$8)
              on conflict (user_id, item_id, date) do update set
-               text = excluded.text, updated_at_ms = excluded.updated_at_ms",
+               text = excluded.text, done_steps = excluded.done_steps,
+               updated_at_ms = excluded.updated_at_ms",
         )
         .bind(r.id).bind(user).bind(r.item_id).bind(&r.date).bind(&r.text)
-        .bind(r.created_at).bind(r.updated_at)
+        .bind(&r.done_steps).bind(r.created_at).bind(r.updated_at)
         .execute(&mut *conn)
         .await?;
     }
@@ -744,6 +779,7 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             rich_body: r.get("rich_body"),
             status: r.get("status"),
             cadence: r.get("cadence"), steps: r.get("steps"),
+            window_start: r.get("window_start"), window_end: r.get("window_end"),
             cadence_days: r.get("cadence_days"),
             cadence_count: r.get("cadence_count"), labels: r.get("labels"),
             pinned: r.get("pinned"), position: r.get("position"),
@@ -794,7 +830,8 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| HabitDayNote {
             id: r.get("id"), item_id: r.get("item_id"), date: r.get("date"),
-            text: r.get("text"), created_at: r.get("created_at_ms"), updated_at: r.get("updated_at_ms"),
+            text: r.get("text"), done_steps: r.get("done_steps"),
+            created_at: r.get("created_at_ms"), updated_at: r.get("updated_at_ms"),
         }).collect();
     let day_order = sqlx::query("select * from day_order where user_id = $1")
         .bind(user).fetch_all(&state.pool).await?

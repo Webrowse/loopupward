@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { routineMinutes, TodayEntry } from "@/lib/progress";
-import { Chip, Field, Sheet, inputCls } from "@/components/ui";
+import { useLife } from "@/lib/data/provider";
+import { routineDoneSteps, routineMinutes, TodayEntry } from "@/lib/progress";
+import { Item, RoutineStep } from "@/lib/types";
+import { Button, Chip, Field, Sheet, inputCls } from "@/components/ui";
 
 const PRESETS = [5, 10, 15, 25, 45];
 
@@ -65,17 +67,22 @@ function entryText(entry: TodayEntry): { title: string; subtitle?: string } {
  * without ever leaving this screen.
  */
 export function FocusTimer({
-  open, entries, initialEntryId, onToggle, onClose,
+  open, entries, initialEntryId, day, onToggle, onClose,
 }: {
   open: boolean;
   entries: TodayEntry[];
   initialEntryId: string | null;
+  /** the day being worked (routines tick their steps against it) */
+  day: string;
   onToggle: (entry: TodayEntry) => void;
   onClose: () => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(initialEntryId);
   const [minutes, setMinutes] = useState(25);
   const [running, setRunning] = useState(false);
+  // a routine doesn't run as one block of minutes — it walks its script
+  // step by step, so Start hands over to the step runner instead
+  const [runningRoutine, setRunningRoutine] = useState(false);
   const [remaining, setRemaining] = useState(0);
   const [finished, setFinished] = useState(false);
   const [overtime, setOvertime] = useState(0);
@@ -99,11 +106,13 @@ export function FocusTimer({
       setMinutes(suggestedFor(initialEntryId));
       setPickingNext(false);
       setRunning(false);
+      setRunningRoutine(false);
       setFinished(false);
       setOvertime(0);
       setJustCompleted(false);
     } else {
       setRunning(false);
+      setRunningRoutine(false);
       setFinished(false);
       setMinutes(25);
       setOvertime(0);
@@ -164,6 +173,7 @@ export function FocusTimer({
     setMinutes(suggestedFor(entry.action.id));
     setPickingNext(false);
     setRunning(false);
+    setRunningRoutine(false);
     setFinished(false);
     setOvertime(0);
     setJustCompleted(false);
@@ -232,6 +242,22 @@ export function FocusTimer({
   const { title, subtitle } = entryText(current);
   const steps = current.item?.kind === "routine" ? current.item.steps ?? [] : [];
   const routineTotal = current.item ? routineMinutes(current.item) : null;
+  const isRoutine = steps.length > 0 && !!current.item;
+
+  // a routine runs step by step: its own screen, its own rules
+  if (isRoutine && runningRoutine && current.item) {
+    return (
+      <RoutineRun
+        item={current.item}
+        day={day}
+        onFinished={() => {
+          setRunningRoutine(false);
+          setPickingNext(true);
+        }}
+        onClose={onClose}
+      />
+    );
+  }
 
   if (!running) {
     return (
@@ -239,7 +265,10 @@ export function FocusTimer({
         open={open}
         onClose={onClose}
         title="Focus on this"
-        primary={{ label: "Start", onClick: start }}
+        primary={{
+          label: isRoutine ? "Start the routine" : "Start",
+          onClick: isRoutine ? () => setRunningRoutine(true) : start,
+        }}
       >
         <p className="text-sm text-ink-2 leading-relaxed mb-1">&ldquo;{title}&rdquo;</p>
         {steps.length > 0 && (
@@ -247,9 +276,9 @@ export function FocusTimer({
             {steps.map((s, i) => (
               <div key={s.id} className="flex items-baseline justify-between gap-3 py-0.5 text-sm">
                 <span className="min-w-0 truncate text-ink-2">{i + 1}. {s.title}</span>
-                {s.minutes != null && (
-                  <span className="shrink-0 text-xs text-ink-3 tabular-nums">{s.minutes} min</span>
-                )}
+                <span className="shrink-0 text-xs text-ink-3 tabular-nums">
+                  {s.minutes != null ? `${s.minutes} min` : "no timer"}
+                </span>
               </div>
             ))}
             {routineTotal != null && (
@@ -259,23 +288,31 @@ export function FocusTimer({
             )}
           </div>
         )}
-        <Field label="How many minutes?">
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {PRESETS.map((m) => (
-              <Chip key={m} active={minutes === m} onClick={() => setMinutes(m)}>
-                {m}
-              </Chip>
-            ))}
-          </div>
-          <input
-            type="number"
-            min={1}
-            max={480}
-            className={inputCls}
-            value={minutes}
-            onChange={(e) => setMinutes(Math.max(1, Math.min(480, Number(e.target.value) || 1)))}
-          />
-        </Field>
+        {isRoutine ? (
+          <p className="text-xs leading-relaxed text-ink-3">
+            One step at a time, in order. Each timed step starts its own countdown;
+            finishing one rolls straight into the next, and anything you skip comes
+            back around at the end.
+          </p>
+        ) : (
+          <Field label="How many minutes?">
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {PRESETS.map((m) => (
+                <Chip key={m} active={minutes === m} onClick={() => setMinutes(m)}>
+                  {m}
+                </Chip>
+              ))}
+            </div>
+            <input
+              type="number"
+              min={1}
+              max={480}
+              className={inputCls}
+              value={minutes}
+              onChange={(e) => setMinutes(Math.max(1, Math.min(480, Number(e.target.value) || 1)))}
+            />
+          </Field>
+        )}
       </Sheet>
     );
   }
@@ -354,6 +391,301 @@ export function FocusTimer({
       <button onClick={onClose} className="pressable text-sm text-ink-3 hover:text-ink px-4 py-2">
         Cancel
       </button>
+    </div>
+  );
+}
+
+/* ————— running a routine: one step at a time, in order ————— */
+
+const ASK_PRESETS = [5, 10, 15, 20, 30];
+
+/**
+ * The step runner. Timed steps get their own countdown; finishing one rolls
+ * straight into the next step's timer. A step with no minutes set asks once —
+ * give it a length, or keep it on screen untimed until it's done ("take your
+ * meds" has no duration, but it shouldn't disappear either). "Skip for now"
+ * sends the current step to the back of the line instead of pretending it
+ * happened. Every tick is saved per day, so closing mid-run loses nothing,
+ * and ticking the last step logs the routine's day by itself.
+ */
+function RoutineRun({
+  item, day, onFinished, onClose,
+}: {
+  item: Item;
+  day: string;
+  onFinished: () => void;
+  onClose: () => void;
+}) {
+  const { db, setRoutineStepDone } = useLife();
+  const steps = item.steps ?? [];
+
+  // what's left to do this run — or the whole script again, when the day
+  // was already finished and this is a deliberate second lap
+  const [queue, setQueue] = useState<string[]>(() => {
+    const done = routineDoneSteps(db, item.id, day);
+    const open = steps.filter((s) => !done.has(s.id)).map((s) => s.id);
+    return open.length ? open : steps.map((s) => s.id);
+  });
+  const stepId = queue[0] ?? null;
+  const step = steps.find((s) => s.id === stepId) ?? null;
+
+  const [phase, setPhase] = useState<"ask" | "timed" | "open">(() =>
+    step == null ? "open" : step.minutes != null ? "timed" : "ask"
+  );
+  const [total, setTotal] = useState(() => (step?.minutes ?? 0) * 60);
+  const [remaining, setRemaining] = useState(() => (step?.minutes ?? 0) * 60);
+  const [finished, setFinished] = useState(false);
+  const [overtime, setOvertime] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [askVal, setAskVal] = useState("10");
+  const [justChecked, setJustChecked] = useState(false);
+  const [celebrating, setCelebrating] = useState(false);
+
+  const enter = (s: RoutineStep) => {
+    setJustChecked(false);
+    setFinished(false);
+    setOvertime(0);
+    setElapsed(0);
+    if (s.minutes != null) {
+      setPhase("timed");
+      setTotal(s.minutes * 60);
+      setRemaining(s.minutes * 60);
+    } else {
+      setPhase("ask");
+      setAskVal("10");
+    }
+  };
+
+  /* the countdown for the current timed step */
+  useEffect(() => {
+    if (phase !== "timed" || finished || celebrating) return;
+    const id = setInterval(() => {
+      setRemaining((r) => {
+        if (r <= 1) {
+          clearInterval(id);
+          setFinished(true);
+          beep();
+          return 0;
+        }
+        return r - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [phase, stepId, finished, celebrating]);
+
+  /* past zero: the countdown freezes, this counts how far over it ran */
+  useEffect(() => {
+    if (!finished || celebrating) return;
+    const id = setInterval(() => setOvertime((o) => o + 1), 1000);
+    return () => clearInterval(id);
+  }, [finished, celebrating]);
+
+  /* an untimed step still shows how long it's been on screen */
+  useEffect(() => {
+    if (phase !== "open" || celebrating || !step) return;
+    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(id);
+  }, [phase, stepId, celebrating, step]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  const doneStep = () => {
+    if (!step || justChecked) return;
+    setRoutineStepDone(item, day, step.id, true);
+    setJustChecked(true);
+    const rest = queue.slice(1);
+    // let the check animation land before moving on
+    setTimeout(() => {
+      if (rest.length === 0) {
+        setCelebrating(true);
+        setTimeout(onFinished, 1400);
+      } else {
+        setQueue(rest);
+        const next = steps.find((s) => s.id === rest[0]);
+        if (next) enter(next);
+      }
+    }, 700);
+  };
+
+  const skipStep = () => {
+    if (queue.length < 2 || justChecked) return;
+    const rest = [...queue.slice(1), queue[0]];
+    setQueue(rest);
+    const next = steps.find((s) => s.id === rest[0]);
+    if (next) enter(next);
+  };
+
+  const doneToday = routineDoneSteps(db, item.id, day);
+  const next = queue.length > 1 ? steps.find((s) => s.id === queue[1]) : null;
+
+  if (celebrating || !step) {
+    return (
+      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-bg px-6 py-10 text-center">
+        <p className="text-4xl">🌄</p>
+        <h1 className="font-display text-[2rem] leading-tight text-ink">Routine done.</h1>
+        <p className="text-sm text-ink-3">Every step, walked. 🌱</p>
+      </div>
+    );
+  }
+
+  const mm = Math.floor(remaining / 60);
+  const ss = remaining % 60;
+  const omm = Math.floor(overtime / 60);
+  const oss = overtime % 60;
+  const emm = Math.floor(elapsed / 60);
+  const ess = elapsed % 60;
+  const fraction = phase === "timed" && total > 0 ? remaining / total : 1;
+  const r = (RING_SIZE - RING_STROKE) / 2;
+  const circumference = 2 * Math.PI * r;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-7 bg-bg px-6 py-10 text-center">
+      <div>
+        <p className="text-lg text-ink-3 mb-1">{item.title}</p>
+        <h1 className="font-display text-[2rem] sm:text-[2.75rem] leading-tight text-ink max-w-3xl">
+          {step.title}
+        </h1>
+        {/* the script at a glance: done, current, still ahead */}
+        <div className="mt-3 flex items-center justify-center gap-1.5" aria-hidden>
+          {steps.map((s) => (
+            <span
+              key={s.id}
+              className={`h-1.5 rounded-full transition-all ${
+                s.id === step.id
+                  ? "w-5 bg-accent"
+                  : doneToday.has(s.id)
+                    ? "w-1.5 bg-accent/50"
+                    : "w-1.5 bg-line"
+              }`}
+            />
+          ))}
+        </div>
+        {next && <p className="mt-2 text-sm text-ink-3">then: {next.title}</p>}
+      </div>
+
+      {phase === "ask" ? (
+        <div className="w-full max-w-sm rounded-(--radius-card) border border-line-soft bg-surface p-5 shadow-(--shadow-card) text-left">
+          <p className="mb-3 text-sm text-ink-2">
+            This step has no saved time. How long should it get?
+          </p>
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {ASK_PRESETS.map((m) => (
+              <Chip key={m} active={askVal === String(m)} onClick={() => setAskVal(String(m))}>
+                {m}
+              </Chip>
+            ))}
+          </div>
+          <input
+            type="number"
+            min={1}
+            max={480}
+            className={inputCls}
+            value={askVal}
+            onChange={(e) => setAskVal(e.target.value)}
+            aria-label="Minutes for this step"
+          />
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <button
+              onClick={() => { setPhase("open"); setElapsed(0); }}
+              className="pressable text-sm font-medium text-ink-3 hover:text-ink"
+            >
+              No timer, just show it
+            </button>
+            <Button
+              small
+              onClick={() => {
+                const m = Math.max(1, Math.min(480, Math.round(parseFloat(askVal) || 0)));
+                setTotal(m * 60);
+                setRemaining(m * 60);
+                setFinished(false);
+                setOvertime(0);
+                setPhase("timed");
+              }}
+            >
+              Start
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="relative" style={{ width: RING_SIZE, height: RING_SIZE, maxWidth: "82vw", maxHeight: "82vw" }}>
+          <svg width="100%" height="100%" viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`} className="-rotate-90">
+            <circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={r} fill="none" stroke="var(--line)" strokeWidth={RING_STROKE} />
+            {phase === "timed" && (
+              <circle
+                cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={r} fill="none"
+                stroke={ringColor(fraction)} strokeWidth={RING_STROKE} strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={circumference * (1 - fraction)}
+                style={{ transition: "stroke-dashoffset 1s linear, stroke 1s linear" }}
+              />
+            )}
+          </svg>
+
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+            <button
+              onClick={doneStep}
+              aria-label="Step done"
+              className={`pressable relative grid h-20 w-20 sm:h-24 sm:w-24 shrink-0 place-items-center rounded-3xl border-4 transition-colors ${
+                justChecked ? "border-accent bg-accent text-white dark:text-[#10160f] check-pop" : "border-line hover:border-accent"
+              }`}
+            >
+              {justChecked && (
+                <>
+                  <span className="check-ring-pulse pointer-events-none absolute inset-0 rounded-3xl border-4 border-accent" />
+                  <svg width="40" height="40" viewBox="0 0 12 12" fill="none">
+                    <path
+                      d="M2 6.5 4.8 9 10 3.5"
+                      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                      className="check-draw"
+                    />
+                  </svg>
+                </>
+              )}
+            </button>
+
+            <div>
+              {phase === "timed" ? (
+                <>
+                  <div className="font-display tabular-nums text-4xl sm:text-5xl leading-none text-ink">
+                    {pad(mm)}:{pad(ss)}
+                  </div>
+                  {finished && (
+                    <div className="mt-1.5 font-display tabular-nums text-base sm:text-lg leading-none text-danger">
+                      +{pad(omm)}:{pad(oss)}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="font-display tabular-nums text-4xl sm:text-5xl leading-none text-ink">
+                    {pad(emm)}:{pad(ess)}
+                  </div>
+                  <p className="mt-1.5 text-xs text-ink-3">no timer — done when it&rsquo;s done</p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-6">
+        {queue.length > 1 && (
+          <button onClick={skipStep} className="pressable text-sm font-medium text-ink-2 hover:text-ink px-3 py-2">
+            Skip for now ↻
+          </button>
+        )}
+        <button onClick={onClose} className="pressable text-sm text-ink-3 hover:text-ink px-3 py-2">
+          Leave it here
+        </button>
+      </div>
     </div>
   );
 }

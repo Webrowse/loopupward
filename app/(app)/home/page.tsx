@@ -11,6 +11,7 @@ import { areaColor } from "@/lib/palette";
 import { deriveNoteFields, ItemSheet } from "@/components/items";
 import { ArchiveIcon, MoonIcon, NoteIcon, OrganizeIcon } from "@/components/icons";
 import { Bar, Ring } from "@/components/progress";
+import { SuggestionsLink } from "@/components/suggestions";
 import { Button, MovedNotice, Sheet } from "@/components/ui";
 
 const WHISPERS = [
@@ -91,6 +92,10 @@ export default function HomePage() {
               </span>
               <Button small onClick={capture} disabled={!text.trim()}>Capture</Button>
             </div>
+          </div>
+
+          <div className="mt-2.5 text-right">
+            <SuggestionsLink className="text-xs" />
           </div>
 
           {isEmpty && (

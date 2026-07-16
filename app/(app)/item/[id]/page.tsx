@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
@@ -189,8 +189,13 @@ export default function ItemPage() {
         </div>
       )}
 
-      {/* a routine's script: its steps and their minutes */}
-      {item.kind === "routine" && <RoutineStepsEditor item={item} />}
+      {/* a routine's script: its steps and their minutes, and its hours */}
+      {item.kind === "routine" && (
+        <>
+          <RoutineStepsEditor item={item} />
+          <RoutineWindowEditor item={item} />
+        </>
+      )}
 
       {/* the next small step */}
       {item.status === "active" && !isHabit && (
@@ -391,12 +396,62 @@ function RoutineStepsEditor({ item }: { item: Item }) {
     setNewMinutes("");
   };
 
-  const move = (index: number, dir: -1 | 1) => {
-    const next = [...steps];
-    const target = index + dir;
-    if (target < 0 || target >= next.length) return;
-    [next[index], next[target]] = [next[target], next[index]];
-    save(next);
+  /* drag-to-reorder: same midpoint-crossing swap the Today list uses; the
+     rows sit flush (divide-y), so no gap to add to the rebase offset */
+  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const rowEls = useRef<Map<string, HTMLDivElement>>(new Map());
+  const startClientY = useRef(0);
+  const orderRef = useRef<string[]>([]);
+  const order = dragOrder ?? steps.map((s) => s.id);
+
+  const beginDrag = (id: string, clientY: number) => {
+    orderRef.current = order;
+    startClientY.current = clientY;
+    setDragOrder(order);
+    setDraggingId(id);
+  };
+
+  const moveDrag = (id: string, clientY: number) => {
+    const el = rowEls.current.get(id);
+    if (!el) return;
+    el.style.transform = `translateY(${clientY - startClientY.current}px)`;
+    const current = orderRef.current;
+    const idx = current.indexOf(id);
+    const rect = el.getBoundingClientRect();
+    const center = rect.top + rect.height / 2;
+    const swap = (withIdx: number, rebase: number) => {
+      const next = [...current];
+      [next[idx], next[withIdx]] = [next[withIdx], next[idx]];
+      orderRef.current = next;
+      setDragOrder(next);
+      startClientY.current += rebase;
+    };
+    if (idx < current.length - 1) {
+      const nextEl = rowEls.current.get(current[idx + 1]);
+      if (nextEl) {
+        const r = nextEl.getBoundingClientRect();
+        if (center > r.top + r.height / 2) return swap(idx + 1, r.height);
+      }
+    }
+    if (idx > 0) {
+      const prevEl = rowEls.current.get(current[idx - 1]);
+      if (prevEl) {
+        const r = prevEl.getBoundingClientRect();
+        if (center < r.top + r.height / 2) swap(idx - 1, -r.height);
+      }
+    }
+  };
+
+  const endDrag = (id: string) => {
+    const el = rowEls.current.get(id);
+    if (el) el.style.transform = "";
+    setDraggingId(null);
+    setDragOrder(null);
+    const reordered = orderRef.current
+      .map((sid) => steps.find((s) => s.id === sid))
+      .filter((s): s is RoutineStep => !!s);
+    if (reordered.some((s, i) => s.id !== steps[i]?.id)) save(reordered);
   };
 
   return (
@@ -409,26 +464,37 @@ function RoutineStepsEditor({ item }: { item: Item }) {
 
       {steps.length > 0 && (
         <div className="mb-2 divide-y divide-line-soft rounded-(--radius-card) border border-line-soft bg-surface shadow-(--shadow-card)">
-          {steps.map((s, i) => (
-            <div key={s.id} className="flex items-center gap-2 px-3 py-2">
-              <div className="flex shrink-0 flex-col">
-                <button
-                  onClick={() => move(i, -1)}
-                  disabled={i === 0}
-                  aria-label="Move step up"
-                  className="pressable px-1 text-xs leading-none text-ink-3 hover:text-ink disabled:opacity-25"
-                >
-                  ▲
-                </button>
-                <button
-                  onClick={() => move(i, 1)}
-                  disabled={i === steps.length - 1}
-                  aria-label="Move step down"
-                  className="pressable px-1 text-xs leading-none text-ink-3 hover:text-ink disabled:opacity-25"
-                >
-                  ▼
-                </button>
-              </div>
+          {order.map((id, i) => {
+            const s = steps.find((x) => x.id === id);
+            if (!s) return null;
+            return (
+            <div
+              key={s.id}
+              ref={(el) => {
+                if (el) rowEls.current.set(s.id, el);
+                else rowEls.current.delete(s.id);
+              }}
+              className={`relative flex items-center gap-2 bg-surface px-3 py-2 ${draggingId === s.id ? "z-20 shadow-(--shadow-float)" : ""}`}
+            >
+              {/* the order IS the routine — drag a step where it belongs */}
+              <button
+                onPointerDown={(e) => {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  beginDrag(s.id, e.clientY);
+                }}
+                onPointerMove={(e) => draggingId === s.id && moveDrag(s.id, e.clientY)}
+                onPointerUp={() => draggingId === s.id && endDrag(s.id)}
+                onPointerCancel={() => draggingId === s.id && endDrag(s.id)}
+                onLostPointerCapture={() => draggingId === s.id && endDrag(s.id)}
+                aria-label={`Drag step ${i + 1} to reorder`}
+                className="shrink-0 touch-none cursor-grab px-1 text-ink-3 active:cursor-grabbing"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                  <circle cx="4" cy="3" r="1.3" /><circle cx="10" cy="3" r="1.3" />
+                  <circle cx="4" cy="7" r="1.3" /><circle cx="10" cy="7" r="1.3" />
+                  <circle cx="4" cy="11" r="1.3" /><circle cx="10" cy="11" r="1.3" />
+                </svg>
+              </button>
               {/* commit on blur, not per keystroke — every save syncs to the cloud */}
               <input
                 defaultValue={s.title}
@@ -461,7 +527,8 @@ function RoutineStepsEditor({ item }: { item: Item }) {
                 ×
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -488,6 +555,60 @@ function RoutineStepsEditor({ item }: { item: Item }) {
       <p className="mt-2 text-xs text-ink-3">
         Steps are this routine&rsquo;s script — on Today it stays one single entry.
         {total != null && ` The minutes add up to ${total}, which the focus timer suggests when you run it.`}
+      </p>
+    </section>
+  );
+}
+
+/* ————— a routine's hours: when it sits on the Today list ————— */
+
+const WINDOW_PRESETS: { label: string; start: string | null; end: string | null }[] = [
+  { label: "🌄 Morning", start: "05:00", end: "12:00" },
+  { label: "🌤 Afternoon", start: "12:00", end: "17:00" },
+  { label: "🌙 Night", start: "21:00", end: "02:00" },
+  { label: "All day", start: null, end: null },
+];
+
+function RoutineWindowEditor({ item }: { item: Item }) {
+  const { updateItem } = useLife();
+  const set = (start: string | null, end: string | null) =>
+    updateItem(item.id, { windowStart: start, windowEnd: end });
+
+  return (
+    <section className="mb-6">
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-3">Visible hours</p>
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        {WINDOW_PRESETS.map((p) => (
+          <Chip
+            key={p.label}
+            active={item.windowStart === p.start && item.windowEnd === p.end}
+            onClick={() => set(p.start, p.end)}
+          >
+            {p.label}
+          </Chip>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 text-sm text-ink-2">
+        <input
+          type="time"
+          value={item.windowStart ?? ""}
+          onChange={(e) => set(e.target.value || null, item.windowEnd)}
+          aria-label="Visible from"
+          className="rounded-lg border border-line bg-bg px-2 py-1.5 text-sm text-ink tabular-nums outline-none focus:border-accent"
+        />
+        <span className="text-ink-3">to</span>
+        <input
+          type="time"
+          value={item.windowEnd ?? ""}
+          onChange={(e) => set(item.windowStart, e.target.value || null)}
+          aria-label="Visible until"
+          className="rounded-lg border border-line bg-bg px-2 py-1.5 text-sm text-ink tabular-nums outline-none focus:border-accent"
+        />
+      </div>
+      <p className="mt-2 text-xs text-ink-3 leading-relaxed">
+        Inside these hours the routine sits on Today; outside them it waits under
+        &ldquo;Out of hours&rdquo; instead of staring at you. An end before the start is fine —
+        9:00 pm to 2:00 am wraps past midnight. Left empty, it shows all day.
       </p>
     </section>
   );

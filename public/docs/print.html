@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "searchindex-02752bc9.js";
+            window.path_to_searchindex_js = "searchindex-67a89ebb.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-bfe6f83d.js"></script>
+        <script src="toc-147a5ce1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -354,7 +354,7 @@ Normal paragraph text.
 <ul>
 <li><strong>Goal</strong> — has an end. “Run a half marathon.” Done when it’s done.</li>
 <li><strong>Habit</strong> — has no end. “Meditate.” Lives on repeats; measured in streaks.</li>
-<li><strong>Routine</strong> — a habit with a script. “Morning routine” holds ordered steps, each optionally timed (“face wash 5 min, meditation 15, brush 5”), and stays <strong>one single entry</strong> on Today — the steps never clutter your list. The minutes add up (25) and become the focus timer’s suggested length. Checked off per day like a habit, with streaks.</li>
+<li><strong>Routine</strong> — a habit with a script. “Morning routine” holds ordered steps, each optionally timed (“face wash 5 min, meditation 15, brush 5”), and stays <strong>one single entry</strong> on Today — the steps never clutter your list. It keeps its own visible hours (a night routine can wait until 9 pm), the step timer walks the script one step at a time, and it’s checked off per day like a habit, with streaks. Whole chapter: <a href="#routines-the-parts-of-the-day-that-run-on-rails">Routines</a>.</li>
 <li><strong>Project</strong> — a container of steps. “Renovate kitchen.”</li>
 <li><strong>Book</strong> — tracked chapter by chapter.</li>
 <li><strong>Milestone</strong> — a marker inside something bigger. “First 10k run.”</li>
@@ -412,7 +412,7 @@ Normal paragraph text.
 <ul>
 <li><strong>Square checkbox</strong> — one-time thing; checking completes it (and the goal it belongs to, when it was the goal’s last open piece).</li>
 <li><strong>Round checkbox</strong> — a repeat; checking logs <em>today</em> and feeds the streak. Tomorrow it returns. See <a href="#the-completion-rule">The completion rule</a>.</li>
-<li><strong>⭐</strong> — priority. <strong>+2 chapters</strong> — how much this task moves its goal’s meter. <strong>“3 steps · 25 min”</strong> — a routine wearing its script’s total length; open its focus timer and 25 minutes is already suggested, with the steps listed. <strong>“carried from Mon”</strong> — an unfinished task following you, without shame, until done. Finishing it on a later day keeps the record honest (“done Wed” shows on its planned day).</li>
+<li><strong>⭐</strong> — priority. <strong>+2 chapters</strong> — how much this task moves its goal’s meter. <strong>“3 steps · 25 min”</strong> — a <a href="#routines-the-parts-of-the-day-that-run-on-rails">routine</a> wearing its script’s total length (“1/3 steps” once you’re mid-way); its timer runs the steps one at a time, in order. Routines with set hours only appear inside them — before then they wait under a quiet “Out of hours” line. <strong>“carried from Mon”</strong> — an unfinished task following you, without shame, until done. Finishing it on a later day keeps the record honest (“done Wed” shows on its planned day).</li>
 <li>The little icons: open the linked goal, plan what a habit means today (“clean” → “clean desk”), edit, focus timer, remove.</li>
 </ul>
 <p>Completing a task never reshuffles the list — rows move only when you drag them or use <strong>Sort</strong> (unfinished first, custom order, hide completed).</p>
@@ -425,6 +425,36 @@ Normal paragraph text.
 <p>The week strip and Yesterday / Today / Tomorrow jumps let you look back (what did Tuesday look like?) or plan ahead (load Saturday with errands). Only the real today shows carried-over tasks; other days show just what belongs to them.</p>
 <h2 id="the-journal-on-the-same-screen"><a class="header" href="#the-journal-on-the-same-screen">The journal on the same screen</a></h2>
 <p>The right side of today (below, on a phone) is the daily journal: a “thinking about…” box for the morning, an end-of-day reflection, mood and energy. It lives here, not in a separate app section, because closing the day is part of the day. Reflect (next chapters) is built from what you write here.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="routines-the-parts-of-the-day-that-run-on-rails"><a class="header" href="#routines-the-parts-of-the-day-that-run-on-rails">Routines: the parts of the day that run on rails</a></h1>
+<p>A routine is a timetable. You write it once — an ordered list of steps, each with the minutes it takes, if you want them — and from then on it just shows up. A morning routine, a night routine, gym, study: sequences you do the same way every time, that shouldn’t cost you a single planning thought again.</p>
+<h2 id="what-a-routine-is-made-of"><a class="header" href="#what-a-routine-is-made-of">What a routine is made of</a></h2>
+<ul>
+<li><strong>A name</strong> — “Morning”, “Night”, “Gym”, anything.</li>
+<li><strong>A script</strong> — ordered steps: <em>wash face (5), meditation (15), brush teeth (5)</em>. The order matters; drag steps up and down by their handle. Minutes are optional per step — “take meds” has no duration, and that’s fine.</li>
+<li><strong>Visible hours</strong> — from when to when it sits on your Today list. A morning routine set to 5:00 am – 12:00 pm disappears after noon; a night routine set to 9:00 pm – 2:00 am shows up in the evening (an end before the start simply wraps past midnight). Outside its hours it waits under a quiet “Out of hours” line — never a nagging task. No hours set means it shows all day.</li>
+<li><strong>A schedule</strong> — routines repeat daily unless you say otherwise, and they’re checked off per day with a streak, exactly like habits.</li>
+</ul>
+<p>The minutes add up (5 + 15 + 5 = <strong>25 min</strong>) and Today shows the routine wearing its length: <strong>“3 steps · 25 min”</strong>.</p>
+<h2 id="one-line-on-today-always"><a class="header" href="#one-line-on-today-always">One line on Today, always</a></h2>
+<p>Steps never appear in your todo list. The whole routine is <strong>one entry</strong> with a round checkbox; the steps live inside it. Your day list stays short even if your morning script has nine steps.</p>
+<p>There are three ways to work through one:</p>
+<ol>
+<li><strong>Tick the round checkbox</strong> on Today — logs the whole day at once, no questions.</li>
+<li><strong>Tick steps one by one</strong> on the <strong>Routines</strong> page (the 🌄 Routines link above the day’s list). Ticking the last step logs the day by itself — and un-ticking a step takes the log back. Mid-way through, the Today row shows “1/3 steps”.</li>
+<li><strong>Run it with the step timer</strong> — the good one.</li>
+</ol>
+<h2 id="the-step-runner"><a class="header" href="#the-step-runner">The step runner</a></h2>
+<p>Open the routine’s focus timer (the clock icon on its row, or ▶ Run on the Routines page) and press <strong>Start the routine</strong>. It walks the script in order:</p>
+<ul>
+<li>Each timed step gets its own countdown. Finishing a step rolls <strong>straight into the next one’s timer</strong> — no fiddling between steps.</li>
+<li>A step with no minutes saved asks once: give it a length, or choose <em>“no timer, just show it”</em> — the step stays on screen (with a quiet count-up) until you mark it done. Meds don’t take five minutes; they take until you’ve taken them.</li>
+<li><strong>Skip for now</strong> sends the current step to the back of the line instead of pretending it happened. It comes around again at the end.</li>
+<li>Progress is saved per step, per day — closing the runner mid-way loses nothing, and the ticks are already on every other device.</li>
+<li>The last step’s check logs the routine’s day and feeds the streak.</li>
+</ul>
+<h2 id="where-routines-live"><a class="header" href="#where-routines-live">Where routines live</a></h2>
+<p>The <strong>Routines</strong> page (linked from Today) lists them all — each with its hours, steps, minutes and streak, tickable on the spot. New ones start from a template (morning, night) or from scratch: name it, give it hours, then write its script on its page. A routine is a normal life node too — it can live in an area, and “Retire routine” ends it with its history intact.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="one-goal-top-to-bottom--a-worked-example"><a class="header" href="#one-goal-top-to-bottom--a-worked-example">One goal, top to bottom — a worked example</a></h1>
 <p>The promise: <em>if I do my small list today, I am provably moving toward my year goal.</em> Here is the full setup, once, so the shape is clear. It takes about three minutes.</p>

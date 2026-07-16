@@ -152,6 +152,49 @@ export function routineMinutes(item: Item): number | null {
   return total > 0 ? total : null;
 }
 
+/** "HH:MM" → minutes since midnight, or null for anything malformed. */
+export function parseHM(s: string | null): number | null {
+  if (!s) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h >= 0 && h <= 23 && min >= 0 && min <= 59 ? h * 60 + min : null;
+}
+
+/** "21:00" → "9:00 pm" — how times read everywhere in the app. */
+export function fmtHM(s: string): string {
+  const total = parseHM(s);
+  if (total == null) return s;
+  const h24 = Math.floor(total / 60);
+  const min = total % 60;
+  const h = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h}:${min.toString().padStart(2, "0")} ${h24 < 12 ? "am" : "pm"}`;
+}
+
+/** Is this routine inside its visible hours right now? No window (or a
+ *  half-set one) means always. An end before the start wraps past midnight:
+ *  21:00 → 02:00 is visible late evening AND the small hours. */
+export function inRoutineWindow(item: Item, now: Date): boolean {
+  const start = parseHM(item.windowStart);
+  const end = parseHM(item.windowEnd);
+  if (start == null || end == null || start === end) return true;
+  const t = now.getHours() * 60 + now.getMinutes();
+  return start < end ? t >= start && t < end : t >= start || t < end;
+}
+
+/** "6:00 am – 12:00 pm", or null when the routine shows all day. */
+export function routineWindowLabel(item: Item): string | null {
+  if (parseHM(item.windowStart) == null || parseHM(item.windowEnd) == null) return null;
+  return `${fmtHM(item.windowStart!)} – ${fmtHM(item.windowEnd!)}`;
+}
+
+/** Which of a routine's steps are already done on `day`. */
+export function routineDoneSteps(db: DB, itemId: string, day: string): Set<string> {
+  const note = db.habitDayNotes.find((n) => n.itemId === itemId && n.date === day);
+  return new Set(note?.doneSteps ?? []);
+}
+
 const DOW_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function scheduleLabel(item: Item): string | null {

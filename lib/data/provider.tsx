@@ -7,7 +7,8 @@ import {
   api, ApiRequestError, apiConfigured, ApiUser, clearToken, getToken,
 } from "../api";
 import {
-  Action, Area, DB, EMPTY_DB, Item, JournalEntry, Label, Reflection, Seed, SeedStatus, TableName,
+  Action, Area, DB, EMPTY_DB, HabitDayNote, Item, JournalEntry, Label, Reflection, Seed,
+  SeedStatus, TableName,
 } from "../types";
 import { uid } from "../uid";
 import { CloudRepo } from "./cloud";
@@ -89,6 +90,10 @@ interface LifeContextValue {
   /** Log or unlog one habit occurrence for a single day — distinct from
    *  completeItem, which retires the habit for good. */
   toggleHabitDay: (item: Item, day: string, currentlyDone: boolean) => void;
+  /** Tick one step of a routine's script for a single day. Checking the
+   *  last open step logs the routine's day (same as toggleHabitDay);
+   *  unchecking a step on a fully-done day un-logs it again. */
+  setRoutineStepDone: (item: Item, day: string, stepId: string, done: boolean) => void;
   /** Persist a manual drag order for one day's Today list. Completing a
    *  task never calls this — only dragging, or the "Sort" tidy-up, does. */
   reorderDay: (day: string, orderedEntryIds: string[]) => void;
@@ -423,7 +428,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       dateRepeatsYearly: false,
       richBody: null,
       status: "active", cadence: null, cadenceDays: null, cadenceCount: null,
-      steps: null,
+      steps: null, windowStart: null, windowEnd: null,
       labels: [], pinned: false,
       position: db.items.length, createdAt: Date.now(), completedAt: null, deletedAt: null,
       ...partial,
@@ -568,7 +573,55 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         id: uid(), itemId: item.id, date: day, op: "add", value: 1, createdAt: Date.now(),
       }]);
     }
-  }, [db.logs, upsertRows, removeRows]);
+    // a routine's round checkbox is shorthand for its whole script — the
+    // day and its steps stay in agreement in both directions
+    if (item.kind === "routine" && item.steps && item.steps.length > 0) {
+      const note = db.habitDayNotes.find((n) => n.itemId === item.id && n.date === day);
+      const doneSteps = currentlyDone ? null : item.steps.map((s) => s.id);
+      if (note) {
+        upsertRows("habitDayNotes", [{ ...note, doneSteps, updatedAt: Date.now() }]);
+      } else if (doneSteps) {
+        upsertRows("habitDayNotes", [{
+          id: uid(), itemId: item.id, date: day, text: "", doneSteps,
+          createdAt: Date.now(), updatedAt: Date.now(),
+        }]);
+      }
+    }
+  }, [db.logs, db.habitDayNotes, upsertRows, removeRows]);
+
+  const setRoutineStepDone = useCallback((item: Item, day: string, stepId: string, done: boolean) => {
+    const stepIds = (item.steps ?? []).map((s) => s.id);
+    if (!stepIds.includes(stepId)) return;
+    const existing = db.habitDayNotes.find((n) => n.itemId === item.id && n.date === day);
+    const ticked = new Set(existing?.doneSteps ?? []);
+    if (done) ticked.add(stepId);
+    else ticked.delete(stepId);
+    // keep script order and silently drop marks for steps since deleted
+    const doneSteps = stepIds.filter((id) => ticked.has(id));
+    const row: HabitDayNote = existing
+      ? { ...existing, doneSteps: doneSteps.length ? doneSteps : null, updatedAt: Date.now() }
+      : {
+          id: uid(), itemId: item.id, date: day, text: "", doneSteps,
+          createdAt: Date.now(), updatedAt: Date.now(),
+        };
+    if (!row.text.trim() && !row.doneSteps?.length) {
+      if (existing) removeRows("habitDayNotes", [existing.id]);
+    } else {
+      upsertRows("habitDayNotes", [row]);
+    }
+    // ticking the last step is doing the routine — log its day; un-ticking
+    // a step on a fully-logged day takes the log back
+    const allDone = doneSteps.length === stepIds.length && stepIds.length > 0;
+    const dayLogs = db.logs.filter((l) => l.itemId === item.id && l.date === day && l.op === "add");
+    const logged = dayLogs.reduce((s, l) => s + l.value, 0) > 0;
+    if (allDone && !logged) {
+      upsertRows("logs", [{
+        id: uid(), itemId: item.id, date: day, op: "add", value: 1, createdAt: Date.now(),
+      }]);
+    } else if (!allDone && logged) {
+      removeRows("logs", dayLogs.map((l) => l.id));
+    }
+  }, [db.habitDayNotes, db.logs, upsertRows, removeRows]);
 
   const toggleEntry = useCallback((entry: TodayEntry, forDay?: string) => {
     const day = forDay ?? today();
@@ -642,14 +695,21 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     const existing = db.habitDayNotes.find((n) => n.itemId === itemId && n.date === date);
     const trimmed = text.trim();
     if (!trimmed) {
-      if (existing) removeRows("habitDayNotes", [existing.id]);
+      // the row may still be holding a routine's step ticks for the day —
+      // only a row carrying nothing at all actually goes away
+      if (existing?.doneSteps?.length) {
+        upsertRows("habitDayNotes", [{ ...existing, text: "", updatedAt: Date.now() }]);
+      } else if (existing) {
+        removeRows("habitDayNotes", [existing.id]);
+      }
       return;
     }
     if (existing) {
       upsertRows("habitDayNotes", [{ ...existing, text: trimmed, updatedAt: Date.now() }]);
     } else {
       upsertRows("habitDayNotes", [{
-        id: uid(), itemId, date, text: trimmed, createdAt: Date.now(), updatedAt: Date.now(),
+        id: uid(), itemId, date, text: trimmed, doneSteps: null,
+        createdAt: Date.now(), updatedAt: Date.now(),
       }]);
     }
   }, [db.habitDayNotes, upsertRows, removeRows]);
@@ -688,7 +748,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     addArea, updateArea, deleteArea,
     addItem, updateItem, moveItem, deleteItem, trashedItems, restoreItem, purgeItem,
     completeItem, reopenItem, setTracker,
-    addAction, updateAction, deleteAction, toggleEntry, toggleHabitDay, reorderDay,
+    addAction, updateAction, deleteAction, toggleEntry, toggleHabitDay, setRoutineStepDone, reorderDay,
     saveReflection,
     setHabitDayNote,
     signOut, exportJSON,

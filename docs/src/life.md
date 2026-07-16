@@ -12,7 +12,7 @@ Everything you create is the same kind of object wearing different clothes. When
 
 - **Goal** — has an end. "Run a half marathon." Done when it's done.
 - **Habit** — has no end. "Meditate." Lives on repeats; measured in streaks.
-- **Routine** — a habit with a script. "Morning routine" holds ordered steps, each optionally timed ("face wash 5 min, meditation 15, brush 5"), and stays **one single entry** on Today — the steps never clutter your list. The minutes add up (25) and become the focus timer's suggested length. Checked off per day like a habit, with streaks.
+- **Routine** — a habit with a script. "Morning routine" holds ordered steps, each optionally timed ("face wash 5 min, meditation 15, brush 5"), and stays **one single entry** on Today — the steps never clutter your list. It keeps its own visible hours (a night routine can wait until 9 pm), the step timer walks the script one step at a time, and it's checked off per day like a habit, with streaks. Whole chapter: [Routines](./routines.md).
 - **Project** — a container of steps. "Renovate kitchen."
 - **Book** — tracked chapter by chapter.
 - **Milestone** — a marker inside something bigger. "First 10k run."

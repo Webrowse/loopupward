@@ -10,10 +10,15 @@ import {
 } from "@/lib/dates";
 import { useToday } from "@/lib/useToday";
 import { areaColor } from "@/lib/palette";
-import { routineMinutes, sortedByDone, todayEntries, TodayEntry } from "@/lib/progress";
+import {
+  inRoutineWindow, routineDoneSteps, routineMinutes, routineWindowLabel, sortedByDone,
+  todayEntries, TodayEntry,
+} from "@/lib/progress";
 import { Action, Cadence, HORIZON_META, Item } from "@/lib/types";
+import { quickTasks } from "@/lib/suggestions";
 import { DailyJournal } from "@/components/journal";
 import { FocusTimer } from "@/components/focustimer";
+import { SuggestionsSheet } from "@/components/suggestions";
 import { HorizonList, ScheduleEditor, ScheduleValue } from "@/components/items";
 import { Bar } from "@/components/progress";
 import { Chip, EmptyState, Field, Segmented, Sheet, inputCls } from "@/components/ui";
@@ -44,7 +49,7 @@ export default function TodayPage() {
 }
 
 function Today() {
-  const { db, toggleEntry, deleteAction, reorderDay } = useLife();
+  const { db, toggleEntry, deleteAction, addAction, reorderDay } = useLife();
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -68,6 +73,7 @@ function Today() {
   const [planningHabit, setPlanningHabit] = useState<{ item: Item; date: string } | null>(null);
   const [focusingId, setFocusingId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
+  const [borrowing, setBorrowing] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [hideDone, setHideDone] = useState(false);
   // each period tab remembers its own place for smooth in-session switching;
@@ -101,8 +107,42 @@ function Today() {
   };
 
   const entries = useMemo(() => todayEntries(db, day), [db, day]);
-  const done = entries.filter((e) => e.action.done).length;
-  const total = entries.length;
+
+  // routines keep their own hours ("morning" before noon, "night" after 9) —
+  // re-check every minute so they appear/retire without a reload. Only the
+  // real today filters; browsing other days shows everything.
+  const [minuteTick, setMinuteTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setMinuteTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const { visible, outOfHours } = useMemo(() => {
+    void minuteTick;
+    if (!isToday) return { visible: entries, outOfHours: [] as TodayEntry[] };
+    const now = new Date();
+    const out: TodayEntry[] = [];
+    const vis = entries.filter((e) => {
+      if (e.item?.kind === "routine" && !e.action.done && !inRoutineWindow(e.item, now)) {
+        out.push(e);
+        return false;
+      }
+      return true;
+    });
+    return { visible: vis, outOfHours: out };
+  }, [entries, isToday, minuteTick]);
+
+  const done = visible.filter((e) => e.action.done).length;
+  const total = visible.length;
+
+  // arriving from the Routines page with ?focus=<entry id> opens the timer
+  // on that routine directly, once the data is in (state-during-render
+  // rather than an effect, same pattern as the sheets' lastId resets)
+  const paramFocus = params.get("focus");
+  const [urlFocusUsed, setUrlFocusUsed] = useState(false);
+  if (paramFocus && !urlFocusUsed && entries.some((e) => e.action.id === paramFocus)) {
+    setUrlFocusUsed(true);
+    setFocusingId(paramFocus);
+  }
 
   return (
     <div className="rise-in lg:max-w-none">
@@ -171,6 +211,12 @@ function Today() {
           <DayJump label="Yesterday" onClick={() => setDay(addDays(realToday, -1))} active={day === addDays(realToday, -1)} />
           <DayJump label="Today" onClick={() => setDay(realToday)} active={isToday} />
           <DayJump label="Tomorrow" onClick={() => setDay(addDays(realToday, 1))} active={day === addDays(realToday, 1)} />
+          <Link
+            href="/routines"
+            className="pressable ml-auto rounded-full px-2.5 py-1 font-medium text-ink-3 hover:text-ink-2"
+          >
+            🌄 Routines
+          </Link>
         </div>
       </div>
 
@@ -270,9 +316,35 @@ function Today() {
               title="A clear day"
               body="Nothing planned yet. Add one small action above, or open a goal and break off a piece."
             >
-              <Link href="/life" className="text-accent-deep font-medium text-sm">
-                Browse your life →
-              </Link>
+              <div className="space-y-4">
+                {isToday && (
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {quickTasks(3).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => addAction(t, day)}
+                        className="pressable rounded-full border border-line bg-surface px-3.5 py-1.5 text-sm text-ink-2"
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center justify-center gap-4">
+                  {/* the sheet lives at page level — borrowing the first
+                      target dissolves this empty state, and the sheet must
+                      survive that to keep serving the second one */}
+                  <button
+                    onClick={() => setBorrowing(true)}
+                    className="pressable text-sm font-medium text-accent-deep"
+                  >
+                    Out of ideas? Borrow a target →
+                  </button>
+                  <Link href="/life" className="text-accent-deep font-medium text-sm">
+                    Browse your life →
+                  </Link>
+                </div>
+              </div>
             </EmptyState>
           ) : hideDone && done === total ? (
             <EmptyState emoji="✓" title="Everything's done" body="Turn off &ldquo;Hide completed&rdquo; in Sort to see it all again." />
@@ -280,7 +352,7 @@ function Today() {
             <TaskList
               day={day}
               reordering={reordering}
-              rows={(hideDone ? entries.filter((e) => !e.action.done) : entries).map((e) => ({
+              rows={(hideDone ? visible.filter((e) => !e.action.done) : visible).map((e) => ({
                 entry: e,
                 onToggle: () => toggleEntry(e, day),
                 onDelete: e.virtualHabit || e.virtualItemTask ? undefined : () => deleteAction(e.action.id),
@@ -300,6 +372,28 @@ function Today() {
             />
           )}
 
+          {/* routines waiting for their hour — visible as a quiet line, not a task */}
+          {outOfHours.length > 0 && (
+            <div className="mt-6">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-3">Out of hours</p>
+              <div className="space-y-1.5">
+                {outOfHours.map((e) => (
+                  <Link
+                    key={e.action.id}
+                    href={e.item ? `/item/${e.item.id}` : "/routines"}
+                    className="pressable flex items-center gap-2.5 rounded-(--radius-card) border border-dashed border-line-soft px-4 py-2.5 text-sm text-ink-3 hover:text-ink-2"
+                  >
+                    <span aria-hidden>🌄</span>
+                    <span className="min-w-0 truncate">{e.action.title}</span>
+                    {e.item && routineWindowLabel(e.item) && (
+                      <span className="ml-auto shrink-0 text-xs tabular-nums">{routineWindowLabel(e.item)}</span>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
           {done > 0 && done === total && total > 0 && isToday && (
             <p className="mt-8 text-center font-display text-lg text-accent-deep">
               Today moved you forward. 🌱
@@ -315,6 +409,7 @@ function Today() {
       </>
       )}
 
+      <SuggestionsSheet open={borrowing} onClose={() => setBorrowing(false)} />
       <PlanSheet open={planning} onClose={() => setPlanning(false)} day={day} />
       <EditActionSheet action={editingAction} onClose={() => setEditingAction(null)} />
       <EditItemTitleSheet item={editingItemTitle} onClose={() => setEditingItemTitle(null)} />
@@ -323,6 +418,7 @@ function Today() {
         open={!!focusingId}
         entries={entries}
         initialEntryId={focusingId}
+        day={day}
         onToggle={(entry) => toggleEntry(entry, day)}
         onClose={() => setFocusingId(null)}
       />
@@ -1031,11 +1127,19 @@ function ActionRow({
               </span>
             );
           })}
-          {/* a routine wears its length: "3 steps · 25 min" */}
-          {item?.kind === "routine" && item.steps && item.steps.length > 0 && (
-            <span className="shrink-0 tabular-nums">
-              {item.steps.length} steps{routineMinutes(item) != null ? ` · ${routineMinutes(item)} min` : ""}
-            </span>
+          {/* a routine wears its length — and, mid-way, how far in it is:
+              "1/3 steps · 25 min" */}
+          {item?.kind === "routine" && item.steps && item.steps.length > 0 && (() => {
+            const ticked = routineDoneSteps(db, item.id, action.date).size;
+            return (
+              <span className="shrink-0 tabular-nums">
+                {ticked > 0 && !action.done ? `${ticked}/${item.steps.length}` : item.steps.length} steps
+                {routineMinutes(item) != null ? ` · ${routineMinutes(item)} min` : ""}
+              </span>
+            );
+          })()}
+          {item?.kind === "routine" && routineWindowLabel(item) && (
+            <span className="shrink-0 tabular-nums">{routineWindowLabel(item)}</span>
           )}
           {scheduleLabel && <span className="shrink-0">{scheduleLabel}</span>}
           {virtualHabit && !scheduleLabel && <span>habit</span>}
