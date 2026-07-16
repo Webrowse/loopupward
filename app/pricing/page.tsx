@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LifeProvider, useLife } from "@/lib/data/provider";
 import { api } from "@/lib/api";
-import { PLANS, PlanId } from "@/lib/limits";
+import { detectCurrency } from "@/lib/currency";
+import { BillingCurrency, PLANS, PlanId, planPrice } from "@/lib/limits";
 import { Button } from "@/components/ui";
 
 declare global {
@@ -36,6 +37,16 @@ function Pricing() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
 
+  // one currency, decided by where the request comes from — India sees
+  // rupees, everyone else dollars. There is deliberately no switch: the
+  // matching Razorpay plan (domestic or international) is chosen from this.
+  const [currency, setCurrency] = useState<BillingCurrency>("INR");
+  useEffect(() => {
+    let cancelled = false;
+    detectCurrency().then((c) => { if (!cancelled) setCurrency(c); });
+    return () => { cancelled = true; };
+  }, []);
+
   const startCheckout = async () => {
     if (!user) {
       window.location.href = "/login";
@@ -48,7 +59,7 @@ function Pricing() {
         subscriptionId: string;
         keyId: string;
         user: { email: string; name: string | null };
-      }>("/v1/billing/subscribe", { method: "POST", body: { plan: selected } });
+      }>("/v1/billing/subscribe", { method: "POST", body: { plan: selected, currency } });
 
       await loadRazorpayScript();
       const rzp = new window.Razorpay!({
@@ -71,6 +82,7 @@ function Pricing() {
                 subscriptionId: resp.razorpay_subscription_id,
                 signature: resp.razorpay_signature,
                 plan: selected,
+                currency,
               },
             });
             setMessage({ text: "Welcome to premium. Your space just got bigger. 🌿", tone: "ok" });
@@ -134,11 +146,11 @@ function Pricing() {
                 )}
                 <div className="flex items-baseline justify-between">
                   <span className="font-medium text-ink">{plan.label}</span>
-                  <span className="font-display text-xl text-ink">₹{plan.priceInr}</span>
+                  <span className="font-display text-xl text-ink">{planPrice(plan, currency).price}</span>
                 </div>
                 <div className="flex items-baseline justify-between text-xs text-ink-3 mt-0.5">
                   <span>{plan.tagline}</span>
-                  <span>≈ ₹{plan.perMonthInr}/month</span>
+                  <span>≈ {planPrice(plan, currency).perMonth}/month</span>
                 </div>
               </button>
             ))}
@@ -156,7 +168,9 @@ function Pricing() {
             </p>
           )}
           <p className="mt-4 text-center text-xs leading-relaxed text-ink-3">
-            Secure payments by Razorpay: UPI, cards, netbanking, international cards.
+            {currency === "INR"
+              ? "Secure payments by Razorpay: UPI, cards, netbanking."
+              : "Secure card payments by Razorpay, billed in USD."}{" "}
             Renews automatically; cancel anytime and keep premium until your period ends.
           </p>
         </>

@@ -13,6 +13,9 @@ pub struct Config {
     pub plan_quarterly: Option<String>,
     pub plan_halfyearly: Option<String>,
     pub plan_yearly: Option<String>,
+    pub plan_quarterly_usd: Option<String>,
+    pub plan_halfyearly_usd: Option<String>,
+    pub plan_yearly_usd: Option<String>,
     /// When set, POST /v1/auth/dev {secret,email} issues a session without
     /// Google — for local development and CI only. Never set in production.
     pub dev_login_secret: Option<String>,
@@ -42,6 +45,9 @@ impl Config {
             plan_quarterly: opt("RAZORPAY_PLAN_QUARTERLY"),
             plan_halfyearly: opt("RAZORPAY_PLAN_HALFYEARLY"),
             plan_yearly: opt("RAZORPAY_PLAN_YEARLY"),
+            plan_quarterly_usd: opt("RAZORPAY_PLAN_QUARTERLY_USD"),
+            plan_halfyearly_usd: opt("RAZORPAY_PLAN_HALFYEARLY_USD"),
+            plan_yearly_usd: opt("RAZORPAY_PLAN_YEARLY_USD"),
             dev_login_secret: opt("DEV_LOGIN_SECRET"),
         })
     }

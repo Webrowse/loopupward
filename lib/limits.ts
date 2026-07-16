@@ -22,6 +22,8 @@ export const PLANS = [
     months: 3,
     priceInr: 499,
     perMonthInr: 166,
+    priceUsd: 12,
+    perMonthUsd: 4,
     tagline: "Try it for a season",
   },
   {
@@ -30,6 +32,8 @@ export const PLANS = [
     months: 6,
     priceInr: 849,
     perMonthInr: 142,
+    priceUsd: 20,
+    perMonthUsd: 3.4,
     tagline: "Two seasons of growth",
   },
   {
@@ -38,12 +42,24 @@ export const PLANS = [
     months: 12,
     priceInr: 1499,
     perMonthInr: 125,
+    priceUsd: 35,
+    perMonthUsd: 2.9,
     tagline: "A full year of becoming",
     best: true,
   },
 ] as const;
 
 export type PlanId = (typeof PLANS)[number]["id"];
+
+/** The two currencies we bill in. India pays INR; everyone else USD.
+ *  Never user-selectable — detection decides (see lib/currency.ts). */
+export type BillingCurrency = "INR" | "USD";
+
+export function planPrice(plan: (typeof PLANS)[number], currency: BillingCurrency) {
+  return currency === "INR"
+    ? { price: `₹${plan.priceInr}`, perMonth: `₹${plan.perMonthInr}` }
+    : { price: `$${plan.priceUsd}`, perMonth: `$${plan.perMonthUsd}` };
+}
 
 export function isPremium(premiumUntil: string | null | undefined): boolean {
   if (!premiumUntil) return false;

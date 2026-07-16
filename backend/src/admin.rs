@@ -50,7 +50,7 @@ pub async fn users(
     user.require_owner()?;
     let like = format!("%{}%", query.q.trim());
     let rows = sqlx::query(
-        "select id, email, name, role, premium_until, plan, created_at from users
+        "select id, email, name, role, premium_until, plan, currency, created_at from users
          where ($1 = '%%' or email ilike $1 or name ilike $1)
          order by created_at desc limit 50",
     )
@@ -67,6 +67,7 @@ pub async fn users(
                 "role": r.get::<String, _>("role"),
                 "premiumUntil": r.get::<Option<chrono::DateTime<Utc>>, _>("premium_until"),
                 "plan": r.get::<Option<String>, _>("plan"),
+                "currency": r.get::<Option<String>, _>("currency"),
                 "createdAt": r.get::<chrono::DateTime<Utc>, _>("created_at"),
             })
         })
@@ -92,7 +93,7 @@ pub async fn grant(
     user.require_owner()?;
 
     if body.revoke {
-        set_premium(&state, body.user_id, None, None).await?;
+        set_premium(&state, body.user_id, None, None, None).await?;
         return Ok(Json(json!({ "ok": true, "premiumUntil": null })));
     }
 
@@ -113,6 +114,6 @@ pub async fn grant(
         _ => Utc::now(),
     };
     let until = base + Duration::days(days);
-    set_premium(&state, body.user_id, Some(until), Some("granted")).await?;
+    set_premium(&state, body.user_id, Some(until), Some("granted"), None).await?;
     Ok(Json(json!({ "ok": true, "premiumUntil": until })))
 }
