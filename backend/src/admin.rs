@@ -7,7 +7,6 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use crate::auth::AuthUser;
-use crate::billing::set_premium;
 use crate::error::{ApiError, ApiResult};
 use crate::AppState;
 
@@ -18,7 +17,7 @@ pub async fn stats(State(state): State<AppState>, user: AuthUser) -> ApiResult<J
     let row = sqlx::query(
         "select
            (select count(*) from users) as users,
-           (select count(*) from users where premium_until > now()) as premium,
+           (select count(*) from users where premium_until > now() or admin_premium_until > now()) as premium,
            (select count(*) from subscriptions where status = 'active') as active_subs,
            (select count(*) from items) as items,
            (select count(*) from seeds) as seeds,
@@ -50,7 +49,7 @@ pub async fn users(
     user.require_owner()?;
     let like = format!("%{}%", query.q.trim());
     let rows = sqlx::query(
-        "select id, email, name, role, premium_until, plan, currency, created_at from users
+        "select id, email, name, role, premium_until, admin_premium_until, plan, currency, created_at from users
          where ($1 = '%%' or email ilike $1 or name ilike $1)
          order by created_at desc limit 50",
     )
@@ -66,6 +65,7 @@ pub async fn users(
                 "name": r.get::<Option<String>, _>("name"),
                 "role": r.get::<String, _>("role"),
                 "premiumUntil": r.get::<Option<chrono::DateTime<Utc>>, _>("premium_until"),
+                "adminPremiumUntil": r.get::<Option<chrono::DateTime<Utc>>, _>("admin_premium_until"),
                 "plan": r.get::<Option<String>, _>("plan"),
                 "currency": r.get::<Option<String>, _>("currency"),
                 "createdAt": r.get::<chrono::DateTime<Utc>, _>("created_at"),
@@ -92,9 +92,18 @@ pub async fn grant(
 ) -> ApiResult<Json<Value>> {
     user.require_owner()?;
 
+    // grants live in their own column: a Razorpay renewal webhook rewrites
+    // premium_until and must never be able to wipe an owner's grant — and a
+    // revoke here must never touch time the user actually paid for
     if body.revoke {
-        set_premium(&state, body.user_id, None, None, None).await?;
-        return Ok(Json(json!({ "ok": true, "premiumUntil": null })));
+        let done = sqlx::query("update users set admin_premium_until = null where id = $1")
+            .bind(body.user_id)
+            .execute(&state.pool)
+            .await?;
+        if done.rows_affected() == 0 {
+            return Err(ApiError::NotFound);
+        }
+        return Ok(Json(json!({ "ok": true, "adminPremiumUntil": null })));
     }
 
     let days = body.days.ok_or_else(|| ApiError::BadRequest("days required".into()))?;
@@ -102,18 +111,22 @@ pub async fn grant(
         return Err(ApiError::BadRequest("invalid duration".into()));
     }
 
-    // extend from the current expiry when still premium, otherwise from now
-    let row = sqlx::query("select premium_until from users where id = $1")
+    // extend from the current grant when one is still running, otherwise from now
+    let row = sqlx::query("select admin_premium_until from users where id = $1")
         .bind(body.user_id)
         .fetch_optional(&state.pool)
         .await?
         .ok_or(ApiError::NotFound)?;
-    let current: Option<chrono::DateTime<Utc>> = row.get("premium_until");
+    let current: Option<chrono::DateTime<Utc>> = row.get("admin_premium_until");
     let base = match current {
         Some(t) if t > Utc::now() => t,
         _ => Utc::now(),
     };
     let until = base + Duration::days(days);
-    set_premium(&state, body.user_id, Some(until), Some("granted"), None).await?;
-    Ok(Json(json!({ "ok": true, "premiumUntil": until })))
+    sqlx::query("update users set admin_premium_until = $2 where id = $1")
+        .bind(body.user_id)
+        .bind(until)
+        .execute(&state.pool)
+        .await?;
+    Ok(Json(json!({ "ok": true, "adminPremiumUntil": until })))
 }

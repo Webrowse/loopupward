@@ -41,15 +41,27 @@ pub struct AuthUser {
     pub name: Option<String>,
     pub avatar_url: Option<String>,
     pub role: String,
+    /// subscription-owned: only billing's confirm()/webhook() write this
     pub premium_until: Option<DateTime<Utc>>,
+    /// admin-owned: only the owner grant endpoint writes this
+    pub admin_premium_until: Option<DateTime<Utc>>,
     pub plan: Option<String>,
     pub currency: Option<String>,
     pub token_hash: String,
 }
 
 impl AuthUser {
+    /// When premium access actually ends — whichever clock runs longer.
+    /// Subscriptions and admin grants never write each other's column,
+    /// so a renewal webhook can't wipe a grant (or the other way round).
+    pub fn premium_until_effective(&self) -> Option<DateTime<Utc>> {
+        match (self.premium_until, self.admin_premium_until) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (a, b) => a.or(b),
+        }
+    }
     pub fn premium(&self) -> bool {
-        self.premium_until.map(|t| t > Utc::now()).unwrap_or(false)
+        self.premium_until_effective().map(|t| t > Utc::now()).unwrap_or(false)
     }
     pub fn is_owner(&self) -> bool {
         self.role == "owner"
@@ -75,7 +87,7 @@ impl FromRequestParts<AppState> for AuthUser {
         let token = bearer_token(parts).ok_or(ApiError::Unauthorized)?;
         let token_hash = hash_token(&token);
         let row = sqlx::query(
-            "select u.id, u.email, u.name, u.avatar_url, u.role, u.premium_until, u.plan, u.currency
+            "select u.id, u.email, u.name, u.avatar_url, u.role, u.premium_until, u.admin_premium_until, u.plan, u.currency
              from sessions s join users u on u.id = s.user_id
              where s.token_hash = $1 and s.expires_at > now()",
         )
@@ -101,6 +113,7 @@ impl FromRequestParts<AppState> for AuthUser {
             avatar_url: row.get("avatar_url"),
             role: row.get("role"),
             premium_until: row.get("premium_until"),
+            admin_premium_until: row.get("admin_premium_until"),
             plan: row.get("plan"),
             currency: row.get("currency"),
             token_hash,
@@ -241,7 +254,9 @@ fn user_payload(u: &AuthUser) -> Value {
         "avatarUrl": u.avatar_url,
         "role": u.role,
         "premium": u.premium(),
-        "premiumUntil": u.premium_until,
+        // the effective end, so "premium until <date>" on the client stays
+        // truthful whichever source (subscription or grant) runs longer
+        "premiumUntil": u.premium_until_effective(),
         "plan": u.plan,
         "currency": u.currency,
         "limits": caps_json(u.premium()),
@@ -250,7 +265,7 @@ fn user_payload(u: &AuthUser) -> Value {
 
 async fn load_auth_user(state: &AppState, id: Uuid) -> ApiResult<AuthUser> {
     let row = sqlx::query(
-        "select id, email, name, avatar_url, role, premium_until, plan, currency from users where id = $1",
+        "select id, email, name, avatar_url, role, premium_until, admin_premium_until, plan, currency from users where id = $1",
     )
     .bind(id)
     .fetch_one(&state.pool)
@@ -262,6 +277,7 @@ async fn load_auth_user(state: &AppState, id: Uuid) -> ApiResult<AuthUser> {
         avatar_url: row.get("avatar_url"),
         role: row.get("role"),
         premium_until: row.get("premium_until"),
+        admin_premium_until: row.get("admin_premium_until"),
         plan: row.get("plan"),
         currency: row.get("currency"),
         token_hash: String::new(),

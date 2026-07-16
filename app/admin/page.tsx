@@ -11,7 +11,18 @@ interface Stats {
 }
 interface AdminUser {
   id: string; email: string; name: string | null;
-  premiumUntil: string | null; plan: string | null; role: string; createdAt: string;
+  /** subscription-owned end (Razorpay writes this) */
+  premiumUntil: string | null;
+  /** admin-owned end (owner grants write this) — access is the later of the two */
+  adminPremiumUntil: string | null;
+  plan: string | null; role: string; createdAt: string;
+}
+
+/** The later of the two premium clocks — mirrors the server's access rule. */
+function effectiveUntil(u: AdminUser): string | null {
+  const times = [u.premiumUntil, u.adminPremiumUntil].filter((t): t is string => !!t);
+  if (times.length === 0) return null;
+  return times.sort()[times.length - 1];
 }
 
 export default function AdminPage() {
@@ -56,15 +67,15 @@ export default function AdminPage() {
     setBusy(userId);
     setError(null);
     try {
-      const data = await api<{ premiumUntil: string | null }>("/v1/admin/grant", {
+      const data = await api<{ adminPremiumUntil: string | null }>("/v1/admin/grant", {
         method: "POST",
         body: { userId, days, revoke },
       });
+      // only the grant clock moves — a paid subscription (premiumUntil/plan)
+      // is untouched by both granting and revoking
       setUsers((prev) =>
         prev.map((u) =>
-          u.id === userId
-            ? { ...u, premiumUntil: data.premiumUntil, plan: revoke ? null : "granted" }
-            : u
+          u.id === userId ? { ...u, adminPremiumUntil: data.adminPremiumUntil } : u
         )
       );
     } catch (e) {
@@ -133,7 +144,9 @@ export default function AdminPage() {
 
         <div className="mt-4 space-y-2">
           {users.map((u) => {
-            const premium = isPremium(u.premiumUntil);
+            const until = effectiveUntil(u);
+            const premium = isPremium(until);
+            const granted = isPremium(u.adminPremiumUntil);
             return (
               <div key={u.id} className="rounded-(--radius-card) border border-line-soft bg-surface p-4 shadow-(--shadow-card)">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -146,9 +159,9 @@ export default function AdminPage() {
                   <div className="text-right text-xs">
                     {premium ? (
                       <span className="rounded-full bg-accent-soft px-2.5 py-1 font-medium text-accent-deep">
-                        premium{u.plan ? ` · ${u.plan}` : ""}
-                        {u.premiumUntil && new Date(u.premiumUntil).getFullYear() < 2100 &&
-                          ` → ${new Date(u.premiumUntil).toLocaleDateString()}`}
+                        premium{u.plan ? ` · ${u.plan}` : ""}{granted ? " · grant" : ""}
+                        {until && new Date(until).getFullYear() < 2100 &&
+                          ` → ${new Date(until).toLocaleDateString()}`}
                       </span>
                     ) : (
                       <span className="rounded-full bg-surface-2 px-2.5 py-1 text-ink-3">free</span>
@@ -166,13 +179,15 @@ export default function AdminPage() {
                       +{g.label}
                     </button>
                   ))}
-                  {premium && (
+                  {/* removes only the granted time — paid subscription time
+                      can't be revoked from here, it simply runs out */}
+                  {granted && (
                     <button
                       disabled={busy === u.id}
                       onClick={() => grant(u.id, undefined, true)}
                       className="pressable rounded-full border border-line px-2.5 py-1 text-xs text-danger disabled:opacity-40"
                     >
-                      Remove premium
+                      Remove grant
                     </button>
                   )}
                 </div>
