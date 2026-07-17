@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
 import {
-  currentStreak, dayLogged, habitDays, routineDoneSteps, routineMinutes, routineWindowLabel,
+  currentStreak, dayLogged, habitDays, routineDoneSteps, routineLogDay, routineMinutes,
+  routineWindowLabel,
 } from "@/lib/progress";
 import { Item, RoutineStep } from "@/lib/types";
 import { today } from "@/lib/dates";
@@ -110,7 +111,8 @@ export default function RoutinesPage() {
 
 function RoutineCard({ item }: { item: Item }) {
   const { db, setRoutineStepDone, toggleHabitDay } = useLife();
-  const day = today();
+  // before ~4 am a wrapped-window routine still ticks against yesterday
+  const day = routineLogDay(item);
   const steps = item.steps ?? [];
   const ticked = routineDoneSteps(db, item.id, day);
   const doneToday = dayLogged(db.logs, item.id, day) > 0;
@@ -142,7 +144,7 @@ function RoutineCard({ item }: { item: Item }) {
           </button>
         ) : (
           <Link
-            href={`/today?view=today&day=${day}&focus=${encodeURIComponent(`habit:${item.id}:${day}`)}`}
+            href={`/today?view=today&day=${today()}&focus=${encodeURIComponent(`habit:${item.id}:${day}`)}`}
             className="pressable shrink-0 rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-ink-2 hover:border-accent"
           >
             ▶ Run

@@ -67,13 +67,11 @@ function entryText(entry: TodayEntry): { title: string; subtitle?: string } {
  * without ever leaving this screen.
  */
 export function FocusTimer({
-  open, entries, initialEntryId, day, onToggle, onClose,
+  open, entries, initialEntryId, onToggle, onClose,
 }: {
   open: boolean;
   entries: TodayEntry[];
   initialEntryId: string | null;
-  /** the day being worked (routines tick their steps against it) */
-  day: string;
   onToggle: (entry: TodayEntry) => void;
   onClose: () => void;
 }) {
@@ -244,12 +242,13 @@ export function FocusTimer({
   const routineTotal = current.item ? routineMinutes(current.item) : null;
   const isRoutine = steps.length > 0 && !!current.item;
 
-  // a routine runs step by step: its own screen, its own rules
+  // a routine runs step by step: its own screen, its own rules — against
+  // the day its row stands for (a night routine at 1 am means yesterday)
   if (isRoutine && runningRoutine && current.item) {
     return (
       <RoutineRun
         item={current.item}
-        day={day}
+        day={current.action.date}
         onFinished={() => {
           setRunningRoutine(false);
           setPickingNext(true);

@@ -1,5 +1,5 @@
 import { Action, Cadence, DB, Item, ListEntry, Log } from "./types";
-import { addDays, dayFromMs, daysBetween, Period, periodKey, startOfWeek, today } from "./dates";
+import { addDays, dayFromMs, daysBetween, Period, periodKey, startOfWeek, toDay, today } from "./dates";
 
 /**
  * Progress flows upward: an item's progress is its own tracker progress,
@@ -186,6 +186,26 @@ export function inRoutineWindow(item: Item, now: Date): boolean {
   if (start == null || end == null || start === end) return true;
   const t = now.getHours() * 60 + now.getMinutes();
   return start < end ? t >= start && t < end : t >= start || t < end;
+}
+
+/** How late "tonight" stretches: the calendar flips at midnight, but the
+ *  person doesn't — before 4 am they're still living the previous evening. */
+const NIGHT_SPILL_MINUTES = 4 * 60;
+
+/** Which day a routine's ticks, steps and streak belong to right now.
+ *  A routine whose visible hours wrap past midnight (21:00 → 02:00) belongs
+ *  to the evening it started: until its window ends — or until 4 am,
+ *  whichever is later — everything logs to the previous calendar day, so
+ *  finishing the night routine at 1 am doesn't leak into tomorrow. Routines
+ *  without a wrapped window use the calendar day unchanged. */
+export function routineLogDay(item: Item, now = new Date()): string {
+  const start = parseHM(item.windowStart);
+  const end = parseHM(item.windowEnd);
+  const wrapped = item.kind === "routine" && start != null && end != null && end < start;
+  const day = toDay(now);
+  if (!wrapped) return day;
+  const t = now.getHours() * 60 + now.getMinutes();
+  return t < Math.max(end, NIGHT_SPILL_MINUTES) ? addDays(day, -1) : day;
 }
 
 /** "6:00 am – 12:00 pm", or null when the routine shows all day. */
@@ -389,18 +409,21 @@ export function todayEntries(db: DB, day = today(), includeCarried = day === tod
 
   // 3. scheduled items (habits and anything with a cadence) — virtual rows
   for (const item of db.items) {
-    const state = scheduledState(item, db.logs, day);
+    // a night routine straddling midnight still belongs to yesterday until
+    // ~4 am: its row reads and writes that day, not the calendar one
+    const d = day === today() ? routineLogDay(item) : day;
+    const state = scheduledState(item, db.logs, d);
     if (!state || !state.due) continue;
     const hasRealAction = entries.some((e) => e.action.itemId === item.id);
     if (hasRealAction) continue;
     // what this specific day means for this habit, e.g. "clean" → "clean desk"
-    const dayNote = db.habitDayNotes.find((n) => n.itemId === item.id && n.date === day);
+    const dayNote = db.habitDayNotes.find((n) => n.itemId === item.id && n.date === d);
     entries.push({
       action: {
-        id: `habit:${item.id}:${day}`,
+        id: `habit:${item.id}:${d}`,
         itemId: item.id,
         title: item.title,
-        date: day,
+        date: d,
         done: state.done,
         doneAt: null,
         amount: 1,

@@ -424,7 +424,6 @@ function Today() {
         open={!!focusingId}
         entries={entries}
         initialEntryId={focusingId}
-        day={day}
         onToggle={(entry) => toggleEntry(entry, day)}
         onClose={() => setFocusingId(null)}
       />

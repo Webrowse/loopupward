@@ -7,6 +7,7 @@ A routine is a timetable. You write it once — an ordered list of steps, each w
 - **A name** — "Morning", "Night", "Gym", anything.
 - **A script** — ordered steps: *wash face (5), meditation (15), brush teeth (5)*. The order matters; drag steps up and down by their handle. Minutes are optional per step — "take meds" has no duration, and that's fine.
 - **Visible hours** — from when to when it sits on your Today list. A morning routine set to 5:00 am – 12:00 pm disappears after noon; a night routine set to 9:00 pm – 2:00 am shows up in the evening (an end before the start simply wraps past midnight). Outside its hours it waits under a quiet "Out of hours" line — never a nagging task. No hours set means it shows all day.
+- **The night belongs to the evening it started.** For a routine whose hours wrap past midnight, anything you do before 4 am (or before its window ends, if that's later) counts for the *previous* day — ticking your night routine at 1 am keeps the log and the streak on the night it belongs to, and it won't count as tomorrow's routine done in advance.
 - **A schedule** — routines repeat daily unless you say otherwise, and they're checked off per day with a streak, exactly like habits.
 
 The minutes add up (5 + 15 + 5 = **25 min**) and Today shows the routine wearing its length: **"3 steps · 25 min"**.

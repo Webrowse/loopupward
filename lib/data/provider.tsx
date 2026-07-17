@@ -173,11 +173,24 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
           const empty =
             data.items.length + data.seeds.length + data.areas.length + data.actions.length === 0;
           if (empty && localHasData()) {
-            // first sign-in: carry the on-device life into the cloud
-            const local = readLocalDB();
-            await cloud.importAll(local);
-            data = await cloud.load();
-            clearLocalDB();
+            // first sign-in: carry the on-device life into the cloud. If the
+            // import fails, the failure is the import's — not the session's:
+            // stay signed in, keep the device data safe where it is, and say
+            // so. (This used to throw to the outer catch, which read as
+            // "cloud unreachable" and left the user silently signed out.)
+            try {
+              const local = readLocalDB();
+              await cloud.importAll(local);
+              data = await cloud.load();
+              clearLocalDB();
+            } catch (e) {
+              console.error("[lifeos] first sign-in import failed", e);
+              if (!cancelled) {
+                setSyncError(
+                  "Signed in, but this device's data couldn't be carried into your cloud yet. It's still safe on this device."
+                );
+              }
+            }
           }
           if (!cancelled) {
             repoRef.current = cloud;
@@ -626,7 +639,9 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   const toggleEntry = useCallback((entry: TodayEntry, forDay?: string) => {
     const day = forDay ?? today();
     if (entry.virtualHabit && entry.item) {
-      toggleHabitDay(entry.item, day, entry.action.done);
+      // the row itself knows which day it stands for — for a night routine
+      // ticked at 1 am that's yesterday, not the page's calendar day
+      toggleHabitDay(entry.item, entry.action.date, entry.action.done);
       return;
     }
     if (entry.virtualItemTask && entry.item) {

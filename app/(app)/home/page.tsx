@@ -11,6 +11,7 @@ import { areaColor } from "@/lib/palette";
 import { deriveNoteFields, ItemSheet } from "@/components/items";
 import { ArchiveIcon, MoonIcon, NoteIcon, OrganizeIcon } from "@/components/icons";
 import { Bar, Ring } from "@/components/progress";
+import { SERVER_CAPS } from "@/lib/limits";
 import { SuggestionsLink } from "@/components/suggestions";
 import { Button, MovedNotice, Sheet } from "@/components/ui";
 
@@ -83,6 +84,7 @@ export default function HomePage() {
                 }
               }}
               placeholder="A thought, a goal, a quote, a someday…"
+              maxLength={SERVER_CAPS.seedText}
               rows={3}
               className="w-full resize-none bg-transparent px-4 pt-4 pb-2 text-[1.05rem] text-ink placeholder:text-ink-3 outline-none"
             />
@@ -422,6 +424,7 @@ function SeedEditSheet({ seed, onClose }: { seed: Seed | null; onClose: () => vo
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
+        maxLength={SERVER_CAPS.seedText}
         rows={4}
         autoFocus
         className="w-full resize-none rounded-(--radius-card) border border-line bg-bg px-3 py-2.5 text-[0.95rem] text-ink placeholder:text-ink-3 outline-none focus:border-accent"

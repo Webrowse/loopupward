@@ -7,7 +7,8 @@ import { useLife } from "@/lib/data/provider";
 import { Horizon, HORIZON_META, Item, KIND_META, ListEntry, RoutineStep } from "@/lib/types";
 import {
   ancestors, bestStreak, children as childrenOf, currentStreak, dayLogged, descendants,
-  formatValue, habitDailyTarget, habitDays, itemProgress, listTotals, routineMinutes, scheduleLabel,
+  formatValue, habitDailyTarget, habitDays, itemProgress, listTotals, routineLogDay, routineMinutes,
+  scheduleLabel,
 } from "@/lib/progress";
 import { useRowDrag } from "@/lib/useRowDrag";
 import { uid } from "@/lib/uid";
@@ -726,7 +727,8 @@ function HabitTodayControl({
   item, onToggle,
 }: { item: Item; onToggle: (item: Item, day: string, currentlyDone: boolean) => void }) {
   const { db } = useLife();
-  const day = today();
+  // a night routine ticked before ~4 am belongs to yesterday's evening
+  const day = routineLogDay(item);
   const dayTarget = habitDailyTarget(item);
   const dayValue = dayLogged(db.logs, item.id, day);
   const done = dayValue >= dayTarget;
