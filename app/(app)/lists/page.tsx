@@ -12,6 +12,9 @@ import { BackLink, Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/co
 export default function ListsPage() {
   const { db } = useLife();
   const [creating, setCreating] = useState(false);
+  // one list open at a time — the index stays a scannable grid of small
+  // cards no matter how many lists (and how long each one) there are
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const lists = useMemo(
     () =>
@@ -47,10 +50,16 @@ export default function ListsPage() {
           body="Name one, then fill it — buying lists, exercise lists, anything checkable."
         />
       ) : (
-        <div className="space-y-3">
-          {lists.map((l) => (
-            <ListCard key={l.id} item={l} />
-          ))}
+        <div className="grid gap-3 sm:grid-cols-2">
+          {lists.map((l) =>
+            l.id === openId ? (
+              <div key={l.id} className="sm:col-span-2">
+                <ListCard item={l} onCollapse={() => setOpenId(null)} />
+              </div>
+            ) : (
+              <CompactListCard key={l.id} item={l} onOpen={() => setOpenId(l.id)} />
+            )
+          )}
         </div>
       )}
 
@@ -59,7 +68,37 @@ export default function ListsPage() {
   );
 }
 
-function ListCard({ item }: { item: Item }) {
+/** The index card: name and the numbers, nothing else — clicking it opens
+ *  the full tickable view in place. */
+function CompactListCard({ item, onOpen }: { item: Item; onOpen: () => void }) {
+  const { db } = useLife();
+  const entries = item.entries ?? [];
+  const done = entries.filter((e) => e.done).length;
+  const totals = listTotals(entries);
+  const progress = itemProgress(db, item);
+
+  return (
+    <button
+      onClick={onOpen}
+      className="pressable rounded-(--radius-card) border border-line-soft bg-surface p-4 text-left shadow-(--shadow-card) transition-colors hover:border-accent"
+    >
+      <p className="truncate font-display text-lg text-ink">{item.title}</p>
+      <p className="mt-0.5 text-xs text-ink-3">
+        {entries.length === 0
+          ? "empty"
+          : `${entries.length} thing${entries.length === 1 ? "" : "s"} · ${done} done`}
+        {totals && ` · ${totals}`}
+      </p>
+      {entries.length > 0 && progress !== null && (
+        <div className="mt-2.5">
+          <Bar value={progress} height={3} />
+        </div>
+      )}
+    </button>
+  );
+}
+
+function ListCard({ item, onCollapse }: { item: Item; onCollapse: () => void }) {
   const { db, updateItem } = useLife();
   const entries = item.entries ?? [];
   const done = entries.filter((e) => e.done).length;
@@ -72,26 +111,34 @@ function ListCard({ item }: { item: Item }) {
     });
 
   return (
-    <div className="rounded-(--radius-card) border border-line-soft bg-surface p-4 shadow-(--shadow-card)">
+    <div className="rounded-(--radius-card) border border-accent/40 bg-surface p-4 shadow-(--shadow-card)">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Link href={`/item/${item.id}`} className="font-display text-lg text-ink hover:text-accent-deep">
-            {item.title}
-          </Link>
+        <button onClick={onCollapse} className="pressable min-w-0 text-left" aria-expanded>
+          <p className="font-display text-lg text-ink">
+            {item.title} <span aria-hidden className="text-sm text-ink-3">˄</span>
+          </p>
           <p className="mt-0.5 text-xs text-ink-3">
             {entries.length === 0 ? "empty" : `${done}/${entries.length} done`}
             {totals && ` · ${totals}`}
           </p>
-        </div>
-        {/* a buying list gets reused — one tap arms it for the next round */}
-        {done > 0 && (
-          <button
-            onClick={() => updateItem(item.id, { entries: entries.map((e) => ({ ...e, done: false })) })}
-            className="pressable shrink-0 rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-ink-2 hover:border-accent"
+        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* a buying list gets reused — one tap arms it for the next round */}
+          {done > 0 && (
+            <button
+              onClick={() => updateItem(item.id, { entries: entries.map((e) => ({ ...e, done: false })) })}
+              className="pressable rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-ink-2 hover:border-accent"
+            >
+              ↺ Untick all
+            </button>
+          )}
+          <Link
+            href={`/item/${item.id}`}
+            className="pressable rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-ink-2 hover:border-accent"
           >
-            ↺ Untick all
-          </button>
-        )}
+            edit ↗
+          </Link>
+        </div>
       </div>
 
       {entries.length > 0 && progress !== null && (
