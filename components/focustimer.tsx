@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLife } from "@/lib/data/provider";
 import { routineDoneSteps, routineMinutes, TodayEntry } from "@/lib/progress";
 import { Item, RoutineStep } from "@/lib/types";
@@ -28,6 +28,37 @@ function beep() {
 
 function pad(n: number) {
   return n.toString().padStart(2, "0");
+}
+
+/**
+ * Runs `tick` once a second while `active` — and again the instant the tab
+ * becomes visible. Browsers throttle background-tab intervals to a crawl
+ * (Chrome eventually fires them about once a minute), so no clock in here
+ * may ever COUNT ticks: every tick recomputes from Date.now() against a
+ * stored deadline, and this hook only decides when to look at the clock.
+ * Twenty minutes in another workspace then costs one glance to catch up.
+ */
+function useWallClock(active: boolean, tick: () => void) {
+  const tickRef = useRef(tick);
+  useEffect(() => {
+    tickRef.current = tick;
+  });
+  useEffect(() => {
+    if (!active) return;
+    const run = () => tickRef.current();
+    run();
+    const id = setInterval(run, 1000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") run();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [active]);
 }
 
 /** Green at the start of the countdown, sliding toward red as the deadline
@@ -84,6 +115,10 @@ export function FocusTimer({
   const [remaining, setRemaining] = useState(0);
   const [finished, setFinished] = useState(false);
   const [overtime, setOvertime] = useState(0);
+  // the moment the countdown ends, as wall time — remaining/overtime are
+  // recomputed from this, never counted down (see useWallClock)
+  const [endAt, setEndAt] = useState<number | null>(null);
+  const beepedRef = useRef(false);
   const [justCompleted, setJustCompleted] = useState(false);
   const [pickingNext, setPickingNext] = useState(false);
   const [wasOpen, setWasOpen] = useState(open);
@@ -122,29 +157,23 @@ export function FocusTimer({
 
   const current = entries.find((e) => e.action.id === activeId) ?? null;
 
-  useEffect(() => {
-    if (!running) return;
-    const id = setInterval(() => {
-      setRemaining((r) => {
-        if (r <= 1) {
-          clearInterval(id);
-          setFinished(true);
-          beep();
-          return 0;
-        }
-        return r - 1;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [running]);
-
-  // the countdown stops dead at 00:00 — this is the separate clock that
-  // starts from zero the moment it does, tracking overtime on its own
-  useEffect(() => {
-    if (!finished) return;
-    const id = setInterval(() => setOvertime((o) => o + 1), 1000);
-    return () => clearInterval(id);
-  }, [finished]);
+  // the countdown holds at 00:00 once the deadline passes; overtime counts
+  // up from that same deadline — both read from the wall clock
+  useWallClock(running && endAt != null, () => {
+    if (endAt == null) return;
+    const left = Math.round((endAt - Date.now()) / 1000);
+    if (left > 0) {
+      setRemaining(left);
+      return;
+    }
+    setRemaining(0);
+    setOvertime(-left);
+    if (!beepedRef.current) {
+      beepedRef.current = true;
+      setFinished(true);
+      beep();
+    }
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -160,6 +189,8 @@ export function FocusTimer({
   if (!open) return null;
 
   const start = () => {
+    beepedRef.current = false;
+    setEndAt(Date.now() + minutes * 60_000);
     setRemaining(minutes * 60);
     setFinished(false);
     setOvertime(0);
@@ -436,6 +467,13 @@ function RoutineRun({
   const [finished, setFinished] = useState(false);
   const [overtime, setOvertime] = useState(0);
   const [elapsed, setElapsed] = useState(0);
+  // wall-time anchors: the current step's deadline, or when an untimed one
+  // came on screen — every displayed second derives from these
+  const [endAt, setEndAt] = useState<number | null>(() =>
+    step?.minutes != null ? Date.now() + step.minutes * 60_000 : null
+  );
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const beepedRef = useRef(false);
   const [askVal, setAskVal] = useState("10");
   const [justChecked, setJustChecked] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
@@ -445,46 +483,42 @@ function RoutineRun({
     setFinished(false);
     setOvertime(0);
     setElapsed(0);
+    beepedRef.current = false;
     if (s.minutes != null) {
       setPhase("timed");
       setTotal(s.minutes * 60);
       setRemaining(s.minutes * 60);
+      setEndAt(Date.now() + s.minutes * 60_000);
+      setStartedAt(null);
     } else {
       setPhase("ask");
       setAskVal("10");
+      setEndAt(null);
+      setStartedAt(null);
     }
   };
 
-  /* the countdown for the current timed step */
-  useEffect(() => {
-    if (phase !== "timed" || finished || celebrating) return;
-    const id = setInterval(() => {
-      setRemaining((r) => {
-        if (r <= 1) {
-          clearInterval(id);
-          setFinished(true);
-          beep();
-          return 0;
-        }
-        return r - 1;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [phase, stepId, finished, celebrating]);
-
-  /* past zero: the countdown freezes, this counts how far over it ran */
-  useEffect(() => {
-    if (!finished || celebrating) return;
-    const id = setInterval(() => setOvertime((o) => o + 1), 1000);
-    return () => clearInterval(id);
-  }, [finished, celebrating]);
+  /* the current timed step: countdown freezes at 00:00, overtime counts on */
+  useWallClock(phase === "timed" && !celebrating && endAt != null, () => {
+    if (endAt == null) return;
+    const left = Math.round((endAt - Date.now()) / 1000);
+    if (left > 0) {
+      setRemaining(left);
+      return;
+    }
+    setRemaining(0);
+    setOvertime(-left);
+    if (!beepedRef.current) {
+      beepedRef.current = true;
+      setFinished(true);
+      beep();
+    }
+  });
 
   /* an untimed step still shows how long it's been on screen */
-  useEffect(() => {
-    if (phase !== "open" || celebrating || !step) return;
-    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(id);
-  }, [phase, stepId, celebrating, step]);
+  useWallClock(phase === "open" && !celebrating && startedAt != null && !!step, () => {
+    if (startedAt != null) setElapsed(Math.max(0, Math.round((Date.now() - startedAt) / 1000)));
+  });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -593,7 +627,7 @@ function RoutineRun({
           />
           <div className="mt-3 flex items-center justify-between gap-2">
             <button
-              onClick={() => { setPhase("open"); setElapsed(0); }}
+              onClick={() => { setPhase("open"); setElapsed(0); setStartedAt(Date.now()); }}
               className="pressable text-sm font-medium text-ink-3 hover:text-ink"
             >
               No timer, just show it
@@ -602,10 +636,12 @@ function RoutineRun({
               small
               onClick={() => {
                 const m = Math.max(1, Math.min(480, Math.round(parseFloat(askVal) || 0)));
+                beepedRef.current = false;
                 setTotal(m * 60);
                 setRemaining(m * 60);
                 setFinished(false);
                 setOvertime(0);
+                setEndAt(Date.now() + m * 60_000);
                 setPhase("timed");
               }}
             >
