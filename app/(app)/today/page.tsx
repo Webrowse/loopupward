@@ -982,6 +982,7 @@ function TaskList({ rows, day, reordering }: { rows: TaskRowConfig[]; day: strin
           >
             <ActionRow
               entry={row.entry}
+              day={day}
               onToggle={row.onToggle}
               onDelete={row.onDelete}
               onEdit={row.onEdit}
@@ -1021,9 +1022,12 @@ function TaskList({ rows, day, reordering }: { rows: TaskRowConfig[]; day: strin
 /* ————— a single row on the day ————— */
 
 function ActionRow({
-  entry, onToggle, onDelete, onEdit, onEditItem, onPlanDay, onFocus, dragHandle,
+  entry, day, onToggle, onDelete, onEdit, onEditItem, onPlanDay, onFocus, dragHandle,
 }: {
   entry: TodayEntry;
+  /** the calendar day this list shows — a night routine's row can stand
+   *  for a different day than the page (yesterday, before 4 am) */
+  day: string;
   onToggle: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
@@ -1145,6 +1149,14 @@ function ActionRow({
           })()}
           {item?.kind === "routine" && routineWindowLabel(item) && (
             <span className="shrink-0 tabular-nums">{routineWindowLabel(item)}</span>
+          )}
+          {/* pre-4am, a wrapped-window routine's row on today's page stands
+              for yesterday's night — a tick here is that night's tick, and
+              the row must say so or a ✓ under today's date reads as today */}
+          {virtualHabit && item?.kind === "routine" && action.date !== day && (
+            <span className="shrink-0 font-medium text-accent-deep">
+              🌙 the night of {shortDay(action.date)}
+            </span>
           )}
           {scheduleLabel && <span className="shrink-0">{scheduleLabel}</span>}
           {virtualHabit && !scheduleLabel && <span>habit</span>}

@@ -9,7 +9,7 @@ import {
   routineWindowLabel,
 } from "@/lib/progress";
 import { Item, RoutineStep } from "@/lib/types";
-import { today } from "@/lib/dates";
+import { shortDay, today } from "@/lib/dates";
 import { uid } from "@/lib/uid";
 import { BackLink, Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
@@ -133,6 +133,11 @@ function RoutineCard({ item }: { item: Item }) {
             {total != null && ` · ${total} min`}
             {streak > 1 && ` · ${streak}-day streak`}
           </p>
+          {day !== today() && (
+            <p className="mt-0.5 text-xs text-accent-deep">
+              🌙 ticking the night of {shortDay(day)} until 4 am
+            </p>
+          )}
         </div>
         {doneToday ? (
           <button

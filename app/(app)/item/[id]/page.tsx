@@ -740,6 +740,11 @@ function HabitTodayControl({
         <p className="text-sm font-medium text-ink">
           {done ? "Done today ✓" : multi ? `${dayValue}/${dayTarget} today` : "Not done today"}
         </p>
+        {day !== today() && (
+          <p className="mt-0.5 text-xs text-accent-deep">
+            🌙 counts for the night of {shortDay(day)} until 4 am
+          </p>
+        )}
         {multi && (
           <div className="mt-1.5">
             <Bar value={dayValue / dayTarget} height={5} />
