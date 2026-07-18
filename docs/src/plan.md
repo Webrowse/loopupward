@@ -8,7 +8,7 @@ The default view is today: a short list of concrete actions, a progress bar, and
 
 1. **You add one directly** — *"Add something for today…"*: a title, optionally a date (plant a task on any future day — a birthday, a deadline), a priority star, a small note. If you give it a repeat instead, it becomes a routine and files itself under a life area of your choice.
 2. **A repeat puts it there** — anything with a schedule (every day, weekdays, Mon/Wed/Fri, 4× a week, monthly) appears on its days automatically. This is the "set it once, never think again" path.
-3. **You break a piece off a goal** — on any goal's page, *"break off a piece for today"* creates a small task linked to that goal. For metered goals (counters, books) you say how much the piece is worth — "Read 2 chapters" moves the meter by 2 when done.
+3. **You break a piece off a goal** — on any goal's page, *"break off a piece"* creates a small task linked to that goal, for today, tomorrow, or any day you pick — lay a week of chapters out in one sitting, or pull next week's forward when today has slack. For metered goals (counters, books) you say how much the piece is worth — "Read 2 chapters" moves the meter by 2 when done, and **0 is a real choice**: "clone the repo" adds no PRs to a PR goal, but it moves you in the direction, and it still lives under the goal. The same link is available from *"Add something for today…"* via **Counts toward a goal**, and on Today the piece names its goal ("↳ finish part 2…") so you always know whose little part it is.
 4. **A goal is marked for today** — setting a thing's planning horizon to *Today* keeps it on the list until you complete it.
 
 ## Reading a row

@@ -18,6 +18,7 @@ import { Action, Cadence, HORIZON_META, Item } from "@/lib/types";
 import { quickTasks } from "@/lib/suggestions";
 import { DailyJournal } from "@/components/journal";
 import { FocusTimer } from "@/components/focustimer";
+import { ListIcon, RoutineIcon } from "@/components/icons";
 import { SuggestionsSheet } from "@/components/suggestions";
 import { HorizonList, ScheduleEditor, ScheduleValue } from "@/components/items";
 import { Bar } from "@/components/progress";
@@ -72,6 +73,8 @@ function Today() {
   const [editingItemTitle, setEditingItemTitle] = useState<Item | null>(null);
   const [planningHabit, setPlanningHabit] = useState<{ item: Item; date: string } | null>(null);
   const [focusingId, setFocusingId] = useState<string | null>(null);
+  // ▶ Run on a routine row skips the setup sheet and starts the steps
+  const [focusAutoRun, setFocusAutoRun] = useState(false);
   const [reordering, setReordering] = useState(false);
   const [borrowing, setBorrowing] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
@@ -141,6 +144,7 @@ function Today() {
   const [urlFocusUsed, setUrlFocusUsed] = useState(false);
   if (paramFocus && !urlFocusUsed && entries.some((e) => e.action.id === paramFocus)) {
     setUrlFocusUsed(true);
+    setFocusAutoRun(true); // the Routines page's ▶ Run means run, not a setup sheet
     setFocusingId(paramFocus);
   }
 
@@ -213,15 +217,15 @@ function Today() {
           <DayJump label="Tomorrow" onClick={() => setDay(addDays(realToday, 1))} active={day === addDays(realToday, 1)} />
           <Link
             href="/routines"
-            className="pressable ml-auto rounded-full px-2.5 py-1 font-medium text-ink-3 hover:text-ink-2"
+            className="pressable ml-auto inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
           >
-            🌄 Routines
+            <RoutineIcon className="h-4 w-4" /> Routines
           </Link>
           <Link
             href="/lists"
-            className="pressable rounded-full px-2.5 py-1 font-medium text-ink-3 hover:text-ink-2"
+            className="pressable inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
           >
-            📋 Lists
+            <ListIcon className="h-4 w-4" /> Lists
           </Link>
         </div>
       </div>
@@ -373,7 +377,11 @@ function Today() {
                   (e.virtualHabit || e.virtualItemTask) && e.item ? () => setEditingItemTitle(e.item!) : undefined,
                 onPlanDay:
                   e.virtualHabit && e.item ? () => setPlanningHabit({ item: e.item!, date: day }) : undefined,
-                onFocus: () => setFocusingId(e.action.id),
+                onFocus: () => { setFocusAutoRun(false); setFocusingId(e.action.id); },
+                onRun:
+                  e.item?.kind === "routine"
+                    ? () => { setFocusAutoRun(true); setFocusingId(e.action.id); }
+                    : undefined,
               }))}
             />
           )}
@@ -424,8 +432,9 @@ function Today() {
         open={!!focusingId}
         entries={entries}
         initialEntryId={focusingId}
+        autoRun={focusAutoRun}
         onToggle={(entry) => toggleEntry(entry, day)}
-        onClose={() => setFocusingId(null)}
+        onClose={() => { setFocusingId(null); setFocusAutoRun(false); }}
       />
     </div>
   );
@@ -492,9 +501,21 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
   const [areaId, setAreaId] = useState<string | null>(null);
   const [priority, setPriority] = useState(0);
   const [note, setNote] = useState("");
+  // optional bridge to a goal — the same link "break off a piece" makes,
+  // available from here too so mapping isn't exclusive to the goal's page
+  const [linkedId, setLinkedId] = useState<string | null>(null);
+  const [linkAmount, setLinkAmount] = useState("0");
   const [titleError, setTitleError] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const sortedAreas = useMemo(() => [...db.areas].sort((a, b) => a.position - b.position), [db.areas]);
+  const linkableGoals = useMemo(
+    () =>
+      db.items
+        .filter((i) => i.status === "active" && (i.tracker === "counter" || i.tracker === "book"))
+        .sort((a, b) => a.title.localeCompare(b.title)),
+    [db.items]
+  );
+  const linked = linkedId ? db.items.find((i) => i.id === linkedId) ?? null : null;
 
   // jump to whatever day is on screen each time the sheet opens fresh,
   // but leave a date the user picked mid-session alone
@@ -510,6 +531,8 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
     setAreaId(null);
     setPriority(0);
     setNote("");
+    setLinkedId(null);
+    setLinkAmount("0");
     setTitleError(false);
   };
 
@@ -521,7 +544,8 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
     }
     if (schedule.cadence === null) {
       // one time — on whichever date was chosen, not necessarily today's view
-      addAction(title, taskDate, null, 1, { priority, note });
+      const amt = linkedId ? Math.max(0, Math.round(parseFloat(linkAmount) || 0)) : 1;
+      addAction(title, taskDate, linkedId, amt, { priority, note });
     } else {
       // recurring: becomes a scheduled life node that feeds Today automatically —
       // filed under a life area right away, so it lives with your other goals
@@ -592,6 +616,37 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
             {taskDate === realToday ? "Today" : prettyDay(taskDate)}: jump ahead to plant a task on any future day,
             like a birthday or a deadline, without paging through the day strip.
           </p>
+        </Field>
+      )}
+
+      {schedule.cadence === null && linkableGoals.length > 0 && (
+        <Field label="Counts toward a goal (optional)">
+          <select
+            className={inputCls}
+            value={linkedId ?? ""}
+            onChange={(e) => setLinkedId(e.target.value || null)}
+          >
+            <option value="">Just a task, no goal</option>
+            {linkableGoals.map((g) => (
+              <option key={g.id} value={g.id}>{g.title}</option>
+            ))}
+          </select>
+          {linked && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-ink-3">
+              <span>Finishing it moves the meter by</span>
+              <input
+                type="number"
+                min={0}
+                value={linkAmount}
+                onChange={(e) => setLinkAmount(e.target.value)}
+                aria-label="How much this task moves the goal's meter"
+                className="w-16 rounded-lg border border-line bg-bg px-2 py-1 text-sm text-ink tabular-nums outline-none focus:border-accent"
+              />
+              <span>
+                {linked.unit ?? (linked.tracker === "book" ? "chapters" : "")} — 0 is fine, direction counts too
+              </span>
+            </div>
+          )}
         </Field>
       )}
 
@@ -670,7 +725,7 @@ function EditActionSheet({ action, onClose }: { action: Action | null; onClose: 
       title: title.trim(),
       priority,
       note,
-      ...(metered && !action.done ? { amount: Math.max(1, Math.round(parseFloat(amount) || 1)) } : {}),
+      ...(metered && !action.done ? { amount: Math.max(0, Math.round(parseFloat(amount) || 0)) } : {}),
     });
     close();
   };
@@ -708,13 +763,13 @@ function EditActionSheet({ action, onClose }: { action: Action | null; onClose: 
           <div className="flex items-center gap-2">
             <input
               type="number"
-              min={1}
+              min={0}
               className={`${inputCls} w-24 tabular-nums`}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
             <span className="text-sm text-ink-3">
-              {linked.unit ?? (linked.tracker === "book" ? "chapters" : "units")} when done
+              {linked.unit ?? (linked.tracker === "book" ? "chapters" : "units")} when done — 0 is fine
             </span>
           </div>
         </Field>
@@ -874,6 +929,7 @@ interface TaskRowConfig {
   onEditItem?: () => void;
   onPlanDay?: () => void;
   onFocus?: () => void;
+  onRun?: () => void;
 }
 
 // matches the list's own space-y-2 gap, so the drag math lines up with the
@@ -989,6 +1045,7 @@ function TaskList({ rows, day, reordering }: { rows: TaskRowConfig[]; day: strin
               onEditItem={row.onEditItem}
               onPlanDay={row.onPlanDay}
               onFocus={row.onFocus}
+              onRun={row.onRun}
               dragHandle={
                 reordering ? (
                   <button
@@ -1022,7 +1079,7 @@ function TaskList({ rows, day, reordering }: { rows: TaskRowConfig[]; day: strin
 /* ————— a single row on the day ————— */
 
 function ActionRow({
-  entry, day, onToggle, onDelete, onEdit, onEditItem, onPlanDay, onFocus, dragHandle,
+  entry, day, onToggle, onDelete, onEdit, onEditItem, onPlanDay, onFocus, onRun, dragHandle,
 }: {
   entry: TodayEntry;
   /** the calendar day this list shows — a night routine's row can stand
@@ -1034,6 +1091,8 @@ function ActionRow({
   onEditItem?: () => void;
   onPlanDay?: () => void;
   onFocus?: () => void;
+  /** routines only: jump straight into the step runner */
+  onRun?: () => void;
   dragHandle?: ReactNode;
 }) {
   const { db, theme } = useLife();
@@ -1121,6 +1180,10 @@ function ActionRow({
               +{action.amount}{item.unit ? ` ${item.unit}` : ""}
             </span>
           )}
+          {/* whose little part this is — a broken-off piece names its goal */}
+          {item && !virtualHabit && !virtualItemTask && item.title !== action.title && (
+            <span className="min-w-0 truncate">↳ {item.title}</span>
+          )}
           {!dayPlanned && action.note && <span className="truncate">{action.note}</span>}
           {itemLabels.slice(0, 2).map((lid) => {
             const l = db.labels.find((x) => x.id === lid);
@@ -1165,6 +1228,17 @@ function ActionRow({
           {completedOn && <span className="shrink-0 text-accent-deep">done {shortDay(completedOn)}</span>}
         </div>
       </div>
+
+      {/* a routine's front door: straight into the step runner — marking
+          done and opening settings shouldn't be the only things it offers */}
+      {onRun && !action.done && (
+        <button
+          onClick={onRun}
+          className="pressable shrink-0 rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
+        >
+          ▶ Run
+        </button>
+      )}
 
       {item && (
         <Link

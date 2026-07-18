@@ -98,11 +98,13 @@ function entryText(entry: TodayEntry): { title: string; subtitle?: string } {
  * without ever leaving this screen.
  */
 export function FocusTimer({
-  open, entries, initialEntryId, onToggle, onClose,
+  open, entries, initialEntryId, autoRun = false, onToggle, onClose,
 }: {
   open: boolean;
   entries: TodayEntry[];
   initialEntryId: string | null;
+  /** open a routine straight into its step runner, skipping the setup sheet */
+  autoRun?: boolean;
   onToggle: (entry: TodayEntry) => void;
   onClose: () => void;
 }) {
@@ -134,12 +136,14 @@ export function FocusTimer({
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
-      // freshly opened — pick up whichever row was tapped
+      // freshly opened — pick up whichever row was tapped. ▶ Run hands a
+      // routine directly to the step runner (harmless for anything else:
+      // only routine entries ever render the runner).
       setActiveId(initialEntryId);
       setMinutes(suggestedFor(initialEntryId));
       setPickingNext(false);
       setRunning(false);
-      setRunningRoutine(false);
+      setRunningRoutine(autoRun);
       setFinished(false);
       setOvertime(0);
       setJustCompleted(false);

@@ -49,6 +49,8 @@ Any thing can live inside any other. This is the app's spine:
 
 **Progress flows upward automatically.** A thing with its own tracker reports that; a thing without one averages its children. Tick the textbook forward and the course, and the year goal above it, both move. You never do bookkeeping upward.
 
+And completion climbs too: **finishing a thing nested inside a metered parent ticks that parent's meter by one.** Split a 3-part book into three nested targets — completing part 1 makes the book read 1/3; completing the last part completes the book, which ticks "read 6 books" up by one, all the way up the chain, each move written into history like hand-entered progress.
+
 Open any item to see what's inside it, its history, streaks and heatmap (for habits), and the *"break off a piece for today"* box — the bridge to Plan, covered in the next chapter.
 
 ## Moving things

@@ -521,15 +521,50 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     upsertRows("items", [{ ...item, parentId, areaId }]);
   }, [db.items, upsertRows]);
 
+  /** Completing a thing nudges the meter of whatever it's nested inside:
+   *  finish "part 1" and the 3-part book above it reads 1/3 without anyone
+   *  touching it. Reaching the target completes the parent too, and the
+   *  nudge keeps travelling — finish the last part, the book completes,
+   *  and "read 6 books" ticks up one. Every move is written as a log, so
+   *  history and Reflect see it like hand-entered progress. */
+  const bumpParentMeter = useCallback((child: Item, delta: 1 | -1) => {
+    const bump = (c: Item, d: 1 | -1, depth: number) => {
+      if (depth > 12 || !c.parentId) return;
+      const parent = db.items.find((i) => i.id === c.parentId);
+      if (!parent || (parent.tracker !== "counter" && parent.tracker !== "book")) return;
+      const next = Math.max(0, parent.current + d);
+      if (next === parent.current) return;
+      const reached =
+        parent.status === "active" &&
+        parent.target != null && next >= parent.target && parent.current < parent.target;
+      upsertRows("items", [{
+        ...parent,
+        current: next,
+        ...(reached ? { status: "done" as const, completedAt: Date.now() } : {}),
+      }]);
+      upsertRows("logs", [{
+        id: uid(), itemId: parent.id, date: today(), op: "add", value: d, createdAt: Date.now(),
+      }]);
+      if (reached) bump(parent, 1, depth + 1);
+    };
+    bump(child, delta, 0);
+  }, [db.items, upsertRows]);
+
   const completeItem = useCallback((id: string) => {
     const item = db.items.find((i) => i.id === id);
-    if (item) upsertRows("items", [{ ...item, status: "done", completedAt: Date.now() }]);
-  }, [db.items, upsertRows]);
+    if (!item || item.status === "done") return;
+    upsertRows("items", [{ ...item, status: "done", completedAt: Date.now() }]);
+    bumpParentMeter(item, 1);
+  }, [db.items, upsertRows, bumpParentMeter]);
 
   const reopenItem = useCallback((id: string) => {
     const item = db.items.find((i) => i.id === id);
-    if (item) upsertRows("items", [{ ...item, status: "active", completedAt: null }]);
-  }, [db.items, upsertRows]);
+    if (!item || item.status === "active") return;
+    upsertRows("items", [{ ...item, status: "active", completedAt: null }]);
+    // takes back the nudge its completion gave (floored at zero, so meters
+    // advanced by hand before this feature existed can't go negative)
+    if (item.status === "done") bumpParentMeter(item, -1);
+  }, [db.items, upsertRows, bumpParentMeter]);
 
   const setTracker = useCallback((item: Item, value: number) => {
     const v = Math.max(0, value);
@@ -539,6 +574,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       current: v,
       ...(reachedTarget ? { status: "done" as const, completedAt: Date.now() } : {}),
     }]);
+    if (reachedTarget) bumpParentMeter(item, 1);
     // counter/book are cumulative counts — Reflect's period movement only
     // sums "add" deltas for them, so a net change must log as one, not a
     // "set" snapshot (which would make it invisible to any period review).
@@ -550,7 +586,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       value: isCumulative ? v - item.current : v,
       createdAt: Date.now(),
     }]);
-  }, [upsertRows]);
+  }, [upsertRows, bumpParentMeter]);
 
   /* ————— actions / today ————— */
   const addAction = useCallback((
@@ -652,10 +688,12 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     const a = entry.action;
     const nowDone = !a.done;
     upsertRows("actions", [{ ...a, done: nowDone, doneAt: nowDone ? Date.now() : null }]);
-    // progress flows upward: completing a linked action advances its item
+    // progress flows upward: completing a linked action advances its item.
+    // amount 0 is a real choice — a directional step ("clone the repo")
+    // that belongs to the goal without pretending to move its meter
     if (a.itemId) {
       const item = db.items.find((i) => i.id === a.itemId);
-      if (item && (item.tracker === "counter" || item.tracker === "book")) {
+      if (item && (item.tracker === "counter" || item.tracker === "book") && a.amount > 0) {
         const delta = nowDone ? a.amount : -a.amount;
         const next = Math.max(0, item.current + delta);
         const reachedTarget = item.target != null && next >= item.target && item.current < item.target;
@@ -667,6 +705,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         upsertRows("logs", [{
           id: uid(), itemId: item.id, date: day, op: "add", value: delta, createdAt: Date.now(),
         }]);
+        if (reachedTarget) bumpParentMeter(item, 1);
       } else if (item && item.tracker === "check") {
         // a leaf item whose only open piece this was: checking the piece IS
         // checking the thing — completing it here must show up completed in
@@ -682,7 +721,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  }, [db.items, db.actions, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem]);
+  }, [db.items, db.actions, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem, bumpParentMeter]);
 
   const reorderDay = useCallback((day: string, orderedEntryIds: string[]) => {
     const existing = db.dayOrder.find((d) => d.date === day);

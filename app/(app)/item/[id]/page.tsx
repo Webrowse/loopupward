@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
@@ -14,8 +14,8 @@ import { useRowDrag } from "@/lib/useRowDrag";
 import { uid } from "@/lib/uid";
 import { areaColor } from "@/lib/palette";
 import {
-  boundingRange, dayFromMs, firstAnchorWithin, nextAnchor, Period, previousAnchor, prettyDay, prettyPeriod,
-  shortDay, today,
+  addDays, boundingRange, dayFromMs, firstAnchorWithin, nextAnchor, Period, previousAnchor, prettyDay,
+  prettyPeriod, shortDay, today,
 } from "@/lib/dates";
 import { DateGridPicker, ItemCard, ItemSheet, ScheduleEditor, TrackerControls } from "@/components/items";
 import { KindIcon } from "@/components/icons";
@@ -36,7 +36,10 @@ export default function ItemPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmRetire, setConfirmRetire] = useState(false);
   const [todayPiece, setTodayPiece] = useState("");
-  const [pieceAmount, setPieceAmount] = useState("1");
+  // 0 by default: many pieces move you toward a goal without moving its
+  // meter ("clone the repo" adds no PRs) — meter movement is opt-in
+  const [pieceAmount, setPieceAmount] = useState("0");
+  const [pieceDay, setPieceDay] = useState(today());
   const [showHistory, setShowHistory] = useState(false);
 
   const item = db.items.find((i) => i.id === id);
@@ -69,10 +72,12 @@ export default function ItemPage() {
 
   const addPiece = () => {
     if (!todayPiece.trim()) return;
-    const amt = metered ? Math.max(1, Math.round(parseFloat(pieceAmount) || 1)) : 1;
-    addAction(todayPiece, today(), item.id, amt);
+    const amt = metered ? Math.max(0, Math.round(parseFloat(pieceAmount) || 0)) : 1;
+    // the chosen day sticks after adding — laying out a week of chapters
+    // means several pieces on several days in one sitting
+    addAction(todayPiece, pieceDay, item.id, amt);
     setTodayPiece("");
-    setPieceAmount("1");
+    setPieceAmount("0");
   };
 
   /* history: completed actions + log events for this node, newest first */
@@ -202,11 +207,11 @@ export default function ItemPage() {
       {/* a list's contents: checkable entries, optionally quantified */}
       {item.kind === "list" && <ListEntriesEditor item={item} />}
 
-      {/* the next small step */}
+      {/* the next small step — plantable on any day, not just today */}
       {item.status === "active" && !isHabit && (
         <div className="mb-6">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-3 mb-2">
-            {nextStep ? "Next small step" : "Break off a piece for today"}
+            {nextStep ? "Next small step" : "Break off a piece"}
           </p>
           {nextStep && (
             <p className="text-sm text-ink-2 mb-2">
@@ -224,20 +229,39 @@ export default function ItemPage() {
               onKeyDown={(e) => e.key === "Enter" && addPiece()}
               placeholder={`e.g. "${suggestPiece(item.title)}"`}
             />
-            <Button small onClick={addPiece} disabled={!todayPiece.trim()}>Today</Button>
+            <Button small onClick={addPiece} disabled={!todayPiece.trim()}>
+              {pieceDay === today() ? "Today" : shortDay(pieceDay)}
+            </Button>
+          </div>
+          {/* lay the week out: this chapter Monday, that one Wednesday —
+              or pull next week's forward when today has slack */}
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <Chip active={pieceDay === today()} onClick={() => setPieceDay(today())}>Today</Chip>
+            <Chip active={pieceDay === addDays(today(), 1)} onClick={() => setPieceDay(addDays(today(), 1))}>
+              Tomorrow
+            </Chip>
+            <input
+              type="date"
+              value={pieceDay}
+              onChange={(e) => e.target.value && setPieceDay(e.target.value)}
+              aria-label="Which day this piece lands on"
+              className="rounded-lg border border-line bg-bg px-2 py-1 text-xs text-ink tabular-nums outline-none focus:border-accent"
+            />
           </div>
           {metered && (
             <div className="mt-2 flex items-center gap-2 text-xs text-ink-3">
               <span>Finishing it moves the meter by</span>
               <input
                 type="number"
-                min={1}
+                min={0}
                 value={pieceAmount}
                 onChange={(e) => setPieceAmount(e.target.value)}
                 aria-label="How much this piece moves the meter"
                 className="w-16 rounded-lg border border-line bg-bg px-2 py-1 text-sm text-ink tabular-nums outline-none focus:border-accent"
               />
-              <span>{item.unit ?? (item.tracker === "book" ? "chapters" : "")}</span>
+              <span>
+                {item.unit ?? (item.tracker === "book" ? "chapters" : "")} — 0 is fine, direction counts too
+              </span>
             </div>
           )}
         </div>
@@ -395,6 +419,7 @@ function RoutineStepsEditor({ item }: { item: Item }) {
   const steps = item.steps ?? [];
   const [newTitle, setNewTitle] = useState("");
   const [newMinutes, setNewMinutes] = useState("");
+  const newTitleRef = useRef<HTMLInputElement>(null);
   const total = routineMinutes(item);
 
   const save = (next: RoutineStep[]) => updateItem(item.id, { steps: next });
@@ -409,6 +434,9 @@ function RoutineStepsEditor({ item }: { item: Item }) {
     save([...steps, { id: uid(), title: newTitle.trim(), minutes: parseMin(newMinutes) }]);
     setNewTitle("");
     setNewMinutes("");
+    // typing flow is title → tab → minutes → enter; the next step starts
+    // with its title, so the cursor must come back here, not stay on minutes
+    newTitleRef.current?.focus();
   };
 
   // rows sit flush (divide-y), so no gap in the rebase offset
@@ -483,6 +511,7 @@ function RoutineStepsEditor({ item }: { item: Item }) {
 
       <div className="flex gap-2">
         <input
+          ref={newTitleRef}
           className={inputCls}
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
@@ -517,6 +546,7 @@ function ListEntriesEditor({ item }: { item: Item }) {
   const [newText, setNewText] = useState("");
   const [newAmount, setNewAmount] = useState("");
   const [newUnit, setNewUnit] = useState("");
+  const newTextRef = useRef<HTMLInputElement>(null);
   const doneCount = entries.filter((e) => e.done).length;
   const totals = listTotals(entries);
 
@@ -536,6 +566,9 @@ function ListEntriesEditor({ item }: { item: Item }) {
     setNewText("");
     setNewAmount("");
     setNewUnit("");
+    // same as routine steps: enter lands on amount/unit, the next entry
+    // starts with its text
+    newTextRef.current?.focus();
   };
 
   const { order, draggingId, rowRef, handleProps } = useRowDrag(
@@ -633,6 +666,7 @@ function ListEntriesEditor({ item }: { item: Item }) {
 
       <div className="flex gap-2">
         <input
+          ref={newTextRef}
           className={inputCls}
           value={newText}
           onChange={(e) => setNewText(e.target.value)}
