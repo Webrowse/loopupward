@@ -6,11 +6,9 @@ import { useLife } from "@/lib/data/provider";
 import { Item } from "@/lib/types";
 import { children as childrenOf } from "@/lib/progress";
 import { deriveNoteFields, NOTE_HEADING_MAX } from "@/components/items";
-import { MarkdownEditor, noteSnippet } from "@/components/markdown";
+import { MarkdownEditor, NotePreview } from "@/components/markdown";
 import { Button, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 import { NoteMoveSheet } from "./[id]/page";
-
-const preview = noteSnippet;
 
 export default function NotesRootPage() {
   const { db, addItem, deleteItem, moveItem } = useLife();
@@ -330,10 +328,10 @@ export default function NotesRootPage() {
                     )}
                   </div>
                 )}
-                <span className="min-w-0 truncate text-[0.95rem] font-medium text-ink">{n.title}</span>
-                {preview(n.richBody) && (
-                  <span className="mt-1 text-xs text-ink-3 leading-relaxed line-clamp-4">{preview(n.richBody)}</span>
-                )}
+                <span className="text-[0.95rem] font-medium text-ink break-words line-clamp-3">{n.title}</span>
+                <div className="relative mt-1.5 max-h-28 overflow-hidden">
+                  <NotePreview body={n.richBody} />
+                </div>
               </Link>
             );
           })}

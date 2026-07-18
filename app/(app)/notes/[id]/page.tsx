@@ -7,7 +7,7 @@ import { useLife } from "@/lib/data/provider";
 import { destinationFor, Item } from "@/lib/types";
 import { children as childrenOf } from "@/lib/progress";
 import { ItemSheet } from "@/components/items";
-import { htmlToMd, isLegacyHtml, MarkdownEditor, noteSnippet } from "@/components/markdown";
+import { htmlToMd, isLegacyHtml, MarkdownEditor, MarkdownView, NotePreview } from "@/components/markdown";
 import { BackLink, Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
 export default function NotePage() {
@@ -90,10 +90,10 @@ function FolderPage({ item }: { item: Item }) {
                 href={`/notes/${k.id}`}
                 className="pressable flex flex-col rounded-(--radius-card) border border-line-soft bg-surface p-3.5 shadow-(--shadow-card) min-h-24"
               >
-                <span className="min-w-0 truncate text-[0.95rem] font-medium text-ink">{k.title}</span>
-                {preview(k.richBody) && (
-                  <span className="mt-1 text-xs text-ink-3 leading-relaxed line-clamp-3">{preview(k.richBody)}</span>
-                )}
+                <span className="text-[0.95rem] font-medium text-ink break-words line-clamp-3">{k.title}</span>
+                <div className="relative mt-1.5 max-h-24 overflow-hidden">
+                  <NotePreview body={k.richBody} />
+                </div>
               </Link>
             ))}
           </div>
@@ -145,6 +145,9 @@ function NotePageBody({ item }: { item: Item }) {
   // what "unchanged" means for the dirty check — differs from item.richBody
   // while a converted legacy note hasn't been saved yet
   const [baseline, setBaseline] = useState(richBody);
+  // a note opens as a rendered read; the markdown syntax only shows once you
+  // choose to edit. A blank note has nothing to read, so it opens ready to write.
+  const [editing, setEditing] = useState(() => !editableBody(item).trim());
   const [justSaved, setJustSaved] = useState(false);
   const [moving, setMoving] = useState(false);
   const [organizing, setOrganizing] = useState(false);
@@ -158,6 +161,7 @@ function NotePageBody({ item }: { item: Item }) {
     const body = editableBody(item);
     setRichBody(body);
     setBaseline(body);
+    setEditing(!body.trim());
     setJustSaved(false);
   }
 
@@ -165,14 +169,22 @@ function NotePageBody({ item }: { item: Item }) {
   const dirty = title !== item.title || richBody !== baseline;
 
   const save = () => {
-    if (!dirty) return;
-    updateItem(item.id, {
-      ...(title.trim() && title !== item.title ? { title: title.trim() } : {}),
-      ...(richBody !== baseline ? { richBody } : {}),
-    });
-    setBaseline(richBody);
-    setJustSaved(true);
-    setTimeout(() => setJustSaved(false), 1800);
+    if (dirty) {
+      updateItem(item.id, {
+        ...(title.trim() && title !== item.title ? { title: title.trim() } : {}),
+        ...(richBody !== baseline ? { richBody } : {}),
+      });
+      setBaseline(richBody);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 1800);
+    }
+    setEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setTitle(item.title);
+    setRichBody(baseline);
+    setEditing(false);
   };
 
   return (
@@ -191,26 +203,46 @@ function NotePageBody({ item }: { item: Item }) {
         )}
       </nav>
 
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="min-w-0 flex-1 bg-transparent font-display text-[1.7rem] leading-tight text-ink outline-none"
-        />
-        {dirty ? (
-          <Button small onClick={save}>Save</Button>
+      <div className="mt-3 flex items-start justify-between gap-3">
+        {editing ? (
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="min-w-0 flex-1 bg-transparent font-display text-[1.7rem] leading-tight text-ink outline-none"
+          />
+        ) : (
+          <h1 className="min-w-0 flex-1 font-display text-[1.7rem] leading-tight text-ink break-words">{item.title}</h1>
+        )}
+        {editing ? (
+          <div className="flex shrink-0 items-center gap-2">
+            <Button small variant="ghost" onClick={cancelEdit}>Cancel</Button>
+            <Button small onClick={save}>Save</Button>
+          </div>
         ) : justSaved ? (
           <span className="shrink-0 text-xs text-accent-deep">✓ saved</span>
-        ) : null}
+        ) : (
+          <Button small variant="soft" onClick={() => setEditing(true)}>Edit</Button>
+        )}
       </div>
 
       <div className="mt-4">
-        <MarkdownEditor
-          value={richBody}
-          onChange={setRichBody}
-          placeholder="Write whatever this note needs to hold…"
-          minHeightClass="min-h-56"
-        />
+        {editing ? (
+          <MarkdownEditor
+            value={richBody}
+            onChange={setRichBody}
+            placeholder="Write whatever this note needs to hold…"
+            minHeightClass="min-h-56"
+          />
+        ) : richBody.trim() ? (
+          <MarkdownView md={richBody} />
+        ) : (
+          <button
+            onClick={() => setEditing(true)}
+            className="text-sm italic text-ink-3 hover:text-ink-2"
+          >
+            Empty note. Tap Edit to write.
+          </button>
+        )}
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-line-soft pt-4">
@@ -262,8 +294,6 @@ function NotePageBody({ item }: { item: Item }) {
     </div>
   );
 }
-
-const preview = noteSnippet;
 
 function NewChildSheet({
   open, onClose, parentId, areaId,

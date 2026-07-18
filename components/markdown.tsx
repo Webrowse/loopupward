@@ -176,10 +176,36 @@ export function MarkdownView({ md, className = "" }: { md: string; className?: s
   );
 }
 
+/** Compact rendered-markdown for note cards: real formatting, shrunk down
+ *  and muted so it reads as a preview, not the note itself. */
+const MD_CARD_CLS =
+  "text-[0.8rem] leading-relaxed text-ink-2 " +
+  "[&_p]:my-0.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-0.5 [&_li]:mb-0.5 " +
+  "[&_h1]:text-[0.86rem] [&_h1]:font-semibold [&_h1]:my-0.5 " +
+  "[&_h2]:text-[0.83rem] [&_h2]:font-semibold [&_h2]:my-0.5 " +
+  "[&_h3]:text-[0.81rem] [&_h3]:font-semibold [&_h3]:my-0.5 " +
+  "[&_blockquote]:border-l-2 [&_blockquote]:border-line [&_blockquote]:pl-2 [&_blockquote]:my-0.5 " +
+  "[&_code]:font-mono [&_code]:text-[0.75rem] [&_hr]:my-1 [&_hr]:border-line-soft " +
+  "[&_a]:text-accent-deep [&_a]:underline [&_a]:underline-offset-2";
+
+/** A note's body rendered small for its card. Handles legacy HTML bodies
+ *  (converts them to markdown first) and renders nothing for an empty note.
+ *  Non-interactive, so tapping a link never steals the card's own tap. */
+export function NotePreview({ body, className = "" }: { body: string | null | undefined; className?: string }) {
+  const md = isLegacyHtml(body) ? htmlToMd(body ?? "") : (body ?? "");
+  if (!md.trim()) return null;
+  return (
+    <div
+      className={`${MD_CARD_CLS} pointer-events-none ${className}`}
+      dangerouslySetInnerHTML={{ __html: mdToHtml(md) }}
+    />
+  );
+}
+
 /**
- * Two panes, one truth: markdown source on one side, its preview on the
- * other. Desktop shows both side by side; on a phone, Write and Preview
- * are tabs on the same screen.
+ * One window, GitHub-style: write markdown in a single box, hit Preview to
+ * see it rendered in that same space, Write to go back. Same on phone and
+ * desktop — no side-by-side split.
  */
 export function MarkdownEditor({
   value, onChange, placeholder, minHeightClass = "min-h-40",
@@ -195,8 +221,7 @@ export function MarkdownEditor({
 
   return (
     <div>
-      {/* phone: tab switch; desktop: both panes visible, labels instead */}
-      <div className="mb-2 flex items-center gap-1.5 lg:hidden">
+      <div className="mb-2 flex items-center gap-1.5">
         {(["write", "preview"] as const).map((t) => (
           <button
             key={t}
@@ -210,29 +235,24 @@ export function MarkdownEditor({
           </button>
         ))}
       </div>
-      <div className="hidden lg:grid lg:grid-cols-2 lg:gap-3 mb-1.5 text-[0.7rem] font-medium uppercase tracking-wide text-ink-3">
-        <span>Write</span>
-        <span>Preview</span>
-      </div>
 
-      <div className="lg:grid lg:grid-cols-2 lg:gap-3 lg:items-stretch">
+      {tab === "write" ? (
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           spellCheck={false}
-          className={`${paneCls} resize-y font-mono text-[0.88rem] leading-relaxed text-ink outline-none focus:border-accent ${
-            tab === "write" ? "" : "hidden"
-          } lg:block`}
+          className={`${paneCls} resize-y font-mono text-[0.88rem] leading-relaxed text-ink outline-none focus:border-accent`}
         />
-        <div className={`${paneCls} ${tab === "preview" ? "" : "hidden"} lg:block`}>
+      ) : (
+        <div className={paneCls}>
           {value.trim() ? (
             <MarkdownView md={value} />
           ) : (
             <p className="text-sm text-ink-3">Nothing to preview yet.</p>
           )}
         </div>
-      </div>
+      )}
 
       <p className="mt-1.5 text-[0.7rem] text-ink-3">
         Markdown: # heading · - list · 1. numbered · &gt; quote · **bold** · *italic* · `code` · [link](https://…)
