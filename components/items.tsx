@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
 import { Cadence, destinationFor, Horizon, HORIZON_META, Item, ItemKind, KIND_META, SPACE_KINDS, TrackerType } from "@/lib/types";
 import {
-  children as childrenOf, currentStreak, dayLogged, formatValue, habitDailyTarget, habitDays,
+  carriedHorizonFrom, children as childrenOf, currentStreak, dayLogged, formatValue, habitDailyTarget, habitDays,
   horizonEntries, itemProgress, ownProgress, routineMinutes, scheduleLabel,
 } from "@/lib/progress";
 import {
@@ -171,24 +171,20 @@ export function HorizonList({ period, anchor }: { period: Period; anchor: string
   const visible = hideDone ? entries.filter((i) => i.status !== "done") : entries;
   const label = HORIZON_META.find((h) => h.value === period)?.label ?? period;
 
-  // moving something to Today drops it out of this list — a schedule left
-  // over from before (e.g. a "monthly" cadence already satisfied this
-  // month) would otherwise silently keep it from ever showing up there, so
-  // this clears it too. Capture the old values so Undo can restore them.
-  const moveToToday = (item: Item) => {
-    const before = {
-      horizon: item.horizon, horizonPeriod: item.horizonPeriod,
-      cadence: item.cadence, cadenceDays: item.cadenceDays, cadenceCount: item.cadenceCount,
-    };
-    updateItem(item.id, { horizon: "today", horizonPeriod: null, cadence: null, cadenceDays: null, cadenceCount: null });
-    setJustMoved({ title: item.title, undo: () => { updateItem(item.id, before); setJustMoved(null); } });
+  // pulling onto Today is a non-destructive overlay: the goal keeps its
+  // place (and record) in this list, and simply also shows up on Today.
+  // Completing it in either place marks it done in both, since it's one node.
+  const pullToToday = (item: Item) => {
+    updateItem(item.id, { pulledToday: true });
+    setJustMoved({ title: item.title, undo: () => { updateItem(item.id, { pulledToday: false }); setJustMoved(null); } });
   };
+  const recallFromToday = (item: Item) => updateItem(item.id, { pulledToday: false });
 
   return (
     <div>
       {justMoved && (
         <MovedNotice
-          message={`Moved "${justMoved.title}" to Today.`}
+          message={`Pulled "${justMoved.title}" onto Today. It stays here too.`}
           href="/today"
           hrefLabel="View Today"
           onUndo={justMoved.undo}
@@ -223,7 +219,14 @@ export function HorizonList({ period, anchor }: { period: Period; anchor: string
       ) : (
         <div className="space-y-2">
           {visible.map((item) => (
-            <HorizonRow key={item.id} item={item} onMoveToday={moveToToday} />
+            <HorizonRow
+              key={item.id}
+              item={item}
+              period={period}
+              anchor={anchor}
+              onPull={pullToToday}
+              onRecall={recallFromToday}
+            />
           ))}
         </div>
       )}
@@ -238,7 +241,15 @@ export function HorizonList({ period, anchor }: { period: Period; anchor: string
   );
 }
 
-function HorizonRow({ item, onMoveToday }: { item: Item; onMoveToday: (item: Item) => void }) {
+function HorizonRow({
+  item, period, anchor, onPull, onRecall,
+}: {
+  item: Item;
+  period: Period;
+  anchor: string;
+  onPull: (item: Item) => void;
+  onRecall: (item: Item) => void;
+}) {
   const { db, theme } = useLife();
   const progress = itemProgress(db, item);
   const kids = childrenOf(db, item.id);
@@ -246,6 +257,7 @@ function HorizonRow({ item, onMoveToday }: { item: Item; onMoveToday: (item: Ite
   const c = areaColor(area?.color);
   const color = theme === "dark" ? c.fgDark : c.fg;
   const done = item.status === "done";
+  const carriedFrom = carriedHorizonFrom(item, period, anchor);
 
   return (
     <div className={`flex items-center gap-3 rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3 shadow-(--shadow-card) transition-opacity ${done ? "opacity-60" : ""}`}>
@@ -266,15 +278,25 @@ function HorizonRow({ item, onMoveToday }: { item: Item; onMoveToday: (item: Ite
           )}
           {trackerCaption(item)}
           {scheduleLabel(item) && <span>{scheduleLabel(item)}</span>}
+          {carriedFrom && <span className="text-ink-3">carried from {prettyPeriod(period, carriedFrom)}</span>}
         </div>
       </Link>
       {!done && (
-        <button
-          onClick={() => onMoveToday(item)}
-          className="pressable shrink-0 text-xs font-medium text-accent-deep"
-        >
-          → Today
-        </button>
+        item.pulledToday ? (
+          <button
+            onClick={() => onRecall(item)}
+            className="pressable shrink-0 text-xs font-medium text-ink-3 hover:text-ink-2"
+          >
+            ↩ Recall
+          </button>
+        ) : (
+          <button
+            onClick={() => onPull(item)}
+            className="pressable shrink-0 text-xs font-medium text-accent-deep"
+          >
+            → Today
+          </button>
+        )
       )}
     </div>
   );

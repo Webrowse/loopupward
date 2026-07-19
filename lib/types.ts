@@ -135,6 +135,12 @@ export interface Item {
    *  Both null = visible all day. */
   windowStart: string | null;
   windowEnd: string | null;
+  /** pulled onto Today from a week/month/quarter/year list — a non-destructive
+   *  overlay that leaves `horizon` intact, so the goal keeps its place in that
+   *  period list (and its record there) while also appearing on Today. The
+   *  "→ Today" button sets it; "Recall" clears it; completing the item shows
+   *  done in both places because it is the same node. */
+  pulledToday: boolean;
   /** user-created label ids (labels are tags, independent of areas) */
   labels: string[];
   pinned: boolean;

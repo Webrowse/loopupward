@@ -26,7 +26,11 @@ The timer icon on any row opens a full-screen timer for that one task — for wh
 
 ## Week, month, quarter, year
 
-The tabs across the top hold standing lists for each period, navigable like a calendar (July, August… 2026, 2027…). Anything whose planning horizon is "this week" appears in that specific week's list — with its progress, and a **→ Today** button that pulls it onto the day when you're ready to act.
+The tabs across the top hold standing lists for each period, navigable like a calendar (July, August… 2026, 2027…). Anything whose planning horizon is "this week" appears in that specific week's list, with its progress and a **→ Today** button.
+
+**→ Today doesn't move the goal out of its list — it lends it to today.** The goal appears on Today so you can act on it, and it stays right where it was in the week/month/quarter/year list. The button becomes **↩ Recall** while it's out on loan. Because it's one and the same goal, checking it off in either place marks it done in both, and it keeps its spot in the period list as *done* — so a month's list is also the record of which monthly goals you actually reached.
+
+**Unfinished goals carry forward.** A monthly goal you didn't reach in July shows up in August's list too, marked "carried from July", exactly like an unfinished task follows you to the next day. It also stays visible in July, still open, so looking back stays honest. The same holds for weeks, quarters and years. A goal you *did* finish stays put in the period it belonged to.
 
 These lists are the planning layer: on Sunday, look at the week list; each morning, pull from it. Nothing here nags — it waits.
 

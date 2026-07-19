@@ -65,8 +65,32 @@ export function horizonEntries(db: DB, period: Period, anchor: string): Item[] {
   const doneRank = (item: Item) => (item.status === "done" ? 1 : 0);
   return db.items
     .filter((i) => i.horizon === period && (i.status === "active" || i.status === "done"))
-    .filter((i) => (i.horizonPeriod ? periodKey(period, i.horizonPeriod) === key : isCurrent))
+    .filter((i) => {
+      // items from before anchoring existed have no instance — keep the old
+      // rule so nothing old silently disappears: show them in whatever
+      // instance is current right now
+      if (!i.horizonPeriod) return isCurrent;
+      // period keys sort chronologically as strings (2026-07 < 2026-08,
+      // 2026-Q2 < 2026-Q3, 2026-W28 < 2026-W29, 2026 < 2027)
+      const ik = periodKey(period, i.horizonPeriod);
+      if (ik === key) return true; // belongs to this very instance
+      // carry forward, but only into the instance that's live right now (past
+      // instances keep just their own): an unfinished goal follows you into
+      // this month/week/quarter/year, and one you finished here stays visible
+      // here too until the instance turns over — the same grace daily tasks get
+      if (!isCurrent || ik >= key) return false;
+      if (i.status === "active") return true;
+      return i.completedAt != null && periodKey(period, dayFromMs(i.completedAt)) === key;
+    })
     .sort((a, b) => doneRank(a) - doneRank(b) || a.position - b.position);
+}
+
+/** Is this item showing in `anchor`'s list only because it carried over from an
+ *  earlier, unfinished instance? If so, returns that origin instance's anchor
+ *  day (for a "carried from July" caption); otherwise null. */
+export function carriedHorizonFrom(item: Item, period: Period, anchor: string): string | null {
+  if (!item.horizonPeriod) return null;
+  return periodKey(period, item.horizonPeriod) !== periodKey(period, anchor) ? item.horizonPeriod : null;
 }
 
 export function ancestors(db: DB, item: Item): Item[] {
@@ -448,7 +472,9 @@ export function todayEntries(db: DB, day = today(), includeCarried = day === tod
   //    flows straight into the parent's percentage.
   if (day === today()) {
     for (const item of db.items) {
-      if (item.horizon !== "today") continue;
+      // an explicit "today" horizon, or a period goal pulled onto Today from
+      // its week/month/quarter/year list (which keeps its own horizon)
+      if (item.horizon !== "today" && !item.pulledToday) continue;
       if (effectiveCadence(item) !== null) continue; // already covered above
       const doneToday = item.status === "done" && item.completedAt != null && dayFromMs(item.completedAt) === day;
       if (item.status !== "active" && !doneToday) continue;
