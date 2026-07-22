@@ -785,9 +785,22 @@ function HabitTodayControl({
           </div>
         )}
       </div>
-      <Button small variant={done ? "soft" : "primary"} onClick={() => onToggle(item, day, done)}>
-        {done ? "Undo" : multi ? "Log one" : "Mark done today"}
-      </Button>
+      <div className="flex shrink-0 items-center gap-2">
+        {/* a routine can be run from here at any time, even long past its
+            hours — the timer opens on Today whether or not the routine is
+            currently within its window */}
+        {item.kind === "routine" && (item.steps?.length ?? 0) > 0 && (
+          <Link
+            href={`/today?view=today&day=${today()}&focus=${encodeURIComponent(`habit:${item.id}:${day}`)}`}
+            className="pressable rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
+          >
+            ▶ Run
+          </Link>
+        )}
+        <Button small variant={done ? "soft" : "primary"} onClick={() => onToggle(item, day, done)}>
+          {done ? "Undo" : multi ? "Log one" : "Mark done today"}
+        </Button>
+      </div>
     </div>
   );
 }
