@@ -554,7 +554,32 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   const completeItem = useCallback((id: string) => {
     const item = db.items.find((i) => i.id === id);
     if (!item || item.status === "done") return;
-    upsertRows("items", [{ ...item, status: "done", completedAt: Date.now() }]);
+    // a metered goal marked complete should read full, so its count agrees
+    // with the 100% it now shows: fill its own tracker up to the max (book and
+    // counter to target, money to target, percent to 100), only ever upward,
+    // and log the delta so History and Reflect see the jump.
+    // book/percent read exactly full when complete (also correcting any prior
+    // overshoot); counter/money fill up to target but keep a deliberate one.
+    const capped = item.tracker === "book" || item.tracker === "percent";
+    const target = item.tracker === "percent" ? 100 : item.target;
+    let filled: number | null = null;
+    if (target != null) {
+      if (capped) filled = item.current !== target ? target : null;
+      else if (item.tracker === "counter" || item.tracker === "money") filled = item.current < target ? target : null;
+    }
+    upsertRows("items", [{
+      ...item, status: "done", completedAt: Date.now(),
+      ...(filled != null ? { current: filled } : {}),
+    }]);
+    if (filled != null) {
+      const isCumulative = item.tracker === "counter" || item.tracker === "book";
+      upsertRows("logs", [{
+        id: uid(), itemId: item.id, date: today(),
+        op: isCumulative ? "add" : "set",
+        value: isCumulative ? filled - item.current : filled,
+        createdAt: Date.now(),
+      }]);
+    }
     bumpParentMeter(item, 1);
   }, [db.items, upsertRows, bumpParentMeter]);
 
@@ -568,7 +593,10 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   }, [db.items, upsertRows, bumpParentMeter]);
 
   const setTracker = useCallback((item: Item, value: number) => {
-    const v = Math.max(0, value);
+    // a book stops at its last chapter and a percent at 100; counters and
+    // money may overshoot their target on purpose
+    const cap = item.tracker === "book" ? item.target : item.tracker === "percent" ? 100 : null;
+    const v = cap != null ? Math.min(cap, Math.max(0, value)) : Math.max(0, value);
     const reachedTarget = item.target != null && v >= item.target && item.current < item.target;
     upsertRows("items", [{
       ...item,

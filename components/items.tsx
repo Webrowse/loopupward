@@ -327,6 +327,10 @@ export function TrackerControls({ item }: { item: Item }) {
   if (item.tracker === "none" || item.tracker === "check" || item.tracker === "habit") return null;
 
   const step = item.tracker === "money" ? Math.max(1, Math.round((item.target ?? 1000) / 100)) : 1;
+  // a book can't go past its last chapter, and a percent can't exceed 100 —
+  // counters and money goals can overshoot (201 workouts, saving past target)
+  const cap = item.tracker === "book" ? item.target : item.tracker === "percent" ? 100 : null;
+  const clampUp = (n: number) => (cap != null ? Math.min(cap, n) : n);
   const value = pending ?? item.current;
   const dirty = pending !== null && pending !== item.current;
 
@@ -360,13 +364,13 @@ export function TrackerControls({ item }: { item: Item }) {
             onChange={(e) => setEditValue(e.target.value)}
             onBlur={() => {
               const v = parseFloat(editValue);
-              if (!Number.isNaN(v)) setPending(Math.max(0, v));
+              if (!Number.isNaN(v)) setPending(clampUp(Math.max(0, v)));
               setEditValue(null);
             }}
             onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
           />
         )}
-        <Button small variant="soft" onClick={() => setPending(value + step)}>
+        <Button small variant="soft" disabled={cap != null && value >= cap} onClick={() => setPending(clampUp(value + step))}>
           +{step > 1 ? step.toLocaleString() : ""}
         </Button>
       </div>
