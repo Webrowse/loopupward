@@ -120,6 +120,11 @@ export function FocusTimer({
   // the moment the countdown ends, as wall time — remaining/overtime are
   // recomputed from this, never counted down (see useWallClock)
   const [endAt, setEndAt] = useState<number | null>(null);
+  // when paused, the wall-time instant we froze at — on resume the deadline is
+  // pushed out by exactly how long we sat paused, so the clock never advances
+  // while stopped (it's derived from endAt, not counted)
+  const [pausedAt, setPausedAt] = useState<number | null>(null);
+  const paused = pausedAt !== null;
   const beepedRef = useRef(false);
   const [justCompleted, setJustCompleted] = useState(false);
   const [pickingNext, setPickingNext] = useState(false);
@@ -147,6 +152,7 @@ export function FocusTimer({
       setFinished(false);
       setOvertime(0);
       setJustCompleted(false);
+      setPausedAt(null);
     } else {
       setRunning(false);
       setRunningRoutine(false);
@@ -156,6 +162,7 @@ export function FocusTimer({
       setJustCompleted(false);
       setPickingNext(false);
       setActiveId(null);
+      setPausedAt(null);
     }
   }
 
@@ -163,7 +170,7 @@ export function FocusTimer({
 
   // the countdown holds at 00:00 once the deadline passes; overtime counts
   // up from that same deadline — both read from the wall clock
-  useWallClock(running && endAt != null, () => {
+  useWallClock(running && !paused && endAt != null, () => {
     if (endAt == null) return;
     const left = Math.round((endAt - Date.now()) / 1000);
     if (left > 0) {
@@ -198,7 +205,24 @@ export function FocusTimer({
     setRemaining(minutes * 60);
     setFinished(false);
     setOvertime(0);
+    setPausedAt(null);
     setRunning(true);
+  };
+
+  // freeze the clock exactly where it stands, or push the deadline out by the
+  // time spent paused and let it run on — countdown and overtime both survive
+  const togglePause = () => {
+    if (endAt == null) return;
+    if (pausedAt == null) {
+      const now = Date.now();
+      const left = Math.round((endAt - now) / 1000);
+      if (left > 0) setRemaining(left);
+      else { setRemaining(0); setOvertime(-left); }
+      setPausedAt(now);
+    } else {
+      setEndAt(endAt + (Date.now() - pausedAt));
+      setPausedAt(null);
+    }
   };
 
   const pickNext = (entry: TodayEntry) => {
@@ -210,6 +234,7 @@ export function FocusTimer({
     setFinished(false);
     setOvertime(0);
     setJustCompleted(false);
+    setPausedAt(null);
   };
 
   // marking a carried-over task done drops it out of `entries` entirely (it
@@ -410,21 +435,31 @@ export function FocusTimer({
           </button>
 
           <div>
-            <div className="font-display tabular-nums text-4xl sm:text-5xl leading-none text-ink">
+            <div className={`font-display tabular-nums text-4xl sm:text-5xl leading-none text-ink ${paused ? "opacity-40" : ""}`}>
               {pad(mm)}:{pad(ss)}
             </div>
             {finished && (
-              <div className="mt-1.5 font-display tabular-nums text-base sm:text-lg leading-none text-danger">
+              <div className={`mt-1.5 font-display tabular-nums text-base sm:text-lg leading-none text-danger ${paused ? "opacity-40" : ""}`}>
                 +{pad(omm)}:{pad(oss)}
               </div>
             )}
+            {paused && <div className="mt-1.5 text-xs font-medium uppercase tracking-wide text-ink-3">Paused</div>}
           </div>
         </div>
       </div>
 
-      <button onClick={onClose} className="pressable text-sm text-ink-3 hover:text-ink px-4 py-2">
-        Cancel
-      </button>
+      <div className="flex items-center gap-6">
+        <button
+          onClick={togglePause}
+          aria-pressed={paused}
+          className="pressable rounded-full border border-line bg-surface px-5 py-2 text-sm font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
+        >
+          {paused ? "▶ Resume" : "⏸ Pause"}
+        </button>
+        <button onClick={onClose} className="pressable text-sm text-ink-3 hover:text-ink px-4 py-2">
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
@@ -477,6 +512,10 @@ function RoutineRun({
     step?.minutes != null ? Date.now() + step.minutes * 60_000 : null
   );
   const [startedAt, setStartedAt] = useState<number | null>(null);
+  // paused wall-time instant; on resume the step's deadline (timed) or its
+  // start (untimed count-up) is shifted by however long we stayed paused
+  const [pausedAt, setPausedAt] = useState<number | null>(null);
+  const paused = pausedAt !== null;
   const beepedRef = useRef(false);
   const [askVal, setAskVal] = useState("10");
   const [justChecked, setJustChecked] = useState(false);
@@ -487,6 +526,7 @@ function RoutineRun({
     setFinished(false);
     setOvertime(0);
     setElapsed(0);
+    setPausedAt(null);
     beepedRef.current = false;
     if (s.minutes != null) {
       setPhase("timed");
@@ -503,7 +543,7 @@ function RoutineRun({
   };
 
   /* the current timed step: countdown freezes at 00:00, overtime counts on */
-  useWallClock(phase === "timed" && !celebrating && endAt != null, () => {
+  useWallClock(phase === "timed" && !celebrating && !paused && endAt != null, () => {
     if (endAt == null) return;
     const left = Math.round((endAt - Date.now()) / 1000);
     if (left > 0) {
@@ -520,9 +560,30 @@ function RoutineRun({
   });
 
   /* an untimed step still shows how long it's been on screen */
-  useWallClock(phase === "open" && !celebrating && startedAt != null && !!step, () => {
+  useWallClock(phase === "open" && !celebrating && !paused && startedAt != null && !!step, () => {
     if (startedAt != null) setElapsed(Math.max(0, Math.round((Date.now() - startedAt) / 1000)));
   });
+
+  // freeze the current step's clock, or shift its anchor forward by the paused
+  // span so a timed countdown or an untimed count-up both pick up where they left
+  const togglePause = () => {
+    if (pausedAt == null) {
+      const now = Date.now();
+      if (phase === "timed" && endAt != null) {
+        const left = Math.round((endAt - now) / 1000);
+        if (left > 0) setRemaining(left);
+        else { setRemaining(0); setOvertime(-left); }
+      } else if (phase === "open" && startedAt != null) {
+        setElapsed(Math.max(0, Math.round((now - startedAt) / 1000)));
+      }
+      setPausedAt(now);
+    } else {
+      const delta = Date.now() - pausedAt;
+      if (endAt != null) setEndAt(endAt + delta);
+      if (startedAt != null) setStartedAt(startedAt + delta);
+      setPausedAt(null);
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -693,29 +754,39 @@ function RoutineRun({
             <div>
               {phase === "timed" ? (
                 <>
-                  <div className="font-display tabular-nums text-4xl sm:text-5xl leading-none text-ink">
+                  <div className={`font-display tabular-nums text-4xl sm:text-5xl leading-none text-ink ${paused ? "opacity-40" : ""}`}>
                     {pad(mm)}:{pad(ss)}
                   </div>
                   {finished && (
-                    <div className="mt-1.5 font-display tabular-nums text-base sm:text-lg leading-none text-danger">
+                    <div className={`mt-1.5 font-display tabular-nums text-base sm:text-lg leading-none text-danger ${paused ? "opacity-40" : ""}`}>
                       +{pad(omm)}:{pad(oss)}
                     </div>
                   )}
                 </>
               ) : (
                 <>
-                  <div className="font-display tabular-nums text-4xl sm:text-5xl leading-none text-ink">
+                  <div className={`font-display tabular-nums text-4xl sm:text-5xl leading-none text-ink ${paused ? "opacity-40" : ""}`}>
                     {pad(emm)}:{pad(ess)}
                   </div>
                   <p className="mt-1.5 text-xs text-ink-3">no timer — done when it&rsquo;s done</p>
                 </>
               )}
+              {paused && <div className="mt-1.5 text-xs font-medium uppercase tracking-wide text-ink-3">Paused</div>}
             </div>
           </div>
         </div>
       )}
 
       <div className="flex items-center gap-6">
+        {(phase === "timed" || phase === "open") && (
+          <button
+            onClick={togglePause}
+            aria-pressed={paused}
+            className="pressable rounded-full border border-line bg-surface px-4 py-1.5 text-sm font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
+          >
+            {paused ? "▶ Resume" : "⏸ Pause"}
+          </button>
+        )}
         {queue.length > 1 && (
           <button onClick={skipStep} className="pressable text-sm font-medium text-ink-2 hover:text-ink px-3 py-2">
             Skip for now ↻
