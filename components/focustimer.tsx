@@ -108,6 +108,7 @@ export function FocusTimer({
   onToggle: (entry: TodayEntry) => void;
   onClose: () => void;
 }) {
+  const { restSeconds } = useLife();
   const [activeId, setActiveId] = useState<string | null>(initialEntryId);
   const [minutes, setMinutes] = useState(25);
   const [running, setRunning] = useState(false);
@@ -128,6 +129,10 @@ export function FocusTimer({
   const beepedRef = useRef(false);
   const [justCompleted, setJustCompleted] = useState(false);
   const [pickingNext, setPickingNext] = useState(false);
+  // a breather before the NEXT task's timer starts — only after finishing one
+  // this session, never before the first
+  const [completedOne, setCompletedOne] = useState(false);
+  const [resting, setResting] = useState(false);
   const [wasOpen, setWasOpen] = useState(open);
 
   // a routine knows how long it should take — the sum of its steps' minutes
@@ -153,6 +158,8 @@ export function FocusTimer({
       setOvertime(0);
       setJustCompleted(false);
       setPausedAt(null);
+      setCompletedOne(false);
+      setResting(false);
     } else {
       setRunning(false);
       setRunningRoutine(false);
@@ -163,6 +170,8 @@ export function FocusTimer({
       setPickingNext(false);
       setActiveId(null);
       setPausedAt(null);
+      setCompletedOne(false);
+      setResting(false);
     }
   }
 
@@ -199,14 +208,22 @@ export function FocusTimer({
 
   if (!open) return null;
 
-  const start = () => {
+  const beginTimer = () => {
     beepedRef.current = false;
     setEndAt(Date.now() + minutes * 60_000);
     setRemaining(minutes * 60);
     setFinished(false);
     setOvertime(0);
     setPausedAt(null);
+    setResting(false);
     setRunning(true);
+  };
+
+  // the first task of a session starts straight away; a task picked after
+  // finishing one gets the chosen breather first (unless rest is off)
+  const start = () => {
+    if (completedOne && restSeconds > 0) setResting(true);
+    else beginTimer();
   };
 
   // freeze the clock exactly where it stands, or push the deadline out by the
@@ -235,6 +252,7 @@ export function FocusTimer({
     setOvertime(0);
     setJustCompleted(false);
     setPausedAt(null);
+    setResting(false);
   };
 
   // marking a carried-over task done drops it out of `entries` entirely (it
@@ -283,6 +301,7 @@ export function FocusTimer({
     const completing = !current.action.done;
     onToggle(current);
     if (completing) {
+      setCompletedOne(true); // the next task this session earns a breather first
       // let the pop, the check stroke, and the ring pulse actually play
       // before offering what's next — that pause is the whole point
       setJustCompleted(true);
@@ -313,6 +332,17 @@ export function FocusTimer({
           setRunningRoutine(false);
           setPickingNext(true);
         }}
+        onClose={onClose}
+      />
+    );
+  }
+
+  if (resting) {
+    return (
+      <RestBreak
+        nextTitle={title}
+        seconds={restSeconds}
+        onDone={beginTimer}
         onClose={onClose}
       />
     );
@@ -464,6 +494,70 @@ export function FocusTimer({
   );
 }
 
+/* ————— a breather between tasks/steps: a short, skippable countdown ————— */
+
+/**
+ * The rest pad. A brief wall-clock countdown that names what's coming and
+ * starts it on its own when the timer runs out — or the instant you tap
+ * "Start now". Length is the user's chosen rest (see restSeconds); this only
+ * ever renders when that's above zero.
+ */
+function RestBreak({
+  nextTitle, seconds, onDone, onClose,
+}: {
+  nextTitle?: string;
+  seconds: number;
+  onDone: () => void;
+  onClose: () => void;
+}) {
+  const [endAt] = useState(() => Date.now() + Math.max(1, seconds) * 1000);
+  const [remaining, setRemaining] = useState(Math.max(1, seconds));
+  const doneRef = useRef(false);
+  const finish = () => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onDone();
+  };
+  useWallClock(true, () => {
+    const left = Math.ceil((endAt - Date.now()) / 1000);
+    if (left <= 0) { setRemaining(0); finish(); }
+    else setRemaining(left);
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  const mm = Math.floor(remaining / 60);
+  const ss = remaining % 60;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-6 bg-bg px-6 py-10 text-center">
+      <p className="text-lg font-medium text-accent-deep">Nice work. 🌱</p>
+      <div>
+        <p className="text-sm text-ink-3">Next</p>
+        <h1 className="mt-1 max-w-2xl font-display text-[1.75rem] sm:text-[2rem] leading-tight text-ink">
+          {nextTitle ?? "Keep going"}
+        </h1>
+      </div>
+      <div className="font-display tabular-nums text-5xl sm:text-6xl leading-none text-ink">
+        {mm}:{pad(ss)}
+      </div>
+      <div className="flex items-center gap-6">
+        <Button onClick={finish}>Start now</Button>
+        <button onClick={onClose} className="pressable px-4 py-2 text-sm text-ink-3 hover:text-ink">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ————— running a routine: one step at a time, in order ————— */
 
 const ASK_PRESETS = [5, 10, 15, 20, 30];
@@ -485,7 +579,7 @@ function RoutineRun({
   onFinished: () => void;
   onClose: () => void;
 }) {
-  const { db, setRoutineStepDone } = useLife();
+  const { db, setRoutineStepDone, restSeconds } = useLife();
   const steps = item.steps ?? [];
 
   // what's left to do this run — or the whole script again, when the day
@@ -520,6 +614,9 @@ function RoutineRun({
   const [askVal, setAskVal] = useState("10");
   const [justChecked, setJustChecked] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
+  // when set, we're on the breather between a finished step and this queue's
+  // next step — the RestBreak screen shows until it ends or is skipped
+  const [pendingQueue, setPendingQueue] = useState<string[] | null>(null);
 
   const enter = (s: RoutineStep) => {
     setJustChecked(false);
@@ -543,7 +640,7 @@ function RoutineRun({
   };
 
   /* the current timed step: countdown freezes at 00:00, overtime counts on */
-  useWallClock(phase === "timed" && !celebrating && !paused && endAt != null, () => {
+  useWallClock(phase === "timed" && !celebrating && !paused && pendingQueue == null && endAt != null, () => {
     if (endAt == null) return;
     const left = Math.round((endAt - Date.now()) / 1000);
     if (left > 0) {
@@ -560,7 +657,7 @@ function RoutineRun({
   });
 
   /* an untimed step still shows how long it's been on screen */
-  useWallClock(phase === "open" && !celebrating && !paused && startedAt != null && !!step, () => {
+  useWallClock(phase === "open" && !celebrating && !paused && pendingQueue == null && startedAt != null && !!step, () => {
     if (startedAt != null) setElapsed(Math.max(0, Math.round((Date.now() - startedAt) / 1000)));
   });
 
@@ -605,12 +702,24 @@ function RoutineRun({
       if (rest.length === 0) {
         setCelebrating(true);
         setTimeout(onFinished, 1400);
+      } else if (restSeconds > 0) {
+        setPendingQueue(rest); // a breather, then the next step
       } else {
         setQueue(rest);
         const next = steps.find((s) => s.id === rest[0]);
         if (next) enter(next);
       }
     }, 700);
+  };
+
+  // leave the breather and pick up the next step (countdown ran out, or skipped)
+  const proceedAfterRest = () => {
+    const q = pendingQueue;
+    setPendingQueue(null);
+    if (!q) return;
+    setQueue(q);
+    const next = steps.find((s) => s.id === q[0]);
+    if (next) enter(next);
   };
 
   const skipStep = () => {
@@ -631,6 +740,18 @@ function RoutineRun({
         <h1 className="font-display text-[2rem] leading-tight text-ink">Routine done.</h1>
         <p className="text-sm text-ink-3">Every step, walked. 🌱</p>
       </div>
+    );
+  }
+
+  if (pendingQueue) {
+    const nextStep = steps.find((s) => s.id === pendingQueue[0]);
+    return (
+      <RestBreak
+        nextTitle={nextStep?.title}
+        seconds={restSeconds}
+        onDone={proceedAfterRest}
+        onClose={onClose}
+      />
     );
   }
 

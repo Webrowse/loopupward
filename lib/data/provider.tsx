@@ -39,6 +39,10 @@ interface LifeContextValue {
    *  underneath, nothing is deleted or disabled. */
   simple: boolean;
   setSimple: (v: boolean) => void;
+  /** Seconds of breather the focus timer inserts before the next task or
+   *  routine step starts (0 = none). A skippable countdown, remembered here. */
+  restSeconds: number;
+  setRestSeconds: (v: number) => void;
   /** Pull the freshest data from wherever it lives (cloud rows, or this
    *  device's store) without reloading the page — phone edits show up on
    *  the laptop. Also runs by itself when the tab regains focus. */
@@ -158,6 +162,23 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   const setSimple = useCallback((v: boolean) => {
     setSimpleState(v);
     try { localStorage.setItem("lifeos-simple", v ? "1" : "0"); } catch {}
+  }, []);
+
+  /* ————— rest between focus tasks/steps ————— */
+  const [restSeconds, setRestSecondsState] = useState(5);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("lifeos-rest");
+      if (raw !== null) {
+        const n = parseInt(raw, 10);
+        if (Number.isFinite(n) && n >= 0) setRestSecondsState(Math.min(600, n));
+      }
+    } catch {}
+  }, []);
+  const setRestSeconds = useCallback((v: number) => {
+    const n = Math.max(0, Math.min(600, Math.round(v)));
+    setRestSecondsState(n);
+    try { localStorage.setItem("lifeos-rest", String(n)); } catch {}
   }, []);
 
   /* ————— session & data bootstrap ————— */
@@ -824,6 +845,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     theme, setTheme,
     font, setFont,
     simple, setSimple,
+    restSeconds, setRestSeconds,
     refresh, syncing,
     addSeed, updateSeed, setSeedStatus, deleteSeed, plantSeed, unplantSeed,
     saveJournal,

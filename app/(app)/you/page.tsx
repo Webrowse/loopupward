@@ -19,7 +19,8 @@ const FONT_VARS: Record<FontId, string> = {
 export default function YouPage() {
   const {
     db, user, premium, owner, mode, cloudAvailable,
-    theme, setTheme, font, setFont, simple, setSimple, signOut, exportJSON, trashedItems,
+    theme, setTheme, font, setFont, simple, setSimple, restSeconds, setRestSeconds,
+    signOut, exportJSON, trashedItems,
   } = useLife();
   const [exporting, setExporting] = useState(false);
 
@@ -123,6 +124,28 @@ export default function YouPage() {
           {simple
             ? "Simple keeps it to to-dos, notes and your day: adding something asks only for a name, when, and where it belongs. Every advanced tool (types, progress meters, labels, reviews) is still here — one tap under “More options”, and switching back to Full any time."
             : "Full shows everything: goal types, progress meters, labels and reviews. Prefer just to-dos and notes? Simple hides the machinery without deleting anything."}
+        </p>
+      </Card>
+
+      {/* breather between focus blocks */}
+      <Card className="p-5 mb-3">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm font-medium text-ink">Rest between focus tasks</p>
+          <Segmented
+            options={[
+              { value: "0", label: "Off" },
+              { value: "5", label: "5s" },
+              { value: "15", label: "15s" },
+              { value: "30", label: "30s" },
+            ]}
+            value={String([0, 5, 15, 30].includes(restSeconds) ? restSeconds : 5)}
+            onChange={(v) => setRestSeconds(Number(v))}
+          />
+        </div>
+        <p className="text-sm text-ink-2 mt-2 leading-relaxed">
+          {restSeconds > 0
+            ? `After you finish a task or a routine step, the timer waits ${restSeconds} second${restSeconds === 1 ? "" : "s"} before the next one begins — a breather you can always skip with “Start now.”`
+            : "The next task or routine step begins the moment you finish the last one, with no pause in between."}
         </p>
       </Card>
 
