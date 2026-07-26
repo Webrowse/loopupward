@@ -52,11 +52,14 @@ export function mdToHtml(md: string): string {
       out.push(`<li>${inlineMd(escapeHtml(ul[1]))}</li>`);
       continue;
     }
-    const ol = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    const ol = /^\s*(\d+)[.)]\s+(.*)$/.exec(line);
     if (ol) {
       closeQuote();
       if (list !== "ol") { closeList(); out.push("<ol>"); list = "ol"; }
-      out.push(`<li>${inlineMd(escapeHtml(ol[1]))}</li>`);
+      // keep the author's own number: a sublist or a plain line between two
+      // numbered items splits the run into separate <ol>s, each of which would
+      // otherwise restart at 1 — so "2." would wrongly render as "1."
+      out.push(`<li value="${ol[1]}">${inlineMd(escapeHtml(ol[2]))}</li>`);
       continue;
     }
     const q = /^>\s?(.*)$/.exec(line);
