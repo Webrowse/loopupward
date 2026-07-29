@@ -428,21 +428,26 @@ export function FocusTimer({
       setTickedOff((prev) => (prev.includes(e.action.id) ? prev : [...prev, e.action.id]));
       onToggle(e);
     };
+
+    // nothing left to pick means there's nothing to decide — the day itself
+    // is the reward, so take a beat and hand the app back instead of parking
+    // on a screen whose only move is "Later"
+    if (rows.length === 0) return <DayCleared onClose={onClose} />;
+
     return (
       <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-6 bg-bg px-6 py-10 text-center">
         <div>
           <p className="text-lg text-accent-deep font-medium mb-1">Nice work. 🌱</p>
           <h1 className="font-display text-[1.75rem] sm:text-[2rem] leading-tight text-ink">
-            {rows.length > 0 ? "What's next?" : "Everything's done"}
+            What&rsquo;s next?
           </h1>
         </div>
 
-        {rows.length > 0 ? (
-          <>
-            <p className="-mt-3 max-w-xs text-sm text-ink-3">
-              Tick off anything you already did, or pick one to focus on.
-            </p>
-            <div className="w-full max-w-sm space-y-2 overflow-y-auto" style={{ maxHeight: "50vh" }}>
+        <>
+          <p className="-mt-3 max-w-xs text-sm text-ink-3">
+            Tick off anything you already did, or pick one to focus on.
+          </p>
+          <div className="w-full max-w-sm space-y-2 overflow-y-auto" style={{ maxHeight: "50vh" }}>
               {rows.map((e) => {
                 const done = e.action.done;
                 return (
@@ -482,14 +487,13 @@ export function FocusTimer({
                   </div>
                 );
               })}
-            </div>
-          </>
-        ) : (
-          <p className="text-sm text-ink-3 max-w-xs">Nothing left on today&rsquo;s list.</p>
-        )}
+          </div>
+        </>
 
+        {/* "Later" only makes sense while something is still waiting — once
+            every row here is ticked, leaving is finishing, not postponing */}
         <button onClick={onClose} className="pressable text-sm font-medium text-ink-3 hover:text-ink px-4 py-2">
-          Later
+          {rows.some((e) => !e.action.done) ? "Later" : "Done"}
         </button>
       </div>
     );
@@ -718,6 +722,41 @@ export function FocusTimer({
           Cancel
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The last thing off the list. There's nothing to choose here and nothing to
+ * come back to, so this is a moment, not a screen: it says the day is clear
+ * and then gets out of the way on its own (or the instant it's tapped). The
+ * Today page carries the rest of the reward.
+ */
+function DayCleared({ onClose }: { onClose: () => void }) {
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
+  useEffect(() => {
+    const t = setTimeout(() => closeRef.current(), 1400);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div
+      onClick={onClose}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onClose();
+      }}
+      aria-label="Back to today"
+      className="fixed inset-0 z-[100] flex cursor-pointer flex-col items-center justify-center gap-3 bg-bg px-6 py-10 text-center"
+    >
+      <p className="text-4xl">🌱</p>
+      <h1 className="font-display text-[1.75rem] sm:text-[2rem] leading-tight text-ink">
+        Everything&rsquo;s done
+      </h1>
+      <p className="text-sm text-ink-3">Today&rsquo;s list is clear. Rest well.</p>
     </div>
   );
 }
