@@ -48,6 +48,11 @@ interface LifeContextValue {
    *  the laptop. Also runs by itself when the tab regains focus. */
   refresh: () => Promise<void>;
   syncing: boolean;
+  /** Suspend the automatic tab-return refresh while focused work is on screen
+   *  (the timer runs full-screen and writes step ticks as you go — a refresh
+   *  replacing the whole db underneath it could drop those). Returns a release
+   *  function; call it when the work closes. */
+  holdSync: () => () => void;
 
   addSeed: (text: string) => Seed;
   updateSeed: (id: string, text: string) => void;
@@ -270,8 +275,15 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { readyRef.current = ready; }, [ready]);
   const lastRefreshRef = useRef(0);
 
+  // held while a focus timer / routine runner is open — see holdSync
+  const syncHolds = useRef(0);
+  const holdSync = useCallback(() => {
+    syncHolds.current += 1;
+    return () => { syncHolds.current = Math.max(0, syncHolds.current - 1); };
+  }, []);
+
   const refresh = useCallback(async () => {
-    if (!readyRef.current || pendingWrites.current > 0) return;
+    if (!readyRef.current || pendingWrites.current > 0 || syncHolds.current > 0) return;
     setSyncing(true);
     lastRefreshRef.current = Date.now();
     try {
@@ -846,7 +858,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     font, setFont,
     simple, setSimple,
     restSeconds, setRestSeconds,
-    refresh, syncing,
+    refresh, syncing, holdSync,
     addSeed, updateSeed, setSeedStatus, deleteSeed, plantSeed, unplantSeed,
     saveJournal,
     addLabel, updateLabel, deleteLabel,

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { useLife } from "@/lib/data/provider";
+import { useFocusSession } from "@/components/focussession";
 import { MiniCalendar } from "@/components/minicalendar";
 
 /** Labels name what you'll find (or do) there — a first-time user should be
@@ -61,6 +62,9 @@ function SyncButton({ className = "" }: { className?: string }) {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { ready, syncError, dismissSyncError, simple } = useLife();
+  // a minimized timer floats over the bottom of the page — give the content
+  // room to scroll clear of it instead of hiding its last line behind it
+  const { minimized } = useFocusSession();
   // simple mode trims the map, not the territory: /reflect stays reachable
   // by URL and by every "Reflect on this week" link — it just leaves the nav
   const tabs = simple ? TABS.filter((t) => t.href !== "/reflect") : TABS;
@@ -136,7 +140,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col lg:mx-0 lg:min-h-0 lg:max-w-none lg:flex-1">
-        <main className="flex-1 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-28 lg:px-10 lg:pb-12 lg:pt-8">
+        <main
+          className={`flex-1 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] lg:px-10 lg:pt-8 ${
+            minimized ? "pb-44 lg:pb-28" : "pb-28 lg:pb-12"
+          }`}
+        >
           {ready ? children : <ShellSkeleton />}
         </main>
       </div>

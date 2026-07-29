@@ -17,7 +17,7 @@ import {
 import { Action, Cadence, HORIZON_META, Item } from "@/lib/types";
 import { quickTasks } from "@/lib/suggestions";
 import { DailyJournal } from "@/components/journal";
-import { FocusTimer } from "@/components/focustimer";
+import { useFocusSession } from "@/components/focussession";
 import { ListIcon, RoutineIcon } from "@/components/icons";
 import { SuggestionsSheet } from "@/components/suggestions";
 import { HorizonList, ScheduleEditor, ScheduleValue } from "@/components/items";
@@ -51,6 +51,9 @@ export default function TodayPage() {
 
 function Today() {
   const { db, toggleEntry, deleteAction, addAction, reorderDay } = useLife();
+  // the timer itself lives in the app layout, so it keeps running (minimized)
+  // wherever you go next — this page only ever hands it a row
+  const { openFocus } = useFocusSession();
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -72,9 +75,6 @@ function Today() {
   const [editingAction, setEditingAction] = useState<Action | null>(null);
   const [editingItemTitle, setEditingItemTitle] = useState<Item | null>(null);
   const [planningHabit, setPlanningHabit] = useState<{ item: Item; date: string } | null>(null);
-  const [focusingId, setFocusingId] = useState<string | null>(null);
-  // ▶ Run on a routine row skips the setup sheet and starts the steps
-  const [focusAutoRun, setFocusAutoRun] = useState(false);
   const [reordering, setReordering] = useState(false);
   const [borrowing, setBorrowing] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
@@ -137,16 +137,16 @@ function Today() {
   const done = visible.filter((e) => e.action.done).length;
   const total = visible.length;
 
-  // arriving from the Routines page with ?focus=<entry id> opens the timer
-  // on that routine directly, once the data is in (state-during-render
-  // rather than an effect, same pattern as the sheets' lastId resets)
+  // arriving from the Routines page with ?focus=<entry id> opens the timer on
+  // that routine directly, once the data is in. The param is spent as soon as
+  // it's used: the session now outlives this page, so leaving and coming back
+  // must not re-open (or re-expand) a run already going.
   const paramFocus = params.get("focus");
-  const [urlFocusUsed, setUrlFocusUsed] = useState(false);
-  if (paramFocus && !urlFocusUsed && entries.some((e) => e.action.id === paramFocus)) {
-    setUrlFocusUsed(true);
-    setFocusAutoRun(true); // the Routines page's ▶ Run means run, not a setup sheet
-    setFocusingId(paramFocus);
-  }
+  useEffect(() => {
+    if (!paramFocus || !entries.some((e) => e.action.id === paramFocus)) return;
+    openFocus(paramFocus, { day, autoRun: true }); // ▶ Run means run, not a setup sheet
+    router.replace(`${pathname}?view=today&day=${day}`, { scroll: false });
+  }, [paramFocus, entries, openFocus, day, router, pathname]);
 
   return (
     <div className="rise-in lg:max-w-none">
@@ -377,10 +377,10 @@ function Today() {
                   (e.virtualHabit || e.virtualItemTask) && e.item ? () => setEditingItemTitle(e.item!) : undefined,
                 onPlanDay:
                   e.virtualHabit && e.item ? () => setPlanningHabit({ item: e.item!, date: day }) : undefined,
-                onFocus: () => { setFocusAutoRun(false); setFocusingId(e.action.id); },
+                onFocus: () => openFocus(e.action.id, { day }),
                 onRun:
                   e.item?.kind === "routine"
-                    ? () => { setFocusAutoRun(true); setFocusingId(e.action.id); }
+                    ? () => openFocus(e.action.id, { day, autoRun: true })
                     : undefined,
               }))}
             />
@@ -428,14 +428,6 @@ function Today() {
       <EditActionSheet action={editingAction} onClose={() => setEditingAction(null)} />
       <EditItemTitleSheet item={editingItemTitle} onClose={() => setEditingItemTitle(null)} />
       <HabitDayNoteSheet planning={planningHabit} onClose={() => setPlanningHabit(null)} />
-      <FocusTimer
-        open={!!focusingId}
-        entries={entries}
-        initialEntryId={focusingId}
-        autoRun={focusAutoRun}
-        onToggle={(entry) => toggleEntry(entry, day)}
-        onClose={() => { setFocusingId(null); setFocusAutoRun(false); }}
-      />
     </div>
   );
 }

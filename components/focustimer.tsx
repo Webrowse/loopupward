@@ -85,6 +85,135 @@ function entryText(entry: TodayEntry): { title: string; subtitle?: string } {
   };
 }
 
+/* ————— out of the way, still running ————— */
+
+/** Sends the full-screen timer to the corner. Same place on every focus
+ *  screen, so it's always where you last found it. */
+function MinimizeButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Minimize the timer"
+      title="Keep it running in the corner"
+      className="pressable absolute right-4 top-[max(1rem,env(safe-area-inset-top))] inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
+    >
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M11.5 2.5 2.5 11.5" />
+        <path d="M6 11.5H2.5V8" />
+      </svg>
+      Minimize
+    </button>
+  );
+}
+
+/**
+ * The timer, minimized: a small floating bar that keeps the clock — and a
+ * routine's place in its script — running while the rest of the app comes
+ * back. Some steps ARE the app ("write today's note" is part of the night
+ * routine), so the full-screen runner can't be the only way to hold a
+ * countdown. Sits above the mobile tab bar, bottom-right on a wide screen,
+ * and stays under sheets (z-50) so an open dialog is never fought over.
+ */
+function MiniBar({
+  title, context, clock, hint, fraction, overtime, paused,
+  onTogglePause, onDone, doneLabel, onExpand,
+}: {
+  title: string;
+  /** the routine's name, or what kind of stretch this is */
+  context?: string;
+  /** "12:34", or left out when there's nothing counting (a step being set up) */
+  clock?: string;
+  /** replaces the context line — for a step that needs you back on screen */
+  hint?: string;
+  /** 1 → just started, 0 → time's up; drives the hairline under the bar */
+  fraction?: number;
+  overtime?: boolean;
+  paused?: boolean;
+  onTogglePause?: () => void;
+  onDone?: () => void;
+  doneLabel?: string;
+  onExpand: () => void;
+}) {
+  return (
+    <div className="no-print fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom,0px)+5rem)] z-[45] lg:inset-x-auto lg:right-6 lg:bottom-6 lg:w-80">
+      <div className="fade-in overflow-hidden rounded-2xl border border-line-soft bg-surface/95 shadow-(--shadow-float) backdrop-blur-xl">
+        <div className="flex items-center gap-2 px-3 py-2">
+          <button
+            onClick={onExpand}
+            aria-label="Back to the full timer"
+            className="pressable flex min-w-0 flex-1 items-center gap-2.5 text-left"
+          >
+            {clock && (
+              <span
+                className={`shrink-0 font-display text-lg leading-none tabular-nums ${
+                  paused ? "text-ink-3" : overtime ? "text-danger" : "text-ink"
+                }`}
+              >
+                {clock}
+              </span>
+            )}
+            <span className="min-w-0">
+              <span className="block truncate text-[0.8rem] leading-tight text-ink">{title}</span>
+              {(hint || context || paused) && (
+                <span className="block truncate text-[0.68rem] leading-tight text-ink-3">
+                  {paused ? "paused" : hint ?? context}
+                </span>
+              )}
+            </span>
+          </button>
+
+          {onTogglePause && (
+            <button
+              onClick={onTogglePause}
+              aria-pressed={paused}
+              aria-label={paused ? "Resume" : "Pause"}
+              className="pressable grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm text-ink-2 hover:bg-surface-2"
+            >
+              <span aria-hidden>{paused ? "▶" : "⏸"}</span>
+            </button>
+          )}
+
+          {onDone && (
+            <button
+              onClick={onDone}
+              aria-label={doneLabel ?? "Mark done"}
+              className="pressable grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-line text-ink-3 transition-colors hover:border-accent hover:text-accent-deep"
+            >
+              <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+                <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
+
+          <button
+            onClick={onExpand}
+            aria-label="Back to the full timer"
+            className="pressable grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-3 hover:bg-surface-2 hover:text-ink"
+          >
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2.5 11.5 11.5 2.5" />
+              <path d="M8 2.5h3.5V6" />
+            </svg>
+          </button>
+        </div>
+
+        {fraction != null && (
+          <div className="h-0.5 w-full bg-line-soft">
+            <div
+              className="h-full"
+              style={{
+                width: `${Math.max(0, Math.min(1, fraction)) * 100}%`,
+                background: ringColor(fraction),
+                transition: "width 1s linear, background-color 1s linear",
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * A full-screen, single-purpose focus mode: pick a length, then nothing on
  * screen but the task, a big checkbox and a countdown until it ends. No
@@ -96,25 +225,37 @@ function entryText(entry: TodayEntry): { title: string; subtitle?: string } {
  * Finishing one task doesn't drop you back to the Today list — it offers
  * whatever's still undone so a chain of focus sessions can run back to back
  * without ever leaving this screen.
+ *
+ * Minimized, all of that keeps running in a small corner bar instead: the
+ * clock, the routine's place in its script, everything. Some tasks ARE the
+ * app ("write the daily note" is a step of the night routine), so the timer
+ * can't be the only thing on screen.
  */
 export function FocusTimer({
-  open, entries, initialEntryId, autoRun = false, onToggle, onClose,
+  open, entries, initialEntryId, autoRun = false, minimized = false,
+  onMinimize, onRestore, onToggle, onClose,
 }: {
   open: boolean;
   entries: TodayEntry[];
   initialEntryId: string | null;
   /** open a routine straight into its step runner, skipping the setup sheet */
   autoRun?: boolean;
+  /** running, but out of the way — see MiniBar */
+  minimized?: boolean;
+  onMinimize?: () => void;
+  onRestore?: () => void;
   onToggle: (entry: TodayEntry) => void;
   onClose: () => void;
 }) {
-  const { restSeconds } = useLife();
+  const { restSeconds, holdSync } = useLife();
   const [activeId, setActiveId] = useState<string | null>(initialEntryId);
   const [minutes, setMinutes] = useState(25);
   const [running, setRunning] = useState(false);
   // a routine doesn't run as one block of minutes — it walks its script
-  // step by step, so Start hands over to the step runner instead
-  const [runningRoutine, setRunningRoutine] = useState(false);
+  // step by step, so Start hands over to the step runner instead. Seeded from
+  // autoRun for the case where this mounts already open (▶ Run) rather than
+  // opening later — see the open-transition reset below.
+  const [runningRoutine, setRunningRoutine] = useState(open && autoRun);
   const [remaining, setRemaining] = useState(0);
   const [finished, setFinished] = useState(false);
   const [overtime, setOvertime] = useState(0);
@@ -133,6 +274,10 @@ export function FocusTimer({
   // this session, never before the first
   const [completedOne, setCompletedOne] = useState(false);
   const [resting, setResting] = useState(false);
+  // rows ticked off on the "what's next" screen — kept listed (checked, dimmed)
+  // instead of vanishing the instant they're done, so a handful can be cleared
+  // in one pass and any mistake un-ticked on the spot
+  const [tickedOff, setTickedOff] = useState<string[]>([]);
   const [wasOpen, setWasOpen] = useState(open);
 
   // a routine knows how long it should take — the sum of its steps' minutes
@@ -160,6 +305,7 @@ export function FocusTimer({
       setPausedAt(null);
       setCompletedOne(false);
       setResting(false);
+      setTickedOff([]);
     } else {
       setRunning(false);
       setRunningRoutine(false);
@@ -172,6 +318,7 @@ export function FocusTimer({
       setPausedAt(null);
       setCompletedOne(false);
       setResting(false);
+      setTickedOff([]);
     }
   }
 
@@ -195,8 +342,18 @@ export function FocusTimer({
     }
   });
 
+  // hold the tab-return refresh for the whole session, minimized or not: step
+  // ticks written mid-run must not be clobbered by a full-db reload when the
+  // user comes back to the tab
   useEffect(() => {
     if (!open) return;
+    return holdSync();
+  }, [open, holdSync]);
+
+  // minimized, the app underneath is the point — it scrolls, and Escape
+  // belongs to whatever the user is actually working in
+  useEffect(() => {
+    if (!open || minimized) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
@@ -204,9 +361,11 @@ export function FocusTimer({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [open, onClose]);
+  }, [open, minimized, onClose]);
 
   if (!open) return null;
+
+  const expand = () => onRestore?.();
 
   const beginTimer = () => {
     beepedRef.current = false;
@@ -260,28 +419,71 @@ export function FocusTimer({
   // the moment that happens — this screen must not depend on it still
   // resolving, or the whole timer silently unmounts back to the Today page
   if (pickingNext) {
-    const undone = entries.filter((e) => !e.action.done);
+    // half of what's still listed was often just done off-screen — a routine
+    // walks you through the reading and the decluttering that also stand as
+    // their own targets. So each row ticks off right here; only the ones you
+    // actually want a countdown for need the timer.
+    const rows = entries.filter((e) => !e.action.done || tickedOff.includes(e.action.id));
+    const tick = (e: TodayEntry) => {
+      setTickedOff((prev) => (prev.includes(e.action.id) ? prev : [...prev, e.action.id]));
+      onToggle(e);
+    };
     return (
       <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-6 bg-bg px-6 py-10 text-center">
         <div>
           <p className="text-lg text-accent-deep font-medium mb-1">Nice work. 🌱</p>
           <h1 className="font-display text-[1.75rem] sm:text-[2rem] leading-tight text-ink">
-            {undone.length > 0 ? "What's next?" : "Everything's done"}
+            {rows.length > 0 ? "What's next?" : "Everything's done"}
           </h1>
         </div>
 
-        {undone.length > 0 ? (
-          <div className="w-full max-w-sm space-y-2 overflow-y-auto" style={{ maxHeight: "50vh" }}>
-            {undone.map((e) => (
-              <button
-                key={e.action.id}
-                onClick={() => pickNext(e)}
-                className="pressable block w-full rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3 text-left text-[0.95rem] text-ink shadow-(--shadow-card) hover:border-accent"
-              >
-                {entryText(e).title}
-              </button>
-            ))}
-          </div>
+        {rows.length > 0 ? (
+          <>
+            <p className="-mt-3 max-w-xs text-sm text-ink-3">
+              Tick off anything you already did, or pick one to focus on.
+            </p>
+            <div className="w-full max-w-sm space-y-2 overflow-y-auto" style={{ maxHeight: "50vh" }}>
+              {rows.map((e) => {
+                const done = e.action.done;
+                return (
+                  <div
+                    key={e.action.id}
+                    className={`flex items-center gap-3 rounded-(--radius-card) border border-line-soft bg-surface px-3 py-2.5 text-left shadow-(--shadow-card) transition-opacity ${
+                      done ? "opacity-60" : ""
+                    }`}
+                  >
+                    <button
+                      onClick={() => tick(e)}
+                      aria-label={done ? "Undo" : "Mark done"}
+                      className={`pressable grid h-7 w-7 shrink-0 place-items-center border-2 transition-colors ${
+                        e.virtualHabit ? "rounded-full" : "rounded-lg"
+                      } ${done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"}`}
+                    >
+                      {done && (
+                        <svg className="bloom" width="13" height="13" viewBox="0 0 12 12" fill="none">
+                          <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </button>
+                    <span
+                      className={`min-w-0 flex-1 text-[0.95rem] ${done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
+                    >
+                      {entryText(e).title}
+                    </span>
+                    {!done && (
+                      <button
+                        onClick={() => pickNext(e)}
+                        aria-label="Focus on this with a timer"
+                        className="pressable shrink-0 rounded-full border border-line px-2.5 py-1 text-xs font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
+                      >
+                        Focus
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         ) : (
           <p className="text-sm text-ink-3 max-w-xs">Nothing left on today&rsquo;s list.</p>
         )}
@@ -302,6 +504,9 @@ export function FocusTimer({
     onToggle(current);
     if (completing) {
       setCompletedOne(true); // the next task this session earns a breather first
+      // finishing something is worth the whole screen, even if the timer was
+      // ticking away in the corner a second ago
+      expand();
       // let the pop, the check stroke, and the ring pulse actually play
       // before offering what's next — that pause is the whole point
       setJustCompleted(true);
@@ -328,6 +533,9 @@ export function FocusTimer({
       <RoutineRun
         item={current.item}
         day={current.action.date}
+        minimized={minimized}
+        onMinimize={onMinimize}
+        onRestore={onRestore}
         onFinished={() => {
           setRunningRoutine(false);
           setPickingNext(true);
@@ -342,6 +550,9 @@ export function FocusTimer({
       <RestBreak
         nextTitle={title}
         seconds={restSeconds}
+        minimized={minimized}
+        onMinimize={onMinimize}
+        onRestore={onRestore}
         onDone={beginTimer}
         onClose={onClose}
       />
@@ -416,8 +627,25 @@ export function FocusTimer({
   const r = (RING_SIZE - RING_STROKE) / 2;
   const circumference = 2 * Math.PI * r;
 
+  if (minimized) {
+    return (
+      <MiniBar
+        title={title}
+        context={subtitle ?? "Focusing"}
+        clock={finished ? `+${pad(omm)}:${pad(oss)}` : `${pad(mm)}:${pad(ss)}`}
+        overtime={finished}
+        fraction={fraction}
+        paused={paused}
+        onTogglePause={togglePause}
+        onDone={check}
+        onExpand={expand}
+      />
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-8 bg-bg px-6 py-10 text-center">
+      {onMinimize && <MinimizeButton onClick={onMinimize} />}
       <div>
         {subtitle && <p className="text-lg text-ink-3 mb-1">{subtitle}</p>}
         <h1 className="font-display text-[2rem] sm:text-[2.75rem] leading-tight text-ink max-w-3xl">
@@ -503,10 +731,13 @@ export function FocusTimer({
  * ever renders when that's above zero.
  */
 function RestBreak({
-  nextTitle, seconds, onDone, onClose,
+  nextTitle, seconds, minimized = false, onMinimize, onRestore, onDone, onClose,
 }: {
   nextTitle?: string;
   seconds: number;
+  minimized?: boolean;
+  onMinimize?: () => void;
+  onRestore?: () => void;
   onDone: () => void;
   onClose: () => void;
 }) {
@@ -524,6 +755,7 @@ function RestBreak({
     else setRemaining(left);
   });
   useEffect(() => {
+    if (minimized) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
@@ -531,13 +763,30 @@ function RestBreak({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [onClose]);
+  }, [minimized, onClose]);
 
   const mm = Math.floor(remaining / 60);
   const ss = remaining % 60;
 
+  // the breather runs down in the corner too — otherwise minimizing during a
+  // routine would throw the whole screen back at you between every step
+  if (minimized) {
+    return (
+      <MiniBar
+        title={nextTitle ?? "Keep going"}
+        context="Breather — next up"
+        clock={`${pad(mm)}:${pad(ss)}`}
+        fraction={seconds > 0 ? remaining / Math.max(1, seconds) : undefined}
+        onDone={finish}
+        doneLabel="Start now"
+        onExpand={() => onRestore?.()}
+      />
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-6 bg-bg px-6 py-10 text-center">
+      {onMinimize && <MinimizeButton onClick={onMinimize} />}
       <p className="text-lg font-medium text-accent-deep">Nice work. 🌱</p>
       <div>
         <p className="text-sm text-ink-3">Next</p>
@@ -551,9 +800,10 @@ function RestBreak({
       <div className="flex items-center gap-6">
         <Button onClick={finish}>Start now</Button>
         <button onClick={onClose} className="pressable px-4 py-2 text-sm text-ink-3 hover:text-ink">
-          Cancel
+          Leave
         </button>
       </div>
+      <p className="text-xs text-ink-3">Your progress so far is saved either way.</p>
     </div>
   );
 }
@@ -568,14 +818,19 @@ const ASK_PRESETS = [5, 10, 15, 20, 30];
  * give it a length, or keep it on screen untimed until it's done ("take your
  * meds" has no duration, but it shouldn't disappear either). "Skip for now"
  * sends the current step to the back of the line instead of pretending it
- * happened. Every tick is saved per day, so closing mid-run loses nothing,
- * and ticking the last step logs the routine's day by itself.
+ * happened, and "Rearrange" opens the rest of the run so any step can be
+ * pulled to the front (c and d aren't happening today — e is). Every tick is
+ * saved per day, so closing mid-run loses nothing, and ticking the last step
+ * logs the routine's day by itself.
  */
 function RoutineRun({
-  item, day, onFinished, onClose,
+  item, day, minimized = false, onMinimize, onRestore, onFinished, onClose,
 }: {
   item: Item;
   day: string;
+  minimized?: boolean;
+  onMinimize?: () => void;
+  onRestore?: () => void;
   onFinished: () => void;
   onClose: () => void;
 }) {
@@ -600,12 +855,13 @@ function RoutineRun({
   const [finished, setFinished] = useState(false);
   const [overtime, setOvertime] = useState(0);
   const [elapsed, setElapsed] = useState(0);
-  // wall-time anchors: the current step's deadline, or when an untimed one
-  // came on screen — every displayed second derives from these
-  const [endAt, setEndAt] = useState<number | null>(() =>
-    step?.minutes != null ? Date.now() + step.minutes * 60_000 : null
-  );
-  const [startedAt, setStartedAt] = useState<number | null>(null);
+  // Wall-time anchors: the current step's deadline, or the instant an untimed
+  // one came on screen. Every displayed second is derived from these, and
+  // nothing renders them directly — so they're refs, set by the first tick
+  // after a step begins rather than by whoever started it. Clearing one is
+  // how a step says "anchor me again from now".
+  const endAtRef = useRef<number | null>(null);
+  const startedAtRef = useRef<number | null>(null);
   // paused wall-time instant; on resume the step's deadline (timed) or its
   // start (untimed count-up) is shifted by however long we stayed paused
   const [pausedAt, setPausedAt] = useState<number | null>(null);
@@ -617,32 +873,39 @@ function RoutineRun({
   // when set, we're on the breather between a finished step and this queue's
   // next step — the RestBreak screen shows until it ends or is skipped
   const [pendingQueue, setPendingQueue] = useState<string[] | null>(null);
+  // the rest-of-the-run panel: reorder what's left without stopping the run
+  const [arranging, setArranging] = useState(false);
 
-  const enter = (s: RoutineStep) => {
+  /** Put a step on screen with a clean clock. Takes an id so every route into
+   *  it — next in line, skipped to the back, pulled forward from the panel —
+   *  is the same one call; an id that no longer exists is simply nothing. */
+  const enter = (stepId: string | undefined) => {
+    const s = stepId ? steps.find((x) => x.id === stepId) : undefined;
+    if (!s) return;
     setJustChecked(false);
     setFinished(false);
     setOvertime(0);
     setElapsed(0);
     setPausedAt(null);
     beepedRef.current = false;
+    endAtRef.current = null;
+    startedAtRef.current = null;
     if (s.minutes != null) {
       setPhase("timed");
       setTotal(s.minutes * 60);
       setRemaining(s.minutes * 60);
-      setEndAt(Date.now() + s.minutes * 60_000);
-      setStartedAt(null);
     } else {
       setPhase("ask");
       setAskVal("10");
-      setEndAt(null);
-      setStartedAt(null);
     }
   };
 
-  /* the current timed step: countdown freezes at 00:00, overtime counts on */
-  useWallClock(phase === "timed" && !celebrating && !paused && pendingQueue == null && endAt != null, () => {
-    if (endAt == null) return;
-    const left = Math.round((endAt - Date.now()) / 1000);
+  /* the current timed step: countdown freezes at 00:00, overtime counts on.
+   * The first tick after a step starts is what sets its deadline — the clock
+   * is only ever read from inside the tick, never while rendering. */
+  useWallClock(phase === "timed" && !celebrating && !paused && pendingQueue == null, () => {
+    if (endAtRef.current == null) endAtRef.current = Date.now() + total * 1000;
+    const left = Math.round((endAtRef.current - Date.now()) / 1000);
     if (left > 0) {
       setRemaining(left);
       return;
@@ -657,8 +920,9 @@ function RoutineRun({
   });
 
   /* an untimed step still shows how long it's been on screen */
-  useWallClock(phase === "open" && !celebrating && !paused && pendingQueue == null && startedAt != null && !!step, () => {
-    if (startedAt != null) setElapsed(Math.max(0, Math.round((Date.now() - startedAt) / 1000)));
+  useWallClock(phase === "open" && !celebrating && !paused && pendingQueue == null && !!step, () => {
+    if (startedAtRef.current == null) startedAtRef.current = Date.now();
+    setElapsed(Math.max(0, Math.round((Date.now() - startedAtRef.current) / 1000)));
   });
 
   // freeze the current step's clock, or shift its anchor forward by the paused
@@ -666,6 +930,8 @@ function RoutineRun({
   const togglePause = () => {
     if (pausedAt == null) {
       const now = Date.now();
+      const endAt = endAtRef.current;
+      const startedAt = startedAtRef.current;
       if (phase === "timed" && endAt != null) {
         const left = Math.round((endAt - now) / 1000);
         if (left > 0) setRemaining(left);
@@ -676,8 +942,8 @@ function RoutineRun({
       setPausedAt(now);
     } else {
       const delta = Date.now() - pausedAt;
-      if (endAt != null) setEndAt(endAt + delta);
-      if (startedAt != null) setStartedAt(startedAt + delta);
+      if (endAtRef.current != null) endAtRef.current += delta;
+      if (startedAtRef.current != null) startedAtRef.current += delta;
       setPausedAt(null);
     }
   };
@@ -700,14 +966,15 @@ function RoutineRun({
     // let the check animation land before moving on
     setTimeout(() => {
       if (rest.length === 0) {
+        // the end of a routine deserves the full screen back
+        onRestore?.();
         setCelebrating(true);
         setTimeout(onFinished, 1400);
       } else if (restSeconds > 0) {
         setPendingQueue(rest); // a breather, then the next step
       } else {
         setQueue(rest);
-        const next = steps.find((s) => s.id === rest[0]);
-        if (next) enter(next);
+        enter(rest[0]);
       }
     }, 700);
   };
@@ -718,16 +985,52 @@ function RoutineRun({
     setPendingQueue(null);
     if (!q) return;
     setQueue(q);
-    const next = steps.find((s) => s.id === q[0]);
-    if (next) enter(next);
+    enter(q[0]);
   };
 
   const skipStep = () => {
     if (queue.length < 2 || justChecked) return;
     const rest = [...queue.slice(1), queue[0]];
     setQueue(rest);
-    const next = steps.find((s) => s.id === rest[0]);
-    if (next) enter(next);
+    enter(rest[0]);
+  };
+
+  /* ——— rearranging what's left, mid-run ——— */
+
+  /** Pull a step to the front and start it now. Everything else keeps its
+   *  order, so the steps you jumped over are still waiting behind it. */
+  const jumpTo = (stepId: string) => {
+    if (justChecked) return;
+    setArranging(false);
+    if (stepId === queue[0]) return;
+    setQueue([stepId, ...queue.filter((id) => id !== stepId)]);
+    enter(stepId);
+  };
+
+  /** Tick a step off from the panel — done earlier, or done alongside
+   *  another. It leaves the queue; if it was the one on screen, the run
+   *  moves on exactly as if its own check had been tapped. */
+  const tickFromPanel = (stepId: string) => {
+    if (justChecked) return;
+    setRoutineStepDone(item, day, stepId, true);
+    const rest = queue.filter((id) => id !== stepId);
+    if (rest.length === 0) {
+      setArranging(false);
+      onRestore?.();
+      setCelebrating(true);
+      setTimeout(onFinished, 1400);
+      return;
+    }
+    setQueue(rest);
+    // it was the one on screen — move on exactly as its own check would
+    if (stepId === queue[0]) enter(rest[0]);
+  };
+
+  /** Un-tick something finished earlier — it goes back to the end of the
+   *  line rather than interrupting whatever is on screen now. */
+  const reopenStep = (stepId: string) => {
+    setRoutineStepDone(item, day, stepId, false);
+    setQueue((q) => (q.includes(stepId) ? q : [...q, stepId]));
   };
 
   const doneToday = routineDoneSteps(db, item.id, day);
@@ -749,6 +1052,9 @@ function RoutineRun({
       <RestBreak
         nextTitle={nextStep?.title}
         seconds={restSeconds}
+        minimized={minimized}
+        onMinimize={onMinimize}
+        onRestore={onRestore}
         onDone={proceedAfterRest}
         onClose={onClose}
       />
@@ -765,8 +1071,125 @@ function RoutineRun({
   const r = (RING_SIZE - RING_STROKE) / 2;
   const circumference = 2 * Math.PI * r;
 
+  if (minimized) {
+    return (
+      <MiniBar
+        title={step.title}
+        context={item.title}
+        clock={
+          phase === "ask"
+            ? undefined
+            : phase === "timed"
+              ? finished ? `+${pad(omm)}:${pad(oss)}` : `${pad(mm)}:${pad(ss)}`
+              : `${pad(emm)}:${pad(ess)}`
+        }
+        overtime={phase === "timed" && finished}
+        hint={phase === "ask" ? "needs a length — tap to open" : undefined}
+        fraction={phase === "timed" ? fraction : undefined}
+        paused={paused}
+        onTogglePause={phase === "ask" ? undefined : togglePause}
+        onDone={phase === "ask" ? undefined : doneStep}
+        doneLabel="Step done"
+        onExpand={() => onRestore?.()}
+      />
+    );
+  }
+
+  // the run, laid out: pull anything still waiting to the front, tick off
+  // what happened away from the screen, or bring back something finished
+  if (arranging) {
+    const remainingSteps = queue
+      .map((id) => steps.find((s) => s.id === id))
+      .filter((s): s is RoutineStep => !!s);
+    const finishedSteps = steps.filter((s) => doneToday.has(s.id) && !queue.includes(s.id));
+    return (
+      <div className="fixed inset-0 z-[100] flex flex-col bg-bg px-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+        <div className="mx-auto w-full max-w-md">
+          <p className="text-sm text-ink-3">{item.title}</p>
+          <h1 className="mt-1 font-display text-[1.6rem] leading-tight text-ink">The rest of this run</h1>
+          <p className="mt-1.5 text-sm leading-relaxed text-ink-3">
+            Tap a step to do it next. Steps you skip past keep their place in line.
+          </p>
+        </div>
+
+        <div className="mx-auto mt-5 w-full max-w-md flex-1 space-y-2 overflow-y-auto">
+          {remainingSteps.map((s, i) => (
+            <div
+              key={s.id}
+              className={`flex items-center gap-3 rounded-(--radius-card) border bg-surface px-3 py-2.5 shadow-(--shadow-card) ${
+                i === 0 ? "border-accent" : "border-line-soft"
+              }`}
+            >
+              <button
+                onClick={() => tickFromPanel(s.id)}
+                aria-label={`Mark "${s.title}" done`}
+                title="Done already — tick it off"
+                className="pressable group grid h-7 w-7 shrink-0 place-items-center rounded-lg border-2 border-line text-ink-3 transition-colors hover:border-accent hover:text-accent-deep"
+              >
+                {/* faint until you reach for it: this is an empty box you can
+                    tick, not a step already ticked */}
+                <svg
+                  width="13" height="13" viewBox="0 0 12 12" fill="none"
+                  className="opacity-30 transition-opacity group-hover:opacity-100"
+                >
+                  <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button
+                onClick={() => jumpTo(s.id)}
+                className="min-w-0 flex-1 text-left"
+              >
+                <span className="block truncate text-[0.95rem] text-ink">{s.title}</span>
+                <span className="block text-xs text-ink-3 tabular-nums">
+                  {i === 0 ? "on now" : s.minutes != null ? `${s.minutes} min` : "no timer"}
+                </span>
+              </button>
+              {i > 0 && (
+                <button
+                  onClick={() => jumpTo(s.id)}
+                  className="pressable shrink-0 rounded-full border border-line px-2.5 py-1 text-xs font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
+                >
+                  Do next
+                </button>
+              )}
+            </div>
+          ))}
+
+          {finishedSteps.length > 0 && (
+            <div className="pt-4">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-3">Done today</p>
+              <div className="space-y-1.5">
+                {finishedSteps.map((s) => (
+                  <div key={s.id} className="flex items-center gap-3 rounded-xl border border-line-soft px-3 py-2 opacity-70">
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg border-2 border-accent bg-accent text-white dark:text-[#10160f]">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-ink-3 line-through decoration-ink-3/40">{s.title}</span>
+                    <button
+                      onClick={() => reopenStep(s.id)}
+                      className="pressable shrink-0 text-xs font-medium text-ink-3 hover:text-ink"
+                    >
+                      Put back
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mx-auto mt-5 w-full max-w-md">
+          <Button full onClick={() => setArranging(false)}>Back to the step</Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-7 bg-bg px-6 py-10 text-center">
+      {onMinimize && <MinimizeButton onClick={onMinimize} />}
       <div>
         <p className="text-lg text-ink-3 mb-1">{item.title}</p>
         <h1 className="font-display text-[2rem] sm:text-[2.75rem] leading-tight text-ink max-w-3xl">
@@ -813,7 +1236,11 @@ function RoutineRun({
           />
           <div className="mt-3 flex items-center justify-between gap-2">
             <button
-              onClick={() => { setPhase("open"); setElapsed(0); setStartedAt(Date.now()); }}
+              onClick={() => {
+                startedAtRef.current = null;
+                setElapsed(0);
+                setPhase("open");
+              }}
               className="pressable text-sm font-medium text-ink-3 hover:text-ink"
             >
               No timer, just show it
@@ -827,7 +1254,7 @@ function RoutineRun({
                 setRemaining(m * 60);
                 setFinished(false);
                 setOvertime(0);
-                setEndAt(Date.now() + m * 60_000);
+                endAtRef.current = null;
                 setPhase("timed");
               }}
             >
@@ -898,7 +1325,7 @@ function RoutineRun({
         </div>
       )}
 
-      <div className="flex items-center gap-6">
+      <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
         {(phase === "timed" || phase === "open") && (
           <button
             onClick={togglePause}
@@ -911,6 +1338,11 @@ function RoutineRun({
         {queue.length > 1 && (
           <button onClick={skipStep} className="pressable text-sm font-medium text-ink-2 hover:text-ink px-3 py-2">
             Skip for now ↻
+          </button>
+        )}
+        {steps.length > 1 && (
+          <button onClick={() => setArranging(true)} className="pressable text-sm font-medium text-ink-2 hover:text-ink px-3 py-2">
+            Rearrange ⇅
           </button>
         )}
         <button onClick={onClose} className="pressable text-sm text-ink-3 hover:text-ink px-3 py-2">
