@@ -51,3 +51,6 @@ next-env.d.ts
 
 # mdBook build output
 /docs/book/
+
+# local load-test session cache
+loadtest/.tokens.json
