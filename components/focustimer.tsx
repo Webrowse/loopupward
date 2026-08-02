@@ -987,7 +987,11 @@ function RoutineRun({
     }
   };
 
+  // The runner stays mounted while minimized so the clock and the queue keep
+  // going, but it no longer owns the screen: the page underneath has to
+  // scroll, and Escape belongs to whatever the user is actually working in.
   useEffect(() => {
+    if (minimized) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
@@ -995,7 +999,7 @@ function RoutineRun({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [onClose]);
+  }, [minimized, onClose]);
 
   const doneStep = () => {
     if (!step || justChecked) return;
