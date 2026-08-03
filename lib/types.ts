@@ -44,6 +44,12 @@ export interface ListEntry {
   amount: number | null;
   unit: string | null;
   done: boolean;
+  /** When this became the thing being tried (epoch ms), so a list of things to
+   *  try holds three states, not two: waiting, trying, done. A hobby list needs
+   *  to say "I'm on pottery"; a travel list needs to say "Hampi is next". A
+   *  timestamp rather than a flag, because how long it's been in progress is
+   *  the part worth knowing. Cleared when the entry is ticked done. */
+  pickedAt: number | null;
 }
 
 export type TrackerType =

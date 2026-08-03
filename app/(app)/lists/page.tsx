@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
-import { formatEntryAmount, itemProgress, listTotals } from "@/lib/progress";
-import { Item } from "@/lib/types";
+import { formatEntryAmount, itemProgress, listTotals, pickedEntries, tryingFor } from "@/lib/progress";
+import { Item, ListEntry } from "@/lib/types";
 import { Bar } from "@/components/progress";
 import { BackLink, Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
@@ -43,6 +43,8 @@ export default function ListsPage() {
         <Button small onClick={() => setCreating(true)}>+ New list</Button>
       </div>
 
+      <TryingNow lists={lists} onOpen={setOpenId} />
+
       {lists.length === 0 ? (
         <EmptyState
           emoji="📋"
@@ -76,6 +78,7 @@ function CompactListCard({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const done = entries.filter((e) => e.done).length;
   const totals = listTotals(entries);
   const progress = itemProgress(db, item);
+  const picked = pickedEntries(entries);
 
   return (
     <button
@@ -89,6 +92,13 @@ function CompactListCard({ item, onOpen }: { item: Item; onOpen: () => void }) {
           : `${entries.length} thing${entries.length === 1 ? "" : "s"} · ${done} done`}
         {totals && ` · ${totals}`}
       </p>
+      {/* what you're on beats what you've counted: a wall of cards all reading
+          "20 things · 0 done" says nothing about where you actually are */}
+      {picked.length > 0 && (
+        <p className="mt-1 truncate text-xs font-medium text-accent-deep">
+          trying: {picked.map((e) => e.text).join(", ")}
+        </p>
+      )}
       {entries.length > 0 && progress !== null && (
         <div className="mt-2.5">
           <Bar value={progress} height={3} />
@@ -104,10 +114,23 @@ function ListCard({ item, onCollapse }: { item: Item; onCollapse: () => void }) 
   const done = entries.filter((e) => e.done).length;
   const totals = listTotals(entries);
   const progress = itemProgress(db, item);
+  const picked = pickedEntries(entries);
+  const pickedIds = new Set(picked.map((e) => e.id));
+  const rest = entries.filter((e) => !pickedIds.has(e.id));
 
+  // ticking something off ends the trying: nothing is both in progress and done
   const toggle = (id: string) =>
     updateItem(item.id, {
-      entries: entries.map((e) => (e.id === id ? { ...e, done: !e.done } : e)),
+      entries: entries.map((e) =>
+        e.id === id ? { ...e, done: !e.done, pickedAt: e.done ? e.pickedAt : null } : e
+      ),
+    });
+
+  const togglePick = (id: string) =>
+    updateItem(item.id, {
+      entries: entries.map((e) =>
+        e.id === id ? { ...e, pickedAt: e.pickedAt == null ? Date.now() : null } : e
+      ),
     });
 
   return (
@@ -148,32 +171,35 @@ function ListCard({ item, onCollapse }: { item: Item; onCollapse: () => void }) 
       )}
 
       {entries.length > 0 ? (
-        <div className="mt-3 space-y-1">
-          {entries.map((e) => (
-            <div key={e.id} className="flex items-center gap-2.5 text-sm">
-              <button
-                onClick={() => toggle(e.id)}
-                aria-label={e.done ? `Untick "${e.text}"` : `Tick "${e.text}"`}
-                className={`pressable grid h-5 w-5 shrink-0 place-items-center rounded-md border-2 transition-colors ${
-                  e.done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
-                }`}
-              >
-                {e.done && (
-                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </button>
-              <span className={`min-w-0 truncate ${e.done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink-2"}`}>
-                {e.text}
-              </span>
-              {e.amount != null && (
-                <span className="ml-auto shrink-0 text-xs text-ink-3 tabular-nums">
-                  {formatEntryAmount(e.amount, e.unit)}
-                </span>
-              )}
+        <div className="mt-3">
+          {/* what you're on rides at the top, whatever its place in the list */}
+          {picked.length > 0 && (
+            <div className="mb-2.5 border-b border-line-soft pb-2.5">
+              <p className="mb-1 text-[0.68rem] font-medium uppercase tracking-wide text-accent-deep">
+                Trying now
+              </p>
+              <div className="space-y-1">
+                {picked.map((e) => (
+                  <EntryRow key={e.id} entry={e} onToggle={() => toggle(e.id)} onTogglePick={() => togglePick(e.id)} />
+                ))}
+              </div>
             </div>
-          ))}
+          )}
+          <div className="space-y-1">
+            {rest.map((e) => (
+              <EntryRow key={e.id} entry={e} onToggle={() => toggle(e.id)} onTogglePick={() => togglePick(e.id)} />
+            ))}
+          </div>
+          {/* the pick control hides until you reach for a line, which is right
+              for a control everyone already expects and wrong for an idea
+              nobody has met yet — so say it once, on lists not using it */}
+          {picked.length === 0 && entries.length > 2 && (
+            <p className="mt-2.5 border-t border-line-soft pt-2 text-xs text-ink-3">
+              Trying things rather than buying them? Tap{" "}
+              <span className="font-medium">pick</span>{" "}
+              on a line to make it the one you&rsquo;re on.
+            </p>
+          )}
         </div>
       ) : (
         <p className="mt-2 text-xs text-ink-3">
@@ -181,6 +207,97 @@ function ListCard({ item, onCollapse }: { item: Item; onCollapse: () => void }) 
           start adding.
         </p>
       )}
+    </div>
+  );
+}
+
+/** One line of an open list: tick it done, or pick it up as the thing you're
+ *  trying. Two controls on purpose — "I'm on this now" and "I finished it" are
+ *  different events, and folding them into one checkbox would make ticking
+ *  something off feel like a gamble. */
+function EntryRow({
+  entry, onToggle, onTogglePick,
+}: {
+  entry: ListEntry;
+  onToggle: () => void;
+  onTogglePick: () => void;
+}) {
+  const picked = entry.pickedAt != null && !entry.done;
+  return (
+    <div className={`group flex items-center gap-2.5 text-sm ${picked ? "-ml-2 border-l-2 border-accent pl-[0.375rem]" : ""}`}>
+      <button
+        onClick={onToggle}
+        aria-label={entry.done ? `Untick "${entry.text}"` : `Tick "${entry.text}"`}
+        className={`pressable grid h-5 w-5 shrink-0 place-items-center rounded-md border-2 transition-colors ${
+          entry.done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"
+        }`}
+      >
+        {entry.done && (
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6.5 4.8 9 10 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
+
+      <span className={`min-w-0 truncate ${entry.done ? "text-ink-3 line-through decoration-ink-3/40" : picked ? "text-ink" : "text-ink-2"}`}>
+        {entry.text}
+      </span>
+
+      {entry.amount != null && (
+        <span className="shrink-0 text-xs text-ink-3 tabular-nums">
+          {formatEntryAmount(entry.amount, entry.unit)}
+        </span>
+      )}
+
+      {picked && (
+        <span className="shrink-0 text-[0.68rem] text-ink-3">{tryingFor(entry.pickedAt!)}</span>
+      )}
+
+      {/* stays out of the way until wanted; always visible on touch, where
+          there is no hover to reveal it */}
+      {!entry.done && (
+        <button
+          onClick={onTogglePick}
+          aria-pressed={picked}
+          aria-label={picked ? `Stop trying "${entry.text}"` : `Start trying "${entry.text}"`}
+          className={`pressable ml-auto shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-medium transition-opacity ${
+            picked
+              ? "border-accent text-accent-deep"
+              : "touch-visible border-line text-ink-3 opacity-0 hover:border-accent hover:text-accent-deep group-hover:opacity-100 focus:opacity-100"
+          }`}
+        >
+          {picked ? "trying" : "pick"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Every list's picks in one band. Without this, "what am I actually on?"
+ *  means opening eleven cards one at a time. */
+function TryingNow({ lists, onOpen }: { lists: Item[]; onOpen: (id: string) => void }) {
+  const rows = lists.flatMap((l) =>
+    pickedEntries(l.entries ?? []).map((e) => ({ list: l, entry: e }))
+  );
+  if (rows.length === 0) return null;
+  return (
+    <div className="mb-5 rounded-(--radius-card) border border-accent/40 bg-accent-soft/30 p-4">
+      <p className="mb-2 text-[0.68rem] font-medium uppercase tracking-wide text-accent-deep">
+        Trying now
+      </p>
+      <div className="space-y-1.5">
+        {rows.map(({ list, entry }) => (
+          <button
+            key={entry.id}
+            onClick={() => onOpen(list.id)}
+            className="pressable flex w-full items-baseline gap-2 text-left text-sm"
+          >
+            <span className="min-w-0 truncate text-ink">{entry.text}</span>
+            <span className="min-w-0 shrink truncate text-xs text-ink-3">{list.title}</span>
+            <span className="ml-auto shrink-0 text-xs text-ink-3">{tryingFor(entry.pickedAt!)}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

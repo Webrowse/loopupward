@@ -561,7 +561,7 @@ function ListEntriesEditor({ item }: { item: Item }) {
     if (!newText.trim()) return;
     save([...entries, {
       id: uid(), text: newText.trim(), amount: parseAmt(newAmount),
-      unit: newUnit.trim() || null, done: false,
+      unit: newUnit.trim() || null, done: false, pickedAt: null,
     }]);
     setNewText("");
     setNewAmount("");
@@ -603,7 +603,13 @@ function ListEntriesEditor({ item }: { item: Item }) {
                 <DragDots />
               </button>
               <button
-                onClick={() => save(entries.map((x) => (x.id === e.id ? { ...x, done: !x.done } : x)))}
+                // same rule as the Lists page: finishing something ends the
+                // trying, so nothing is ever both at once
+                onClick={() =>
+                  save(entries.map((x) =>
+                    x.id === e.id ? { ...x, done: !x.done, pickedAt: x.done ? x.pickedAt : null } : x
+                  ))
+                }
                 aria-label={e.done ? `Untick "${e.text}"` : `Tick "${e.text}"`}
                 className={`pressable grid h-5 w-5 shrink-0 place-items-center rounded-md border-2 transition-colors ${
                   e.done ? "border-accent bg-accent text-white dark:text-[#10160f]" : "border-line hover:border-accent"

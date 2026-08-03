@@ -254,6 +254,28 @@ export function formatEntryAmount(amount: number, unit: string | null): string {
     : `${amount.toLocaleString()} ${unit}`;
 }
 
+/** The entries currently being tried, oldest pick first — a list of things to
+ *  try has a middle state, and this is what stands in it. Done entries never
+ *  count, however they were ticked. */
+export function pickedEntries(entries: ListEntry[]): ListEntry[] {
+  return entries
+    .filter((e) => e.pickedAt != null && !e.done)
+    .sort((a, b) => (a.pickedAt ?? 0) - (b.pickedAt ?? 0));
+}
+
+/** "3 days", "5 weeks" — how long something has been in progress. Rounded
+ *  down and deliberately coarse: this is a nudge, not a stopwatch. */
+export function tryingFor(pickedAt: number, now = Date.now()): string {
+  const days = Math.floor((now - pickedAt) / 86_400_000);
+  if (days < 1) return "today";
+  if (days === 1) return "1 day";
+  if (days < 14) return `${days} days`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 9) return `${weeks} weeks`;
+  const months = Math.floor(days / 30);
+  return months <= 1 ? "a month" : `${months} months`;
+}
+
 /** Per-unit sums of a list's amounts: "₹1,240 · 3 kg". Only entries carrying
  *  both an amount and a unit count; done entries still count — the total is
  *  what the list adds up to, and shouldn't dance as things get ticked.
