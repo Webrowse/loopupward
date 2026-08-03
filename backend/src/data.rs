@@ -42,6 +42,13 @@ pub struct ListEntry {
     pub unit: Option<String>,
     #[serde(default)]
     pub done: bool,
+    /// Epoch ms this entry became the thing being tried, so a list of things
+    /// to try ("learn pottery", "visit Hampi") can hold a middle state
+    /// between untouched and done. None means waiting, or already finished.
+    /// A timestamp rather than a flag: how long something has been in
+    /// progress is the useful part.
+    #[serde(default)]
+    pub picked_at: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize)]
