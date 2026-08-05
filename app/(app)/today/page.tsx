@@ -18,6 +18,7 @@ import { Action, Cadence, HORIZON_META, Item } from "@/lib/types";
 import { quickTasks } from "@/lib/suggestions";
 import { DailyJournal } from "@/components/journal";
 import { useFocusSession } from "@/components/focussession";
+import { DayRunSheet } from "@/components/dayrun";
 import { ListIcon, RoutineIcon } from "@/components/icons";
 import { SuggestionsSheet } from "@/components/suggestions";
 import { HorizonList, ScheduleEditor, ScheduleValue } from "@/components/items";
@@ -53,7 +54,7 @@ function Today() {
   const { db, toggleEntry, deleteAction, addAction, reorderDay } = useLife();
   // the timer itself lives in the app layout, so it keeps running (minimized)
   // wherever you go next — this page only ever hands it a row
-  const { openFocus } = useFocusSession();
+  const { openFocus, openDayRun } = useFocusSession();
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -76,6 +77,7 @@ function Today() {
   const [editingItemTitle, setEditingItemTitle] = useState<Item | null>(null);
   const [planningHabit, setPlanningHabit] = useState<{ item: Item; date: string } | null>(null);
   const [reordering, setReordering] = useState(false);
+  const [planningRun, setPlanningRun] = useState(false);
   const [borrowing, setBorrowing] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [hideDone, setHideDone] = useState(false);
@@ -136,6 +138,8 @@ function Today() {
 
   const done = visible.filter((e) => e.action.done).length;
   const total = visible.length;
+  // routines keep their own ▶ Run, so they don't count toward "worth a run"
+  const runnable = visible.filter((e) => !e.action.done && e.item?.kind !== "routine").length;
 
   // arriving from the Routines page with ?focus=<entry id> opens the timer on
   // that routine directly, once the data is in. The param is spent as soon as
@@ -235,10 +239,18 @@ function Today() {
           bar and the day strip instead, where appearing/disappearing
           doesn't move anything the user might currently be clicking */}
       {total > 0 && isToday && (
-        <p className="mb-4 text-sm text-ink-2 lg:max-w-2xl">
+        <p className="mb-4 flex flex-wrap items-center gap-2 text-sm text-ink-2 lg:max-w-2xl">
           {done === total
             ? "Everything done. Rest well."
             : `${total - done} small ${total - done === 1 ? "action" : "actions"} between you and a good day.`}
+          {runnable > 1 && (
+            <button
+              onClick={() => setPlanningRun(true)}
+              className="pressable rounded-full border border-line px-2.5 py-0.5 text-xs font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
+            >
+              ▶ Run them
+            </button>
+          )}
         </p>
       )}
 
@@ -259,6 +271,16 @@ function Today() {
               <div className="mb-1.5 flex items-center justify-between">
                 <p className="text-xs font-medium uppercase tracking-wide text-ink-3">Progress</p>
                 <div className="flex items-center gap-2.5">
+                  {/* walk the scattered ones instead of picking them off one
+                      at a time — only worth offering when there are several */}
+                  {!reordering && runnable > 1 && (
+                    <button
+                      onClick={() => setPlanningRun(true)}
+                      className="pressable text-xs font-medium text-accent-deep"
+                    >
+                      Run the day ▶
+                    </button>
+                  )}
                   {reordering ? (
                     <button
                       onClick={() => setReordering(false)}
@@ -428,6 +450,15 @@ function Today() {
       <EditActionSheet action={editingAction} onClose={() => setEditingAction(null)} />
       <EditItemTitleSheet item={editingItemTitle} onClose={() => setEditingItemTitle(null)} />
       <HabitDayNoteSheet planning={planningHabit} onClose={() => setPlanningHabit(null)} />
+      <DayRunSheet
+        open={planningRun}
+        day={day}
+        onClose={() => setPlanningRun(false)}
+        onStart={(plan) => {
+          setPlanningRun(false);
+          openDayRun(day, plan);
+        }}
+      />
     </div>
   );
 }

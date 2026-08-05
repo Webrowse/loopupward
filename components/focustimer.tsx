@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLife } from "@/lib/data/provider";
-import { routineDoneSteps, routineMinutes, TodayEntry } from "@/lib/progress";
+import { routineDoneSteps, routineMinutes, todayEntries, TodayEntry } from "@/lib/progress";
 import { Item, RoutineStep } from "@/lib/types";
 import { Button, Chip, Field, Sheet, inputCls } from "@/components/ui";
 
@@ -761,6 +761,131 @@ function DayCleared({ onClose }: { onClose: () => void }) {
   );
 }
 
+/**
+ * A routine's script, walked. Everything the runner needs comes from the
+ * routine itself: its steps, which of them today's note already ticked, and
+ * where a tick should be written.
+ */
+function RoutineRun({
+  item, day, minimized, onMinimize, onRestore, onFinished, onClose,
+}: {
+  item: Item;
+  day: string;
+  minimized?: boolean;
+  onMinimize?: () => void;
+  onRestore?: () => void;
+  onFinished: () => void;
+  onClose: () => void;
+}) {
+  const { db, setRoutineStepDone } = useLife();
+  return (
+    <StepRun
+      title={item.title}
+      steps={item.steps ?? []}
+      doneIds={routineDoneSteps(db, item.id, day)}
+      onStepDone={(stepId, done) => setRoutineStepDone(item, day, stepId, done)}
+      minimized={minimized}
+      onMinimize={onMinimize}
+      onRestore={onRestore}
+      onFinished={onFinished}
+      onClose={onClose}
+    />
+  );
+}
+
+/**
+ * The day's own scattered tasks, walked the same way — one on screen at a
+ * time, in the order you chose, instead of picked one by one off the list.
+ * Nothing is stored: this is a way of doing today's list, not a new routine,
+ * so the steps are the entries themselves and a tick is the same tick the
+ * list's own checkbox writes.
+ */
+function DayRun({
+  day, plan, minimized, onMinimize, onRestore, onFinished, onClose,
+}: {
+  day: string;
+  /** the chosen entries, in the chosen order, with the lengths chosen for them */
+  plan: { entryId: string; minutes: number | null }[];
+  minimized?: boolean;
+  onMinimize?: () => void;
+  onRestore?: () => void;
+  onFinished: () => void;
+  onClose: () => void;
+}) {
+  const { db, toggleEntry } = useLife();
+  const entries = useMemo(() => todayEntries(db, day), [db, day]);
+  const byId = useMemo(() => new Map(entries.map((e) => [e.action.id, e])), [entries]);
+
+  const steps: RoutineStep[] = plan
+    .filter((p) => byId.has(p.entryId))
+    .map((p) => ({
+      id: p.entryId,
+      title: entryText(byId.get(p.entryId)!).title,
+      minutes: p.minutes,
+      itemId: null,
+    }));
+
+  // a task ticked off elsewhere (or before the run started) counts as walked
+  const doneIds = new Set(steps.filter((s) => byId.get(s.id)?.action.done).map((s) => s.id));
+
+  return (
+    <StepRun
+      title="Today"
+      steps={steps}
+      doneIds={doneIds}
+      untimedAsks={false}
+      finishedWords={{
+        emoji: "🌿",
+        headline: "That's the stretch.",
+        sub: `${steps.length} thing${steps.length === 1 ? "" : "s"}, walked through. 🌱`,
+      }}
+      onStepDone={(entryId, done) => {
+        const entry = byId.get(entryId);
+        // toggleEntry flips, so only call it when the row disagrees with the tick
+        if (entry && entry.action.done !== done) toggleEntry(entry, day);
+      }}
+      minimized={minimized}
+      onMinimize={onMinimize}
+      onRestore={onRestore}
+      onFinished={onFinished}
+      onClose={onClose}
+    />
+  );
+}
+
+/**
+ * A day run, from the outside: the walk itself, then the same closing beat the
+ * focus timer gives you. Kept here rather than in the session host so both
+ * kinds of run end the same way.
+ */
+export function DayRunHost({
+  day, plan, minimized, onMinimize, onRestore, onClose,
+}: {
+  day: string;
+  plan: { entryId: string; minutes: number | null }[];
+  minimized?: boolean;
+  onMinimize?: () => void;
+  onRestore?: () => void;
+  onClose: () => void;
+}) {
+  const [finished, setFinished] = useState(false);
+  if (finished) return <DayCleared onClose={onClose} />;
+  return (
+    <DayRun
+      day={day}
+      plan={plan}
+      minimized={minimized}
+      onMinimize={onMinimize}
+      onRestore={onRestore}
+      onFinished={() => {
+        onRestore?.();
+        setFinished(true);
+      }}
+      onClose={onClose}
+    />
+  );
+}
+
 /* ————— a breather between tasks/steps: a short, skippable countdown ————— */
 
 /**
@@ -862,32 +987,43 @@ const ASK_PRESETS = [5, 10, 15, 20, 30];
  * saved per day, so closing mid-run loses nothing, and ticking the last step
  * logs the routine's day by itself.
  */
-function RoutineRun({
-  item, day, minimized = false, onMinimize, onRestore, onFinished, onClose,
+function StepRun({
+  title, steps, doneIds, onStepDone, untimedAsks = true, finishedWords,
+  minimized = false, onMinimize, onRestore, onFinished, onClose,
 }: {
-  item: Item;
-  day: string;
+  /** what is being walked — a routine's name, or the day itself */
+  title: string;
+  steps: RoutineStep[];
+  /** steps already ticked, so a half-finished run picks up where it stopped */
+  doneIds: Set<string>;
+  onStepDone: (stepId: string, done: boolean) => void;
+  /** What a step with no minutes means. In a routine's script it usually means
+   *  the script was never finished, so the runner asks once. In a day's run the
+   *  blank was a deliberate choice made moments ago in the pre-flight, and
+   *  asking again would just undo it — those steps count up instead. */
+  untimedAsks?: boolean;
+  /** what the last tick earns you — a routine and a chosen stretch of the day
+   *  are not the same accomplishment, and should not say the same thing */
+  finishedWords?: { emoji: string; headline: string; sub: string };
   minimized?: boolean;
   onMinimize?: () => void;
   onRestore?: () => void;
   onFinished: () => void;
   onClose: () => void;
 }) {
-  const { db, setRoutineStepDone, restSeconds } = useLife();
-  const steps = item.steps ?? [];
+  const { restSeconds } = useLife();
 
   // what's left to do this run — or the whole script again, when the day
   // was already finished and this is a deliberate second lap
   const [queue, setQueue] = useState<string[]>(() => {
-    const done = routineDoneSteps(db, item.id, day);
-    const open = steps.filter((s) => !done.has(s.id)).map((s) => s.id);
+    const open = steps.filter((s) => !doneIds.has(s.id)).map((s) => s.id);
     return open.length ? open : steps.map((s) => s.id);
   });
   const stepId = queue[0] ?? null;
   const step = steps.find((s) => s.id === stepId) ?? null;
 
   const [phase, setPhase] = useState<"ask" | "timed" | "open">(() =>
-    step == null ? "open" : step.minutes != null ? "timed" : "ask"
+    step == null || step.minutes == null ? (untimedAsks && step ? "ask" : "open") : "timed"
   );
   const [total, setTotal] = useState(() => (step?.minutes ?? 0) * 60);
   const [remaining, setRemaining] = useState(() => (step?.minutes ?? 0) * 60);
@@ -933,9 +1069,11 @@ function RoutineRun({
       setPhase("timed");
       setTotal(s.minutes * 60);
       setRemaining(s.minutes * 60);
-    } else {
+    } else if (untimedAsks) {
       setPhase("ask");
       setAskVal("10");
+    } else {
+      setPhase("open");
     }
   };
 
@@ -1003,7 +1141,7 @@ function RoutineRun({
 
   const doneStep = () => {
     if (!step || justChecked) return;
-    setRoutineStepDone(item, day, step.id, true);
+    onStepDone(step.id, true);
     setJustChecked(true);
     const rest = queue.slice(1);
     // let the check animation land before moving on
@@ -1055,7 +1193,7 @@ function RoutineRun({
    *  moves on exactly as if its own check had been tapped. */
   const tickFromPanel = (stepId: string) => {
     if (justChecked) return;
-    setRoutineStepDone(item, day, stepId, true);
+    onStepDone(stepId, true);
     const rest = queue.filter((id) => id !== stepId);
     if (rest.length === 0) {
       setArranging(false);
@@ -1072,19 +1210,24 @@ function RoutineRun({
   /** Un-tick something finished earlier — it goes back to the end of the
    *  line rather than interrupting whatever is on screen now. */
   const reopenStep = (stepId: string) => {
-    setRoutineStepDone(item, day, stepId, false);
+    onStepDone(stepId, false);
     setQueue((q) => (q.includes(stepId) ? q : [...q, stepId]));
   };
 
-  const doneToday = routineDoneSteps(db, item.id, day);
+  const doneToday = doneIds;
   const next = queue.length > 1 ? steps.find((s) => s.id === queue[1]) : null;
 
   if (celebrating || !step) {
+    const words = finishedWords ?? {
+      emoji: "🌄",
+      headline: "Routine done.",
+      sub: "Every step, walked. 🌱",
+    };
     return (
       <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-bg px-6 py-10 text-center">
-        <p className="text-4xl">🌄</p>
-        <h1 className="font-display text-[2rem] leading-tight text-ink">Routine done.</h1>
-        <p className="text-sm text-ink-3">Every step, walked. 🌱</p>
+        <p className="text-4xl">{words.emoji}</p>
+        <h1 className="font-display text-[2rem] leading-tight text-ink">{words.headline}</h1>
+        <p className="text-sm text-ink-3">{words.sub}</p>
       </div>
     );
   }
@@ -1118,7 +1261,7 @@ function RoutineRun({
     return (
       <MiniBar
         title={step.title}
-        context={item.title}
+        context={title}
         clock={
           phase === "ask"
             ? undefined
@@ -1148,7 +1291,7 @@ function RoutineRun({
     return (
       <div className="fixed inset-0 z-[100] flex flex-col bg-bg px-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto w-full max-w-md">
-          <p className="text-sm text-ink-3">{item.title}</p>
+          <p className="text-sm text-ink-3">{title}</p>
           <h1 className="mt-1 font-display text-[1.6rem] leading-tight text-ink">The rest of this run</h1>
           <p className="mt-1.5 text-sm leading-relaxed text-ink-3">
             Tap a step to do it next. Steps you skip past keep their place in line.
@@ -1234,7 +1377,7 @@ function RoutineRun({
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-7 bg-bg px-6 py-10 text-center">
       {onMinimize && <MinimizeButton onClick={onMinimize} />}
       <div>
-        <p className="text-lg text-ink-3 mb-1">{item.title}</p>
+        <p className="text-lg text-ink-3 mb-1">{title}</p>
         <h1 className="font-display text-[2rem] sm:text-[2.75rem] leading-tight text-ink max-w-3xl">
           {step.title}
         </h1>

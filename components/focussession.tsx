@@ -4,13 +4,17 @@ import { createContext, ReactNode, useCallback, useContext, useMemo, useState } 
 import { useLife } from "@/lib/data/provider";
 import { today } from "@/lib/dates";
 import { todayEntries } from "@/lib/progress";
-import { FocusTimer } from "@/components/focustimer";
+import { DayRunStep } from "@/components/dayrun";
+import { DayRunHost, FocusTimer } from "@/components/focustimer";
 
 interface FocusSessionValue {
   /** Put a row of some day on the timer. `autoRun` sends a routine straight
    *  into its step runner instead of the setup sheet. Asking for the row
    *  that's already running just brings it back to full screen. */
   openFocus: (entryId: string, opts?: { day?: string; autoRun?: boolean }) => void;
+  /** Walk a chosen set of today's rows one at a time. The plan is disposable:
+   *  it lives here until the run ends and is never written anywhere. */
+  openDayRun: (day: string, plan: DayRunStep[]) => void;
   /** the row the timer holds right now, minimized or not — null when idle */
   focusingId: string | null;
   minimized: boolean;
@@ -22,6 +26,12 @@ export function useFocusSession(): FocusSessionValue {
   const ctx = useContext(FocusSessionContext);
   if (!ctx) throw new Error("useFocusSession must be used inside <FocusSessionHost>");
   return ctx;
+}
+
+interface DaySession {
+  day: string;
+  plan: DayRunStep[];
+  run: number;
 }
 
 interface Session {
@@ -45,10 +55,19 @@ interface Session {
 export function FocusSessionHost({ children }: { children: ReactNode }) {
   const { db, toggleEntry } = useLife();
   const [session, setSession] = useState<Session | null>(null);
+  const [daySession, setDaySession] = useState<DaySession | null>(null);
   const [minimized, setMinimized] = useState(false);
+
+  const openDayRun = useCallback<FocusSessionValue["openDayRun"]>((day, plan) => {
+    if (plan.length === 0) return;
+    setMinimized(false);
+    setSession(null); // one thing on screen at a time
+    setDaySession((prev) => ({ day, plan, run: (prev?.run ?? 0) + 1 }));
+  }, []);
 
   const openFocus = useCallback<FocusSessionValue["openFocus"]>((entryId, opts = {}) => {
     setMinimized(false);
+    setDaySession(null);
     setSession((prev) =>
       prev && prev.entryId === entryId
         ? prev // already on the timer — the tap just means "show it to me"
@@ -60,8 +79,8 @@ export function FocusSessionHost({ children }: { children: ReactNode }) {
   const entries = useMemo(() => (day ? todayEntries(db, day) : []), [db, day]);
 
   const value = useMemo<FocusSessionValue>(
-    () => ({ openFocus, focusingId: session?.entryId ?? null, minimized }),
-    [openFocus, session, minimized]
+    () => ({ openFocus, openDayRun, focusingId: session?.entryId ?? null, minimized }),
+    [openFocus, openDayRun, session, minimized]
   );
 
   return (
@@ -82,6 +101,20 @@ export function FocusSessionHost({ children }: { children: ReactNode }) {
           setMinimized(false);
         }}
       />
+      {daySession && (
+        <DayRunHost
+          key={`day-${daySession.run}`}
+          day={daySession.day}
+          plan={daySession.plan}
+          minimized={minimized}
+          onMinimize={() => setMinimized(true)}
+          onRestore={() => setMinimized(false)}
+          onClose={() => {
+            setDaySession(null);
+            setMinimized(false);
+          }}
+        />
+      )}
     </FocusSessionContext.Provider>
   );
 }
