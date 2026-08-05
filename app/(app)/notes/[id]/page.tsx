@@ -234,7 +234,16 @@ function NotePageBody({ item }: { item: Item }) {
             minHeightClass="min-h-56"
           />
         ) : richBody.trim() ? (
-          <MarkdownView md={richBody} />
+          <MarkdownView
+            md={richBody}
+            // ticking a task in a note is a complete act, not a draft: it saves
+            // itself, so the body is never left dirty behind an unpressed Save
+            onChange={(next) => {
+              setRichBody(next);
+              setBaseline(next);
+              updateItem(item.id, { richBody: next });
+            }}
+          />
         ) : (
           <button
             onClick={() => setEditing(true)}

@@ -15,18 +15,42 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/** Inline spans: `code` first (its contents stay literal), then bold,
- *  italic, strike, links. Input arrives already HTML-escaped. */
+/** Turn bare URLs into links, but only in the parts of the string that aren't
+ *  already a link or a code span — otherwise an href gets linked inside itself
+ *  and a URL written as `code` stops being literal. */
+function autolink(html: string): string {
+  return html
+    .split(/(<a\b[^>]*>[\s\S]*?<\/a>|<code>[\s\S]*?<\/code>)/)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part.replace(
+            /(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g,
+            '$1<a href="$2" target="_blank" rel="noreferrer">$2</a>'
+          )
+    )
+    .join("");
+}
+
+/** Inline spans: `code` first (its contents stay literal), then images before
+ *  links (an image is a link with a bang, so the link rule would eat it),
+ *  then bold, italic, strike, and finally bare URLs. Input arrives already
+ *  HTML-escaped, and only http(s) targets are allowed through. */
 function inlineMd(escaped: string): string {
-  return escaped
+  const withSpans = escaped
     .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
-    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<i>$2</i>")
-    .replace(/~~([^~]+)~~/g, "<s>$1</s>")
+    .replace(
+      /!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g,
+      '<img src="$2" alt="$1" loading="lazy">'
+    )
     .replace(
       /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
       '<a href="$2" target="_blank" rel="noreferrer">$1</a>'
-    );
+    )
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<i>$2</i>")
+    .replace(/~~([^~]+)~~/g, "<s>$1</s>");
+  return autolink(withSpans);
 }
 
 /** Split a table row on its pipes. Hand-scanned rather than a regex with a
@@ -65,11 +89,37 @@ function alignOf(cell: string): string {
   return "";
 }
 
+/** How deep a list line sits. Tabs count as four spaces, and every two
+ *  spaces is one level, so both "  - x" and "    - x" nest as people expect. */
+function indentOf(line: string): number {
+  const ws = /^[ \t]*/.exec(line)?.[0] ?? "";
+  let n = 0;
+  for (const ch of ws) n += ch === "\t" ? 4 : 1;
+  return Math.floor(n / 2);
+}
+
 export function mdToHtml(md: string): string {
   const out: string[] = [];
-  let list: "ul" | "ol" | null = null;
+  /** Open lists, innermost last. Nested lists live inside the parent's <li>,
+   *  so the <li> is only closed once its children are. */
+  const lists: { tag: "ul" | "ol"; depth: number }[] = [];
+  let liOpen = false;
   let quote = false;
-  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  /** Task checkboxes are numbered in document order, which is how a click on
+   *  one finds its line again in the markdown source. */
+  let taskIndex = 0;
+
+  const closeLists = (toDepth = -1) => {
+    while (lists.length && lists[lists.length - 1].depth > toDepth) {
+      if (liOpen) { out.push("</li>"); liOpen = false; }
+      out.push(`</${lists.pop()!.tag}>`);
+      liOpen = lists.length > 0; // the parent's <li> is open again
+    }
+  };
+  const closeAllLists = () => {
+    closeLists(-1);
+    liOpen = false;
+  };
   const closeQuote = () => { if (quote) { out.push("</blockquote>"); quote = false; } };
 
   const lines = md.split(/\r?\n/);
@@ -79,11 +129,11 @@ export function mdToHtml(md: string): string {
     // fenced code: everything until the closing fence stays literal
     const fence = /^\s*(`{3,}|~{3,})\s*([\w+#-]*)\s*$/.exec(line);
     if (fence) {
-      closeList(); closeQuote();
-      const marker = fence[1][0];
+      closeAllLists(); closeQuote();
+      const marker = fence[1][0] === "`" ? "`" : "~";
       const body: string[] = [];
       let j = i + 1;
-      while (j < lines.length && !new RegExp(`^\\s*${marker === "`" ? "`" : "~"}{3,}\\s*$`).test(lines[j])) {
+      while (j < lines.length && !new RegExp(`^\\s*${marker}{3,}\\s*$`).test(lines[j])) {
         body.push(lines[j]);
         j++;
       }
@@ -95,7 +145,7 @@ export function mdToHtml(md: string): string {
     // a table is a row of pipes whose next line is the |---|---| divider;
     // without that check every sentence containing a pipe becomes a table
     if (line.includes("|") && i + 1 < lines.length && isTableDelimiter(lines[i + 1])) {
-      closeList(); closeQuote();
+      closeAllLists(); closeQuote();
       const head = tableCells(line);
       const align = tableCells(lines[i + 1]).map(alignOf);
       const rows: string[][] = [];
@@ -119,43 +169,114 @@ export function mdToHtml(md: string): string {
       continue;
     }
 
-    const h = /^(#{1,3})\s+(.*)$/.exec(line);
+    const h = /^(#{1,6})\s+(.*)$/.exec(line);
     if (h) {
-      closeList(); closeQuote();
+      closeAllLists(); closeQuote();
       const level = h[1].length;
       out.push(`<h${level}>${inlineMd(escapeHtml(h[2]))}</h${level}>`);
       continue;
     }
-    if (/^(-{3,}|\*{3,})\s*$/.test(line)) { closeList(); closeQuote(); out.push("<hr>"); continue; }
-    const ul = /^\s*[-*]\s+(.*)$/.exec(line);
-    if (ul) {
-      closeQuote();
-      if (list !== "ul") { closeList(); out.push("<ul>"); list = "ul"; }
-      out.push(`<li>${inlineMd(escapeHtml(ul[1]))}</li>`);
+
+    // Title\n===== and Title\n----- underlines. Checked before the rule below,
+    // since a line of dashes is a heading when text sits above it and a
+    // horizontal rule when it stands alone.
+    const underline = /^\s*(={2,}|-{2,})\s*$/.exec(lines[i + 1] ?? "");
+    if (underline && line.trim() && !/^\s*([-*+]|\d+[.)])\s/.test(line) && !line.includes("|")) {
+      closeAllLists(); closeQuote();
+      const level = underline[1][0] === "=" ? 1 : 2;
+      out.push(`<h${level}>${inlineMd(escapeHtml(line.trim()))}</h${level}>`);
+      i++; // the underline itself
       continue;
     }
-    const ol = /^\s*(\d+)[.)]\s+(.*)$/.exec(line);
-    if (ol) {
-      closeQuote();
-      if (list !== "ol") { closeList(); out.push("<ol>"); list = "ol"; }
-      // keep the author's own number: a sublist or a plain line between two
-      // numbered items splits the run into separate <ol>s, each of which would
-      // otherwise restart at 1 — so "2." would wrongly render as "1."
-      out.push(`<li value="${ol[1]}">${inlineMd(escapeHtml(ol[2]))}</li>`);
+
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) {
+      closeAllLists(); closeQuote();
+      out.push("<hr>");
       continue;
     }
+
+    const item = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(line);
+    if (item) {
+      closeQuote();
+      const depth = indentOf(item[1]);
+      const ordered = /\d/.test(item[2]);
+      const tag: "ul" | "ol" = ordered ? "ol" : "ul";
+
+      const top = () => lists[lists.length - 1];
+      if (!lists.length || depth > top().depth) {
+        // a deeper item belongs inside the item above it, so that <li> stays open
+        out.push(`<${tag}>`);
+        lists.push({ tag, depth });
+        liOpen = false;
+      } else {
+        closeLists(depth);
+        if (liOpen) { out.push("</li>"); liOpen = false; }
+        // "- a" then "1. b" at one depth is two different lists
+        if (top() && top().tag !== tag) {
+          out.push(`</${lists.pop()!.tag}>`);
+          out.push(`<${tag}>`);
+          lists.push({ tag, depth });
+        }
+      }
+
+      // GFM task item: "- [ ] thing" / "- [x] thing"
+      const task = /^\[([ xX])\]\s+(.*)$/.exec(item[3]);
+      const num = ordered ? ` value="${parseInt(item[2], 10)}"` : "";
+      if (task) {
+        const checked = task[1] !== " ";
+        out.push(
+          `<li${num} class="md-task"><input type="checkbox" data-task="${taskIndex++}"${
+            checked ? " checked" : ""
+          }><span${checked ? ' class="md-task-done"' : ""}>${inlineMd(escapeHtml(task[2]))}</span>`
+        );
+      } else {
+        // the author's own number survives: a sublist or a plain line between
+        // two numbered items splits the run, and each <ol> would restart at 1
+        out.push(`<li${num}>${inlineMd(escapeHtml(item[3]))}`);
+      }
+      liOpen = true;
+      continue;
+    }
+
     const q = /^>\s?(.*)$/.exec(line);
     if (q) {
-      closeList();
+      closeAllLists();
       if (!quote) { out.push("<blockquote>"); quote = true; }
       out.push(`<p>${inlineMd(escapeHtml(q[1]))}</p>`);
       continue;
     }
-    closeList(); closeQuote();
+
+    // a plain line that is indented under a list item continues that item
+    // rather than breaking the list open
+    if (lists.length && liOpen && line.trim() && indentOf(line) > lists[lists.length - 1].depth) {
+      out.push(`<br>${inlineMd(escapeHtml(line.trim()))}`);
+      continue;
+    }
+
+    closeAllLists(); closeQuote();
     if (line.trim()) out.push(`<p>${inlineMd(escapeHtml(line))}</p>`);
   }
-  closeList(); closeQuote();
+  closeAllLists(); closeQuote();
   return out.join("\n");
+}
+
+/**
+ * Flip the nth task checkbox in the markdown source, counting in document
+ * order exactly as the renderer numbered them. Returns the markdown unchanged
+ * if that task no longer exists, so a stale click can never scramble a note.
+ */
+export function toggleTaskInMd(md: string, index: number): string {
+  let seen = -1;
+  return md
+    .split(/\n/)
+    .map((line) => {
+      const m = /^(\s*(?:[-*+]|\d+[.)])\s+)\[([ xX])\](\s+.*)$/.exec(line);
+      if (!m) return line;
+      seen += 1;
+      if (seen !== index) return line;
+      return `${m[1]}[${m[2] === " " ? "x" : " "}]${m[3]}`;
+    })
+    .join("\n");
 }
 
 /* ————— legacy rich-text HTML → markdown ————— */
@@ -228,10 +349,13 @@ export function noteSnippet(body: string | null | undefined): string {
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
-    .replace(/^#{1,3}\s+/gm, "")
+    .replace(/^#{1,6}\s+/gm, "")
     .replace(/^>\s?/gm, "")
-    .replace(/^\s*[-*]\s+/gm, "")
+    // before the bullet rules, or "- [ ] x" loses its dash and keeps "[ ]"
+    .replace(/^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
     .replace(/^\s*\d+[.)]\s+/gm, "")
+    .replace(/!\[([^\]]*)\]\(https?:\/\/[^)\s]+\)/g, "$1")
     .replace(/\[([^\]]+)\]\(https?:\/\/[^)\s]+\)/g, "$1")
     // table plumbing reads as noise in a one-line preview: the divider row
     // goes entirely, then the remaining pipes fall back to spaces
@@ -253,6 +377,20 @@ export const MD_PROSE_CLS =
   "[&_h1]:font-display [&_h1]:text-[1.45rem] [&_h1]:leading-snug [&_h1]:mt-3 [&_h1]:mb-1 " +
   "[&_h2]:font-display [&_h2]:text-[1.2rem] [&_h2]:leading-snug [&_h2]:mt-2.5 [&_h2]:mb-1 " +
   "[&_h3]:text-[1.02rem] [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-0.5 " +
+  "[&_h4]:text-[0.97rem] [&_h4]:font-semibold [&_h4]:mt-2 [&_h4]:mb-0.5 " +
+  "[&_h5]:text-[0.92rem] [&_h5]:font-semibold [&_h5]:text-ink-2 [&_h5]:mt-1.5 " +
+  "[&_h6]:text-[0.88rem] [&_h6]:font-semibold [&_h6]:uppercase [&_h6]:tracking-wide [&_h6]:text-ink-3 [&_h6]:mt-1.5 " +
+  // a nested list sits inside its parent item, so it needs no top margin
+  "[&_li>ul]:my-0.5 [&_li>ol]:my-0.5 " +
+  // a task line puts its box on the first line of text, not centred on the block
+  // the row is a flexbox to hold the box beside the text, so a nested list has
+  // to be told to wrap onto its own full-width line instead of sitting beside it
+  "[&_li.md-task]:list-none [&_li.md-task]:flex [&_li.md-task]:flex-wrap [&_li.md-task]:items-start [&_li.md-task]:gap-x-2 " +
+  "[&_li.md-task>ul]:w-full [&_li.md-task>ol]:w-full [&_li.md-task>span]:min-w-0 " +
+  "[&_li.md-task>input]:-ml-5 [&_li.md-task>input]:mt-[0.3rem] [&_li.md-task>input]:h-3.5 [&_li.md-task>input]:w-3.5 [&_li.md-task>input]:shrink-0 " +
+  "[&_li.md-task>input]:accent-[var(--accent)] [&_li.md-task>input]:cursor-pointer " +
+  "[&_.md-task-done]:text-ink-3 [&_.md-task-done]:line-through [&_.md-task-done]:decoration-ink-3/40 " +
+  "[&_img]:my-2 [&_img]:max-w-full [&_img]:rounded-xl [&_img]:border [&_img]:border-line-soft " +
   "[&_blockquote]:border-l-2 [&_blockquote]:border-line [&_blockquote]:pl-3 [&_blockquote]:my-1 [&_blockquote]:text-ink-2 " +
   "[&_code]:rounded [&_code]:bg-surface-2 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em] " +
   "[&_hr]:my-2 [&_hr]:border-line-soft [&_a]:text-accent-deep [&_a]:underline [&_a]:underline-offset-2 " +
@@ -267,10 +405,31 @@ export const MD_PROSE_CLS =
   "[&_td]:border-b [&_td]:border-line-soft [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:align-top " +
   "[&_tr:last-child_td]:border-b-0";
 
-export function MarkdownView({ md, className = "" }: { md: string; className?: string }) {
+/**
+ * Rendered markdown. Pass `onChange` where the body can be saved and its task
+ * checkboxes become real: ticking one rewrites that line in the markdown
+ * itself, which is the only place the state lives. Without it they render but
+ * don't respond, which is right for a preview.
+ */
+export function MarkdownView({
+  md, className = "", onChange,
+}: {
+  md: string;
+  className?: string;
+  onChange?: (md: string) => void;
+}) {
   return (
     <div
       className={`${MD_PROSE_CLS} ${className}`}
+      onClick={
+        onChange &&
+        ((e) => {
+          const el = e.target as HTMLElement;
+          const index = el instanceof HTMLInputElement ? el.dataset.task : undefined;
+          if (index == null) return;
+          onChange(toggleTaskInMd(md, Number(index)));
+        })
+      }
       dangerouslySetInnerHTML={{ __html: mdToHtml(md) }}
     />
   );
@@ -290,7 +449,14 @@ const MD_CARD_CLS =
   "[&_pre]:my-1 [&_pre]:overflow-hidden [&_pre]:rounded-lg [&_pre]:bg-surface-2 [&_pre]:p-1.5 [&_pre]:text-[0.72rem] " +
   "[&_pre_code]:bg-transparent [&_pre_code]:p-0 " +
   "[&_.md-table]:my-1 [&_.md-table]:overflow-hidden [&_table]:w-full [&_table]:text-[0.72rem] " +
-  "[&_th]:px-1 [&_th]:py-0.5 [&_th]:text-left [&_th]:font-semibold [&_td]:px-1 [&_td]:py-0.5";
+  "[&_th]:px-1 [&_th]:py-0.5 [&_th]:text-left [&_th]:font-semibold [&_td]:px-1 [&_td]:py-0.5 " +
+  "[&_h4]:text-[0.79rem] [&_h4]:font-semibold [&_h5]:text-[0.78rem] [&_h6]:text-[0.78rem] " +
+  "[&_li>ul]:my-0 [&_li>ol]:my-0 " +
+  "[&_li.md-task]:list-none [&_li.md-task]:flex [&_li.md-task]:flex-wrap [&_li.md-task]:items-start [&_li.md-task]:gap-x-1.5 " +
+  "[&_li.md-task>ul]:w-full [&_li.md-task>ol]:w-full " +
+  "[&_li.md-task>input]:-ml-4 [&_li.md-task>input]:mt-[0.2rem] [&_li.md-task>input]:h-3 [&_li.md-task>input]:w-3 [&_li.md-task>input]:shrink-0 " +
+  "[&_.md-task-done]:text-ink-3 [&_.md-task-done]:line-through " +
+  "[&_img]:my-1 [&_img]:max-h-24 [&_img]:max-w-full [&_img]:rounded-lg";
 
 /** A note's body rendered small for its card. Handles legacy HTML bodies
  *  (converts them to markdown first) and renders nothing for an empty note.
@@ -359,8 +525,10 @@ export function MarkdownEditor({
       )}
 
       <p className="mt-1.5 text-[0.7rem] text-ink-3">
-        Markdown: # heading · - list · 1. numbered · &gt; quote · **bold** · *italic* · `code` · [link](https://…)
-        {" · tables (a |---|---| line under the header row) · ``` for a code block"}
+        Markdown: # heading (to ######) · - list, indent to nest · 1. numbered · - [ ] task ·
+        &gt; quote · **bold** · *italic* · ~~strike~~ · `code` · ``` code block · [link](https://…) ·
+        ![image](https://…) · tables with a |---|---| line under the header row
+
       </p>
     </div>
   );
