@@ -11,8 +11,8 @@ import {
 import { useToday } from "@/lib/useToday";
 import { areaColor } from "@/lib/palette";
 import {
-  inRoutineWindow, routineDoneSteps, routineMinutes, routineWindowLabel, sortedByDone,
-  todayEntries, TodayEntry,
+  inRoutineWindow, routineDoneSteps, routineMinutes, routinesLinkedTo, routineWindowLabel,
+  sortedByDone, todayEntries, TodayEntry,
 } from "@/lib/progress";
 import { Action, Cadence, HORIZON_META, Item } from "@/lib/types";
 import { quickTasks } from "@/lib/suggestions";
@@ -1214,6 +1214,17 @@ function ActionRow({
             </span>
           )}
           {scheduleLabel && <span className="shrink-0">{scheduleLabel}</span>}
+          {/* the same act may live inside a routine's script — say so, or
+              ticking one and watching the other move looks like a glitch */}
+          {item && (() => {
+            const inside = routinesLinkedTo(db, item.id);
+            if (inside.length === 0) return null;
+            return (
+              <span className="shrink-0 truncate text-accent-deep">
+                ↳ in {inside.map((l) => l.routine.title).join(", ")}
+              </span>
+            );
+          })()}
           {virtualHabit && !scheduleLabel && <span>habit</span>}
           {virtualItemTask && <span>🎯 today</span>}
           {carriedFrom && <span className="shrink-0 text-amber">carried from {shortDay(carriedFrom)}</span>}

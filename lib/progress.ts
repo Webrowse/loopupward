@@ -1,4 +1,4 @@
-import { Action, Cadence, DB, Item, ListEntry, Log } from "./types";
+import { Action, Cadence, DB, Item, ListEntry, Log, RoutineStep } from "./types";
 import { addDays, dayFromMs, daysBetween, Period, periodKey, startOfWeek, toDay, today } from "./dates";
 
 /**
@@ -236,6 +236,34 @@ export function routineLogDay(item: Item, now = new Date()): string {
 export function routineWindowLabel(item: Item): string | null {
   if (parseHM(item.windowStart) == null || parseHM(item.windowEnd) == null) return null;
   return `${fmtHM(item.windowStart!)} – ${fmtHM(item.windowEnd!)}`;
+}
+
+/** Nodes a routine step is allowed to stand for: the repeating rows that show
+ *  up on a day and are ticked by logging that day. A one-off task is not one
+ *  of these — it has no day to log, and the day's run covers those instead. */
+export function linkableItems(db: DB): Item[] {
+  return db.items
+    .filter(
+      (i) =>
+        i.status === "active" &&
+        !i.deletedAt &&
+        i.kind !== "routine" &&
+        (i.kind === "habit" || i.cadence != null)
+    )
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/** Every routine whose script points at this node, with the step that does.
+ *  Drives both the sync and the "↳ in Morning routine" line on the day's row. */
+export function routinesLinkedTo(db: DB, itemId: string): { routine: Item; step: RoutineStep }[] {
+  const out: { routine: Item; step: RoutineStep }[] = [];
+  for (const routine of db.items) {
+    if (routine.kind !== "routine" || routine.status !== "active" || routine.deletedAt) continue;
+    for (const step of routine.steps ?? []) {
+      if (step.itemId === itemId) out.push({ routine, step });
+    }
+  }
+  return out;
 }
 
 /** Which of a routine's steps are already done on `day`. */

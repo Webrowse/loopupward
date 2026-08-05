@@ -7,8 +7,8 @@ import { useLife } from "@/lib/data/provider";
 import { Horizon, HORIZON_META, Item, KIND_META, ListEntry, RoutineStep } from "@/lib/types";
 import {
   ancestors, bestStreak, children as childrenOf, currentStreak, dayLogged, descendants,
-  formatValue, habitDailyTarget, habitDays, itemProgress, listTotals, routineLogDay, routineMinutes,
-  scheduleLabel,
+  formatValue, habitDailyTarget, habitDays, itemProgress, linkableItems, listTotals, routineLogDay,
+  routineMinutes, scheduleLabel,
 } from "@/lib/progress";
 import { useRowDrag } from "@/lib/useRowDrag";
 import { uid } from "@/lib/uid";
@@ -415,12 +415,14 @@ function DragDots() {
 /* ————— a routine's steps: its ordered script, each optionally timed ————— */
 
 function RoutineStepsEditor({ item }: { item: Item }) {
-  const { updateItem } = useLife();
+  const { db, updateItem } = useLife();
   const steps = item.steps ?? [];
   const [newTitle, setNewTitle] = useState("");
   const [newMinutes, setNewMinutes] = useState("");
+  const [linking, setLinking] = useState<RoutineStep | null>(null);
   const newTitleRef = useRef<HTMLInputElement>(null);
   const total = routineMinutes(item);
+  const linkable = useMemo(() => linkableItems(db), [db]);
 
   const save = (next: RoutineStep[]) => updateItem(item.id, { steps: next });
 
@@ -430,8 +432,13 @@ function RoutineStepsEditor({ item }: { item: Item }) {
   };
 
   const add = () => {
-    if (!newTitle.trim()) return;
-    save([...steps, { id: uid(), title: newTitle.trim(), minutes: parseMin(newMinutes) }]);
+    const title = newTitle.trim();
+    if (!title) return;
+    // typing "Duolingo" when a Duolingo habit already exists almost always
+    // means that habit — link it, visibly, so the row shows what happened and
+    // the ↳ can be removed in one tap if it was not meant
+    const match = linkable.find((i) => i.title.trim().toLowerCase() === title.toLowerCase());
+    save([...steps, { id: uid(), title, minutes: parseMin(newMinutes), itemId: match?.id ?? null }]);
     setNewTitle("");
     setNewMinutes("");
     // typing flow is title → tab → minutes → enter; the next step starts
@@ -496,6 +503,21 @@ function RoutineStepsEditor({ item }: { item: Item }) {
                 className="w-14 shrink-0 rounded-lg border border-line bg-bg px-2 py-1 text-right text-sm text-ink tabular-nums outline-none focus:border-accent"
               />
               <span className="shrink-0 text-xs text-ink-3">min</span>
+              {/* a linked step is the same act as that node's row on the day */}
+              <button
+                onClick={() => setLinking(s)}
+                aria-label={s.itemId ? `Change what step ${i + 1} is linked to` : `Link step ${i + 1} to something you track`}
+                title={s.itemId ? "Linked — ticking either ticks both" : "Link this step to a habit you already track"}
+                className={`pressable shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-medium ${
+                  s.itemId
+                    ? "border-accent text-accent-deep"
+                    : "border-line text-ink-3 hover:border-accent hover:text-accent-deep"
+                }`}
+              >
+                {s.itemId
+                  ? `↳ ${(db.items.find((x) => x.id === s.itemId)?.title ?? "missing").slice(0, 14)}`
+                  : "link"}
+              </button>
               <button
                 onClick={() => save(steps.filter((x) => x.id !== s.id))}
                 aria-label="Remove step"
@@ -508,6 +530,53 @@ function RoutineStepsEditor({ item }: { item: Item }) {
           })}
         </div>
       )}
+
+      {/* choosing what a step stands for */}
+      <Sheet
+        open={!!linking}
+        onClose={() => setLinking(null)}
+        title="What is this step?"
+      >
+        <p className="mb-3 text-sm leading-relaxed text-ink-2">
+          Link &ldquo;{linking?.title}&rdquo; to something you already track, and the two stop being
+          separate chores: ticking it here ticks it on the day&rsquo;s list, and ticking it there
+          ticks it here.
+        </p>
+        <div className="space-y-1.5">
+          <button
+            onClick={() => {
+              save(steps.map((x) => (x.id === linking?.id ? { ...x, itemId: null } : x)));
+              setLinking(null);
+            }}
+            className={`pressable flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm ${
+              linking && !linking.itemId ? "border-accent bg-accent-soft/40 text-ink" : "border-line-soft text-ink-2"
+            }`}
+          >
+            Just a line of text
+          </button>
+          {linkable.map((i) => (
+            <button
+              key={i.id}
+              onClick={() => {
+                save(steps.map((x) => (x.id === linking?.id ? { ...x, itemId: i.id } : x)));
+                setLinking(null);
+              }}
+              className={`pressable flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm ${
+                linking?.itemId === i.id ? "border-accent bg-accent-soft/40 text-ink" : "border-line-soft text-ink-2"
+              }`}
+            >
+              <KindIcon kind={i.kind} />
+              <span className="min-w-0 flex-1 truncate">{i.title}</span>
+              {scheduleLabel(i) && <span className="shrink-0 text-xs text-ink-3">{scheduleLabel(i)}</span>}
+            </button>
+          ))}
+          {linkable.length === 0 && (
+            <p className="text-sm text-ink-3">
+              Nothing to link to yet — habits and anything with a schedule show up here.
+            </p>
+          )}
+        </div>
+      </Sheet>
 
       <div className="flex gap-2">
         <input

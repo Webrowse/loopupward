@@ -15,7 +15,7 @@ import { CloudRepo } from "./cloud";
 import { LocalRepo, clearLocalDB, localHasData, readLocalDB } from "./local";
 import { Repo } from "./repo";
 import { today } from "../dates";
-import { TodayEntry } from "../progress";
+import { dayLogged, habitDailyTarget, routineLogDay, TodayEntry } from "../progress";
 import { FREE_LIMITS, PREMIUM_TRASH_DAYS } from "../limits";
 import { DEFAULT_FONT, FontId, isFontId } from "../fonts";
 
@@ -98,11 +98,13 @@ interface LifeContextValue {
   toggleEntry: (entry: TodayEntry, day?: string) => void;
   /** Log or unlog one habit occurrence for a single day — distinct from
    *  completeItem, which retires the habit for good. */
-  toggleHabitDay: (item: Item, day: string, currentlyDone: boolean) => void;
+  /** `skipLinked` is internal plumbing: it stops the two halves of a linked
+   *  routine step writing to each other in a circle. */
+  toggleHabitDay: (item: Item, day: string, currentlyDone: boolean, skipLinked?: boolean) => void;
   /** Tick one step of a routine's script for a single day. Checking the
    *  last open step logs the routine's day (same as toggleHabitDay);
    *  unchecking a step on a fully-done day un-logs it again. */
-  setRoutineStepDone: (item: Item, day: string, stepId: string, done: boolean) => void;
+  setRoutineStepDone: (item: Item, day: string, stepId: string, done: boolean, skipLinked?: boolean) => void;
   /** Persist a manual drag order for one day's Today list. Completing a
    *  task never calls this — only dragging, or the "Sort" tidy-up, does. */
   reorderDay: (day: string, orderedEntryIds: string[]) => void;
@@ -672,36 +674,32 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
 
   const deleteAction = useCallback((id: string) => removeRows("actions", [id]), [removeRows]);
 
-  /** Log or unlog one habit occurrence for a single day. This only ever
-   *  touches the log history — it never changes the habit's own status,
-   *  so "done today" can never accidentally retire the habit. */
-  const toggleHabitDay = useCallback((item: Item, day: string, currentlyDone: boolean) => {
-    if (currentlyDone) {
-      const existing = db.logs.filter((l) => l.itemId === item.id && l.date === day && l.op === "add");
-      if (existing.length) removeRows("logs", existing.map((l) => l.id));
-    } else {
+  /** Add or take back exactly one occurrence of an item's day. One, not all:
+   *  a habit with a target of three glasses must not lose the other two
+   *  because a linked routine step was un-ticked. */
+  const logOneOccurrence = useCallback((itemId: string, day: string, add: boolean) => {
+    if (add) {
       upsertRows("logs", [{
-        id: uid(), itemId: item.id, date: day, op: "add", value: 1, createdAt: Date.now(),
+        id: uid(), itemId, date: day, op: "add", value: 1, createdAt: Date.now(),
       }]);
+      return;
     }
-    // a routine's round checkbox is shorthand for its whole script — the
-    // day and its steps stay in agreement in both directions
-    if (item.kind === "routine" && item.steps && item.steps.length > 0) {
-      const note = db.habitDayNotes.find((n) => n.itemId === item.id && n.date === day);
-      const doneSteps = currentlyDone ? null : item.steps.map((s) => s.id);
-      if (note) {
-        upsertRows("habitDayNotes", [{ ...note, doneSteps, updatedAt: Date.now() }]);
-      } else if (doneSteps) {
-        upsertRows("habitDayNotes", [{
-          id: uid(), itemId: item.id, date: day, text: "", doneSteps,
-          createdAt: Date.now(), updatedAt: Date.now(),
-        }]);
-      }
-    }
-  }, [db.logs, db.habitDayNotes, upsertRows, removeRows]);
+    const mine = db.logs
+      .filter((l) => l.itemId === itemId && l.date === day && l.op === "add")
+      .sort((a, b) => b.createdAt - a.createdAt);
+    if (mine.length) removeRows("logs", [mine[0].id]);
+  }, [db.logs, upsertRows, removeRows]);
 
-  const setRoutineStepDone = useCallback((item: Item, day: string, stepId: string, done: boolean) => {
-    const stepIds = (item.steps ?? []).map((s) => s.id);
+  /** Tick one step of a routine's script for a day.
+   *
+   *  `skipLinked` exists only to stop the two halves of a linked step calling
+   *  each other in a circle: the reverse path (ticking the node's own row)
+   *  has already written the node's log by the time it gets here. */
+  const setRoutineStepDone = useCallback((
+    item: Item, day: string, stepId: string, done: boolean, skipLinked = false
+  ) => {
+    const steps = item.steps ?? [];
+    const stepIds = steps.map((s) => s.id);
     if (!stepIds.includes(stepId)) return;
     const existing = db.habitDayNotes.find((n) => n.itemId === item.id && n.date === day);
     const ticked = new Set(existing?.doneSteps ?? []);
@@ -732,7 +730,66 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     } else if (!allDone && logged) {
       removeRows("logs", dayLogs.map((l) => l.id));
     }
-  }, [db.habitDayNotes, db.logs, upsertRows, removeRows]);
+
+    // a linked step and its row on the day are one act, so tick both. Only
+    // ever one occurrence, and only when it would actually change something:
+    // ticking a step of an already-full habit must not push it past its target.
+    const step = steps.find((s) => s.id === stepId);
+    const linked = !skipLinked && step?.itemId
+      ? db.items.find((i) => i.id === step.itemId)
+      : undefined;
+    if (linked) {
+      const value = dayLogged(db.logs, linked.id, day);
+      const wanted = done ? value < habitDailyTarget(linked) : value > 0;
+      if (wanted) logOneOccurrence(linked.id, day, done);
+    }
+  }, [db.habitDayNotes, db.logs, db.items, upsertRows, removeRows, logOneOccurrence]);
+
+  /** Log or unlog one habit occurrence for a single day. This only ever
+   *  touches the log history — it never changes the habit's own status,
+   *  so "done today" can never accidentally retire the habit. */
+  const toggleHabitDay = useCallback((
+    item: Item, day: string, currentlyDone: boolean, skipLinked = false
+  ) => {
+    if (currentlyDone) {
+      const existing = db.logs.filter((l) => l.itemId === item.id && l.date === day && l.op === "add");
+      if (existing.length) removeRows("logs", existing.map((l) => l.id));
+    } else {
+      upsertRows("logs", [{
+        id: uid(), itemId: item.id, date: day, op: "add", value: 1, createdAt: Date.now(),
+      }]);
+    }
+    // a routine's round checkbox is shorthand for its whole script — the
+    // day and its steps stay in agreement in both directions
+    if (item.kind === "routine" && item.steps && item.steps.length > 0) {
+      const note = db.habitDayNotes.find((n) => n.itemId === item.id && n.date === day);
+      const doneSteps = currentlyDone ? null : item.steps.map((s) => s.id);
+      if (note) {
+        upsertRows("habitDayNotes", [{ ...note, doneSteps, updatedAt: Date.now() }]);
+      } else if (doneSteps) {
+        upsertRows("habitDayNotes", [{
+          id: uid(), itemId: item.id, date: day, text: "", doneSteps,
+          createdAt: Date.now(), updatedAt: Date.now(),
+        }]);
+      }
+    }
+
+    // the other direction: this node may be a step inside a routine, in which
+    // case its script has to agree. Only routines whose own day is this day —
+    // a night routine ticked at 1am belongs to last night, and today's tick
+    // has no business reaching into it.
+    if (!skipLinked) {
+      for (const routine of db.items) {
+        if (routine.kind !== "routine" || !routine.steps?.length) continue;
+        if (routineLogDay(routine) !== day) continue;
+        for (const step of routine.steps) {
+          if (step.itemId === item.id) {
+            setRoutineStepDone(routine, day, step.id, !currentlyDone, true);
+          }
+        }
+      }
+    }
+  }, [db.logs, db.habitDayNotes, db.items, upsertRows, removeRows, setRoutineStepDone]);
 
   const toggleEntry = useCallback((entry: TodayEntry, forDay?: string) => {
     const day = forDay ?? today();

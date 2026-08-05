@@ -5,9 +5,11 @@ import {
   effectiveCadence,
   habitDays,
   inRoutineWindow,
+  linkableItems,
   pickedEntries,
   routineLogDay,
   routineMinutes,
+  routinesLinkedTo,
   tryingFor,
   weekLoggedDays,
 } from "@/lib/progress";
@@ -243,5 +245,64 @@ describe("tryingFor", () => {
 
   it("never counts backwards for a clock that drifted", () => {
     expect(tryingFor(now + 60_000, now)).toBe("today");
+  });
+});
+
+/* ————— steps that stand for a life node ————— */
+
+describe("linkableItems", () => {
+  const db = (items: Item[]) => ({ items } as unknown as import("@/lib/types").DB);
+
+  it("offers habits and anything else that repeats", () => {
+    const rows = linkableItems(db([
+      item({ id: "h", kind: "habit", title: "Duolingo" }),
+      item({ id: "g", kind: "goal", title: "Weekly review", cadence: "weekly" }),
+    ]));
+    expect(rows.map((r) => r.id).sort()).toEqual(["g", "h"]);
+  });
+
+  it("leaves out one-off tasks, routines and anything retired", () => {
+    const rows = linkableItems(db([
+      item({ id: "one", kind: "goal", title: "No schedule" }),
+      item({ id: "r", kind: "routine", title: "Morning routine" }),
+      item({ id: "gone", kind: "habit", title: "Retired", status: "archived" }),
+      item({ id: "binned", kind: "habit", title: "Deleted", deletedAt: 1 }),
+    ]));
+    expect(rows).toEqual([]);
+  });
+});
+
+describe("routinesLinkedTo", () => {
+  const routine = (id: string, title: string, steps: { id: string; itemId?: string | null }[]) =>
+    item({
+      id, title, kind: "routine",
+      steps: steps.map((s) => ({ id: s.id, title: s.id, minutes: null, itemId: s.itemId ?? null })),
+    });
+  const db = (items: Item[]) => ({ items } as unknown as import("@/lib/types").DB);
+
+  it("finds every routine whose script points at the node", () => {
+    const found = routinesLinkedTo(
+      db([
+        routine("r1", "Morning routine", [{ id: "s1", itemId: "duo" }, { id: "s2" }]),
+        routine("r2", "Evening routine", [{ id: "s3", itemId: "duo" }]),
+        routine("r3", "Other", [{ id: "s4", itemId: "elsewhere" }]),
+      ]),
+      "duo"
+    );
+    expect(found.map((f) => `${f.routine.id}/${f.step.id}`)).toEqual(["r1/s1", "r2/s3"]);
+  });
+
+  it("ignores steps written before links existed", () => {
+    // steps saved by an older build have no itemId field at all
+    const legacy = item({
+      id: "r", kind: "routine",
+      steps: [{ id: "s", title: "Duolingo", minutes: 5 } as import("@/lib/types").RoutineStep],
+    });
+    expect(routinesLinkedTo(db([legacy]), "duo")).toEqual([]);
+  });
+
+  it("skips retired routines", () => {
+    const r = routine("r", "Old", [{ id: "s", itemId: "duo" }]);
+    expect(routinesLinkedTo(db([{ ...r, status: "archived" }]), "duo")).toEqual([]);
   });
 });

@@ -32,6 +32,12 @@ export interface RoutineStep {
   title: string;
   /** how long this step takes, in minutes — null when untimed */
   minutes: number | null;
+  /** The life node this step stands for. "Duolingo" inside the morning
+   *  routine and the Duolingo habit on the day's list are one act, not two
+   *  that happen to share a name, so ticking either ticks both. Null (or
+   *  absent, on steps written before this existed) means the step is just a
+   *  line of text. */
+  itemId?: string | null;
 }
 
 /** One line of a list: "milk — 2 l". Entries aren't separate items — the
