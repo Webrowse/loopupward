@@ -11,8 +11,20 @@ import { useState } from "react";
 
 /* ————— markdown → HTML ————— */
 
+/**
+ * Escape before anything is interpolated into HTML — including quotes, which
+ * matters more than it looks: a URL or an image's alt text ends up inside an
+ * attribute, and a bare " there closes the attribute early and lets the rest
+ * of the line become a live event handler. Paste a crafted note from the web
+ * and that would run with your session in reach.
+ */
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 /** Turn bare URLs into links, but only in the parts of the string that aren't
