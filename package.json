@@ -9,7 +9,9 @@
     "lint": "eslint",
     "preview:cf": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy:cf": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "docs:build": "cd docs && mdbook build --dest-dir ../public/docs"
+    "docs:build": "cd docs && mdbook build --dest-dir ../public/docs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "next": "16.2.10",
@@ -26,6 +28,7 @@
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vitest": "^4.1.10",
     "wrangler": "^4.107.0"
   }
 }
