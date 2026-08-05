@@ -30,6 +30,11 @@ pub struct RoutineStep {
     pub id: String,
     pub title: String,
     pub minutes: Option<f64>,
+    /// The life node this step stands for, when it is not merely a line of
+    /// text: "Duolingo" inside the morning routine and the Duolingo habit on
+    /// the day's list are one act, so ticking either has to tick both.
+    #[serde(default)]
+    pub item_id: Option<String>,
 }
 
 /// One line of a list: "milk — 2 l". Ticked in place, not per day.
@@ -355,6 +360,13 @@ impl Item {
                 if let Some(m) = s.minutes {
                     if !m.is_finite() || !(0.0..=1440.0).contains(&m) {
                         return Err(bad("step minutes must be between 0 and 1440"));
+                    }
+                }
+                // a link is an item id, and a malformed one would only ever
+                // dangle: refuse it here rather than store a step pointing nowhere
+                if let Some(id) = &s.item_id {
+                    if Uuid::parse_str(id).is_err() {
+                        return Err(bad("step link must be an item id"));
                     }
                 }
             }
