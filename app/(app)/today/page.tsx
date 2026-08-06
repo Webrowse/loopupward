@@ -78,6 +78,7 @@ function Today() {
   const [planningHabit, setPlanningHabit] = useState<{ item: Item; date: string } | null>(null);
   const [reordering, setReordering] = useState(false);
   const [planningRun, setPlanningRun] = useState(false);
+  const [runMenuOpen, setRunMenuOpen] = useState(false);
   const [borrowing, setBorrowing] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [hideDone, setHideDone] = useState(false);
@@ -138,8 +139,14 @@ function Today() {
 
   const done = visible.filter((e) => e.action.done).length;
   const total = visible.length;
-  // routines keep their own ▶ Run, so they don't count toward "worth a run"
-  const runnable = visible.filter((e) => !e.action.done && e.item?.kind !== "routine").length;
+  // routines keep their own ▶ Run, so they stay out of a gathered run
+  const runnableEntries = visible.filter((e) => !e.action.done && e.item?.kind !== "routine");
+  const runnable = runnableEntries.length;
+  /** Straight into the walk, list order, nothing timed — the "just go" path. */
+  const runEverything = () => {
+    setRunMenuOpen(false);
+    openDayRun(day, runnableEntries.map((e) => ({ entryId: e.action.id, minutes: null })));
+  };
 
   // arriving from the Routines page with ?focus=<entry id> opens the timer on
   // that routine directly, once the data is in. The param is spent as soon as
@@ -243,9 +250,11 @@ function Today() {
           {done === total
             ? "Everything done. Rest well."
             : `${total - done} small ${total - done === 1 ? "action" : "actions"} between you and a good day.`}
+          {/* "them" is the actions just counted, so this runs all of them —
+              the Run menu below is where you pick a subset instead */}
           {runnable > 1 && (
             <button
-              onClick={() => setPlanningRun(true)}
+              onClick={runEverything}
               className="pressable rounded-full border border-line px-2.5 py-0.5 text-xs font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
             >
               ▶ Run them
@@ -274,12 +283,44 @@ function Today() {
                   {/* walk the scattered ones instead of picking them off one
                       at a time — only worth offering when there are several */}
                   {!reordering && runnable > 1 && (
-                    <button
-                      onClick={() => setPlanningRun(true)}
-                      className="pressable text-xs font-medium text-accent-deep"
-                    >
-                      Run the day ▶
-                    </button>
+                    <div className="relative">
+                      <button
+                        onClick={() => setRunMenuOpen((v) => !v)}
+                        aria-expanded={runMenuOpen}
+                        className="pressable text-xs font-medium text-accent-deep"
+                      >
+                        Run ▾
+                      </button>
+                      {runMenuOpen && (
+                        <>
+                          <button
+                            aria-hidden
+                            tabIndex={-1}
+                            onClick={() => setRunMenuOpen(false)}
+                            className="fixed inset-0 z-30 cursor-default"
+                          />
+                          <div className="absolute right-0 top-full z-40 mt-1.5 w-52 overflow-hidden rounded-xl border border-line-soft bg-surface shadow-(--shadow-float)">
+                            <button
+                              onClick={runEverything}
+                              className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-surface-2"
+                            >
+                              All {runnable} tasks
+                              <span className="block text-xs text-ink-3">in the order they sit here</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPlanningRun(true);
+                                setRunMenuOpen(false);
+                              }}
+                              className="block w-full border-t border-line-soft px-3.5 py-2.5 text-left text-sm text-ink hover:bg-surface-2"
+                            >
+                              Choose the tasks
+                              <span className="block text-xs text-ink-3">pick, reorder, set lengths</span>
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   )}
                   {reordering ? (
                     <button

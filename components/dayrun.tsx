@@ -98,7 +98,7 @@ export function DayRunSheet({
     <Sheet
       open={open}
       onClose={onClose}
-      title="Run the day"
+      title="Choose what to run"
       primary={{
         label: chosen.length ? `Start with ${chosen.length}` : "Start",
         onClick: () => onStart(chosen.map((id) => ({ entryId: id, minutes: lengths[id] ?? null }))),
