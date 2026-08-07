@@ -478,20 +478,25 @@ function Today() {
               Today moved you forward. 🌱
             </p>
           )}
-
-          {/* what you're in the middle of, under what you're doing today.
-              Only on the real today: on a past or future day a strip saying
-              "now" would be answering a question nobody asked. It sits below
-              the list and outside every count on purpose — a thing you're
-              slowly trying is not a task you failed to finish today. */}
-          {isToday && (
-            <TryingNowStrip lists={lists} className="mt-6" />
-          )}
         </div>
 
-        {/* the human part of the day */}
-        <div className="mt-8 lg:mt-0">
-          <DailyJournal date={day} />
+        {/* the human part of the day, plus what you're in the middle of.
+            On a wide screen this column runs out of content well before the
+            task list does, which is exactly where the strip belongs — beside
+            the day rather than buried under it. Stacked on a phone the order
+            flips: the strip comes first, because after nine tasks and a
+            journal nobody scrolls further. */}
+        <div className="mt-8 flex flex-col gap-6 lg:mt-0">
+          <div className="order-2 lg:order-1">
+            <DailyJournal date={day} />
+          </div>
+          {/* only on the real today — a panel claiming "now" while you browse
+              last Tuesday answers a question nobody asked */}
+          {isToday && (
+            <div className="order-1 lg:order-2">
+              <TryingNowStrip lists={lists} />
+            </div>
+          )}
         </div>
       </div>
       </>
