@@ -7,6 +7,7 @@ import { useLife } from "@/lib/data/provider";
 import { formatEntryAmount, itemProgress, listTotals, pickedEntries, tryingFor } from "@/lib/progress";
 import { Item, ListEntry } from "@/lib/types";
 import { Bar } from "@/components/progress";
+import { TryingNowStrip } from "@/components/trying";
 import { BackLink, Button, Chip, EmptyState, Field, Sheet, inputCls } from "@/components/ui";
 
 export default function ListsPage() {
@@ -43,7 +44,7 @@ export default function ListsPage() {
         <Button small onClick={() => setCreating(true)}>+ New list</Button>
       </div>
 
-      <TryingNow lists={lists} onOpen={setOpenId} />
+      <TryingNowStrip lists={lists} onOpen={setOpenId} className="mb-5" />
 
       {lists.length === 0 ? (
         <EmptyState
@@ -269,35 +270,6 @@ function EntryRow({
           {picked ? "trying" : "pick"}
         </button>
       )}
-    </div>
-  );
-}
-
-/** Every list's picks in one band. Without this, "what am I actually on?"
- *  means opening eleven cards one at a time. */
-function TryingNow({ lists, onOpen }: { lists: Item[]; onOpen: (id: string) => void }) {
-  const rows = lists.flatMap((l) =>
-    pickedEntries(l.entries ?? []).map((e) => ({ list: l, entry: e }))
-  );
-  if (rows.length === 0) return null;
-  return (
-    <div className="mb-5 rounded-(--radius-card) border border-accent/40 bg-accent-soft/30 p-4">
-      <p className="mb-2 text-[0.68rem] font-medium uppercase tracking-wide text-accent-deep">
-        Trying now
-      </p>
-      <div className="space-y-1.5">
-        {rows.map(({ list, entry }) => (
-          <button
-            key={entry.id}
-            onClick={() => onOpen(list.id)}
-            className="pressable flex w-full items-baseline gap-2 text-left text-sm"
-          >
-            <span className="min-w-0 truncate text-ink">{entry.text}</span>
-            <span className="min-w-0 shrink truncate text-xs text-ink-3">{list.title}</span>
-            <span className="ml-auto shrink-0 text-xs text-ink-3">{tryingFor(entry.pickedAt!)}</span>
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

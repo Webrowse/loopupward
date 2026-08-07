@@ -23,6 +23,7 @@ import { ListIcon, RoutineIcon } from "@/components/icons";
 import { SuggestionsSheet } from "@/components/suggestions";
 import { HorizonList, ScheduleEditor, ScheduleValue } from "@/components/items";
 import { Bar } from "@/components/progress";
+import { TryingNowStrip, useLists } from "@/components/trying";
 import { Chip, EmptyState, Field, Segmented, Sheet, inputCls } from "@/components/ui";
 
 const DOW_LETTER = ["S", "M", "T", "W", "T", "F", "S"];
@@ -55,6 +56,7 @@ function Today() {
   // the timer itself lives in the app layout, so it keeps running (minimized)
   // wherever you go next — this page only ever hands it a row
   const { openFocus, openDayRun } = useFocusSession();
+  const lists = useLists();
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -475,6 +477,15 @@ function Today() {
             <p className="mt-8 text-center font-display text-lg text-accent-deep">
               Today moved you forward. 🌱
             </p>
+          )}
+
+          {/* what you're in the middle of, under what you're doing today.
+              Only on the real today: on a past or future day a strip saying
+              "now" would be answering a question nobody asked. It sits below
+              the list and outside every count on purpose — a thing you're
+              slowly trying is not a task you failed to finish today. */}
+          {isToday && (
+            <TryingNowStrip lists={lists} className="mt-6" />
           )}
         </div>
 
