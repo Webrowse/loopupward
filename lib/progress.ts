@@ -241,16 +241,31 @@ export function routineWindowLabel(item: Item): string | null {
 /** Nodes a routine step is allowed to stand for: the repeating rows that show
  *  up on a day and are ticked by logging that day. A one-off task is not one
  *  of these — it has no day to log, and the day's run covers those instead. */
-export function linkableItems(db: DB): Item[] {
-  return db.items
-    .filter(
-      (i) =>
-        i.status === "active" &&
-        !i.deletedAt &&
-        i.kind !== "routine" &&
-        (i.kind === "habit" || i.cadence != null)
-    )
-    .sort((a, b) => a.title.localeCompare(b.title));
+export function linkableItems(db: DB, currentId?: string | null): Item[] {
+  const rows = db.items.filter(
+    (i) =>
+      i.status === "active" &&
+      !i.deletedAt &&
+      i.kind !== "routine" &&
+      (i.kind === "habit" || i.cadence != null)
+  );
+  // Whatever the step points at now belongs in the list even when it no longer
+  // qualifies. A finished book is precisely the thing you opened this picker to
+  // change, and leaving it out makes the link look permanent.
+  if (currentId && !rows.some((r) => r.id === currentId)) {
+    const current = db.items.find((i) => i.id === currentId);
+    if (current) rows.push(current);
+  }
+  return rows.sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/** A link that can no longer do anything: the node was finished, retired or
+ *  deleted out from under the step. Worth saying out loud, since the step goes
+ *  on looking connected while nothing happens when it is ticked. */
+export function linkIsStale(db: DB, itemId: string | null | undefined): boolean {
+  if (!itemId) return false;
+  const target = db.items.find((i) => i.id === itemId);
+  return !target || target.status !== "active" || !!target.deletedAt;
 }
 
 /** Every routine whose script points at this node, with the step that does.

@@ -7,8 +7,8 @@ import { useLife } from "@/lib/data/provider";
 import { Horizon, HORIZON_META, Item, KIND_META, ListEntry, RoutineStep } from "@/lib/types";
 import {
   ancestors, bestStreak, children as childrenOf, currentStreak, dayLogged, descendants,
-  formatValue, habitDailyTarget, habitDays, itemProgress, linkableItems, listTotals, routineLogDay,
-  routineMinutes, scheduleLabel,
+  formatValue, habitDailyTarget, habitDays, itemProgress, linkableItems, linkIsStale, listTotals,
+  routineLogDay, routineMinutes, scheduleLabel,
 } from "@/lib/progress";
 import { useRowDrag } from "@/lib/useRowDrag";
 import { uid } from "@/lib/uid";
@@ -422,7 +422,7 @@ function RoutineStepsEditor({ item }: { item: Item }) {
   const [linking, setLinking] = useState<RoutineStep | null>(null);
   const newTitleRef = useRef<HTMLInputElement>(null);
   const total = routineMinutes(item);
-  const linkable = useMemo(() => linkableItems(db), [db]);
+  const linkable = useMemo(() => linkableItems(db, linking?.itemId), [db, linking]);
 
   const save = (next: RoutineStep[]) => updateItem(item.id, { steps: next });
 
@@ -506,16 +506,30 @@ function RoutineStepsEditor({ item }: { item: Item }) {
               {/* a linked step is the same act as that node's row on the day */}
               <button
                 onClick={() => setLinking(s)}
-                aria-label={s.itemId ? `Change what step ${i + 1} is linked to` : `Link step ${i + 1} to something you track`}
-                title={s.itemId ? "Linked — ticking either ticks both" : "Link this step to a habit you already track"}
-                className={`pressable shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-medium ${
+                aria-label={
                   s.itemId
-                    ? "border-accent text-accent-deep"
-                    : "border-line text-ink-3 hover:border-accent hover:text-accent-deep"
+                    ? `Change or remove what step ${i + 1} is linked to`
+                    : `Link step ${i + 1} to something you track`
+                }
+                title={
+                  linkIsStale(db, s.itemId)
+                    ? "This link points at something finished — tap to repoint or remove it"
+                    : s.itemId
+                      ? "Linked — ticking either ticks both. Tap to change or remove"
+                      : "Link this step to a habit you already track"
+                }
+                className={`pressable shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-medium ${
+                  linkIsStale(db, s.itemId)
+                    ? "border-amber text-amber"
+                    : s.itemId
+                      ? "border-accent text-accent-deep"
+                      : "border-line text-ink-3 hover:border-accent hover:text-accent-deep"
                 }`}
               >
                 {s.itemId
-                  ? `↳ ${(db.items.find((x) => x.id === s.itemId)?.title ?? "missing").slice(0, 14)}`
+                  ? `↳ ${(db.items.find((x) => x.id === s.itemId)?.title ?? "missing").slice(0, 14)}${
+                      linkIsStale(db, s.itemId) ? " ⚠" : ""
+                    }`
                   : "link"}
               </button>
               <button
@@ -542,6 +556,36 @@ function RoutineStepsEditor({ item }: { item: Item }) {
           separate chores: ticking it here ticks it on the day&rsquo;s list, and ticking it there
           ticks it here.
         </p>
+
+        {/* A link is not permanent and the sheet has to say so. The old wording
+            named what the step would become instead of the act of unlinking,
+            which read as a description rather than a way out. */}
+        {linking?.itemId && (
+          <div className="mb-3 flex items-center gap-2 rounded-xl border border-accent/40 bg-accent-soft/30 px-3 py-2">
+            <span className="min-w-0 flex-1 text-sm text-ink">
+              Linked to{" "}
+              <span className="font-medium">
+                {db.items.find((x) => x.id === linking.itemId)?.title ?? "something since deleted"}
+              </span>
+              {linkIsStale(db, linking.itemId) && (
+                <span className="block text-xs text-amber">
+                  That one is finished, so ticking this step no longer does anything. Pick its
+                  replacement below, or remove the link.
+                </span>
+              )}
+            </span>
+            <button
+              onClick={() => {
+                save(steps.map((x) => (x.id === linking.id ? { ...x, itemId: null } : x)));
+                setLinking(null);
+              }}
+              className="pressable shrink-0 rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink-2 hover:border-danger hover:text-danger"
+            >
+              Remove link
+            </button>
+          </div>
+        )}
+
         <div className="space-y-1.5">
           <button
             onClick={() => {
@@ -552,27 +596,49 @@ function RoutineStepsEditor({ item }: { item: Item }) {
               linking && !linking.itemId ? "border-accent bg-accent-soft/40 text-ink" : "border-line-soft text-ink-2"
             }`}
           >
-            Just a line of text
+            <span className="min-w-0 flex-1">
+              Not linked to anything
+              <span className="block text-xs text-ink-3">just a line in this routine</span>
+            </span>
+            {linking && !linking.itemId && <span className="shrink-0 text-accent-deep">✓</span>}
           </button>
-          {linkable.map((i) => (
-            <button
-              key={i.id}
-              onClick={() => {
-                save(steps.map((x) => (x.id === linking?.id ? { ...x, itemId: i.id } : x)));
-                setLinking(null);
-              }}
-              className={`pressable flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm ${
-                linking?.itemId === i.id ? "border-accent bg-accent-soft/40 text-ink" : "border-line-soft text-ink-2"
-              }`}
-            >
-              <KindIcon kind={i.kind} />
-              <span className="min-w-0 flex-1 truncate">{i.title}</span>
-              {scheduleLabel(i) && <span className="shrink-0 text-xs text-ink-3">{scheduleLabel(i)}</span>}
-            </button>
-          ))}
+
+          {linkable.map((i) => {
+            const isCurrent = linking?.itemId === i.id;
+            const finished = i.status !== "active" || !!i.deletedAt;
+            return (
+              <button
+                key={i.id}
+                // tapping the one already chosen unlinks it: a selected row
+                // invites a second tap, and that instinct should be the way out
+                // rather than a no-op
+                onClick={() => {
+                  save(steps.map((x) => (x.id === linking?.id ? { ...x, itemId: isCurrent ? null : i.id } : x)));
+                  setLinking(null);
+                }}
+                className={`pressable flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm ${
+                  isCurrent ? "border-accent bg-accent-soft/40 text-ink" : "border-line-soft text-ink-2"
+                }`}
+              >
+                <KindIcon kind={i.kind} />
+                <span className="min-w-0 flex-1 truncate">
+                  {i.title}
+                  {finished && <span className="ml-1.5 text-xs text-ink-3">finished</span>}
+                </span>
+                {isCurrent ? (
+                  <span className="shrink-0 text-xs font-medium text-accent-deep">✓ tap to unlink</span>
+                ) : (
+                  scheduleLabel(i) && <span className="shrink-0 text-xs text-ink-3">{scheduleLabel(i)}</span>
+                )}
+              </button>
+            );
+          })}
+
           {linkable.length === 0 && (
-            <p className="text-sm text-ink-3">
-              Nothing to link to yet — habits and anything with a schedule show up here.
+            <p className="text-sm leading-relaxed text-ink-3">
+              Nothing to link to yet. Habits show up here, and so does anything you have given a
+              schedule — a book you read every day, for instance. Give the thing a schedule and it
+              will appear.
             </p>
           )}
         </div>

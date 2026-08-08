@@ -6,6 +6,7 @@ import {
   habitDays,
   inRoutineWindow,
   linkableItems,
+  linkIsStale,
   pickedEntries,
   routineLogDay,
   routineMinutes,
@@ -304,5 +305,45 @@ describe("routinesLinkedTo", () => {
   it("skips retired routines", () => {
     const r = routine("r", "Old", [{ id: "s", itemId: "duo" }]);
     expect(routinesLinkedTo(db([{ ...r, status: "archived" }]), "duo")).toEqual([]);
+  });
+});
+
+describe("linkableItems", () => {
+  const db = (items: Item[]) => ({ items } as unknown as import("@/lib/types").DB);
+
+  it("keeps the step's current link in the list even once it is finished", () => {
+    // the whole point of opening the picker on a finished book is to change it
+    const rows = linkableItems(
+      db([
+        item({ id: "book2", title: "Book2", kind: "book", cadence: "daily", status: "done" }),
+        item({ id: "book3", title: "Book3", kind: "book", cadence: "daily" }),
+      ]),
+      "book2"
+    );
+    expect(rows.map((r) => r.id).sort()).toEqual(["book2", "book3"]);
+  });
+
+  it("still leaves finished things out when they are not the current link", () => {
+    const rows = linkableItems(
+      db([item({ id: "book2", title: "Book2", kind: "book", cadence: "daily", status: "done" })]),
+      null
+    );
+    expect(rows).toEqual([]);
+  });
+});
+
+describe("linkIsStale", () => {
+  const db = (items: Item[]) => ({ items } as unknown as import("@/lib/types").DB);
+
+  it("is true once the target is finished, retired or gone", () => {
+    expect(linkIsStale(db([item({ id: "a", status: "done" })]), "a")).toBe(true);
+    expect(linkIsStale(db([item({ id: "a", status: "archived" })]), "a")).toBe(true);
+    expect(linkIsStale(db([item({ id: "a", deletedAt: 1 })]), "a")).toBe(true);
+    expect(linkIsStale(db([]), "vanished")).toBe(true);
+  });
+
+  it("is false for a live target, and for no link at all", () => {
+    expect(linkIsStale(db([item({ id: "a" })]), "a")).toBe(false);
+    expect(linkIsStale(db([item({ id: "a" })]), null)).toBe(false);
   });
 });
