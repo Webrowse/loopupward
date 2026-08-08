@@ -7,8 +7,8 @@ import { useLife } from "@/lib/data/provider";
 import { Horizon, HORIZON_META, Item, KIND_META, ListEntry, RoutineStep } from "@/lib/types";
 import {
   ancestors, bestStreak, children as childrenOf, currentStreak, dayLogged, descendants,
-  formatValue, habitDailyTarget, habitDays, itemProgress, linkableItems, linkIsStale, listTotals,
-  routineLogDay, routineMinutes, scheduleLabel,
+  formatValue, habitDailyTarget, habitDays, itemProgress, linkableItems, linkEffect, linkIsStale,
+  listTotals, routineLogDay, routineMinutes, scheduleLabel,
 } from "@/lib/progress";
 import { useRowDrag } from "@/lib/useRowDrag";
 import { uid } from "@/lib/uid";
@@ -641,14 +641,19 @@ function RoutineStepsEditor({ item }: { item: Item }) {
                 }`}
               >
                 <KindIcon kind={i.kind} />
-                <span className="min-w-0 flex-1 truncate">
-                  {i.title}
-                  {finished && <span className="ml-1.5 text-xs text-ink-3">finished</span>}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">
+                    {i.title}
+                    {finished && <span className="ml-1.5 text-xs text-ink-3">finished</span>}
+                  </span>
+                  {/* what a tick will do differs by target, so say it rather
+                      than leave it to be discovered */}
+                  <span className="block truncate text-xs text-ink-3">
+                    {[scheduleLabel(i), linkEffect(i)].filter(Boolean).join(" · ")}
+                  </span>
                 </span>
-                {isCurrent ? (
+                {isCurrent && (
                   <span className="shrink-0 text-xs font-medium text-accent-deep">✓ tap to unlink</span>
-                ) : (
-                  scheduleLabel(i) && <span className="shrink-0 text-xs text-ink-3">{scheduleLabel(i)}</span>
                 )}
               </button>
             );
@@ -656,9 +661,9 @@ function RoutineStepsEditor({ item }: { item: Item }) {
 
           {linkable.length === 0 && (
             <p className="text-sm leading-relaxed text-ink-3">
-              Nothing to link to yet. Habits show up here, and so does anything you have given a
-              schedule — a book you read every day, for instance. Give the thing a schedule and it
-              will appear.
+              Nothing to link to yet. Anything you are actually working towards shows up here,
+              wherever it lives — a habit, this week&rsquo;s report, a book nested under a yearly
+              goal. Notes and folders do not, since a step cannot do anything to them.
             </p>
           )}
         </div>

@@ -6,6 +6,7 @@ import {
   habitDays,
   inRoutineWindow,
   linkableItems,
+  linkEffect,
   linkIsStale,
   linkKind,
   pickedEntries,
@@ -265,9 +266,14 @@ describe("linkableItems", () => {
     expect(rows.map((r) => r.id).sort()).toEqual(["g", "h"]);
   });
 
-  it("leaves out one-off tasks, routines and anything retired", () => {
+  it("offers a target with no schedule, since most of a life has none", () => {
+    // this used to be excluded, which hid every weekly/monthly/yearly goal
+    const rows = linkableItems(db([item({ id: "one", kind: "goal", tracker: "check", title: "No schedule" })]));
+    expect(rows.map((r) => r.id)).toEqual(["one"]);
+  });
+
+  it("still leaves out routines, retired and deleted things", () => {
     const rows = linkableItems(db([
-      item({ id: "one", kind: "goal", title: "No schedule" }),
       item({ id: "r", kind: "routine", title: "Morning routine" }),
       item({ id: "gone", kind: "habit", title: "Retired", status: "archived" }),
       item({ id: "binned", kind: "habit", title: "Deleted", deletedAt: 1 }),
@@ -423,11 +429,12 @@ describe("linkKind", () => {
     expect(linkKind(item({ kind: "book", tracker: "book", cadence: "daily" }))).toBe("meter");
   });
 
-  it("refuses routines and anything with nothing to record", () => {
+  it("refuses routines and things you keep rather than do", () => {
     expect(linkKind(item({ kind: "routine", tracker: "habit" }))).toBe(null);
     expect(linkKind(item({ kind: "note", tracker: "none" }))).toBe(null);
-    expect(linkKind(item({ kind: "goal", tracker: "check" }))).toBe(null);
     expect(linkKind(undefined)).toBe(null);
+    // a plain done/not-done goal is a target, so it links and a tick finishes it
+    expect(linkKind(item({ kind: "goal", tracker: "check" }))).toBe("done");
   });
 });
 
@@ -441,5 +448,43 @@ describe("linkableItems reaches nested targets", () => {
       item({ id: "note", title: "A note", kind: "note", tracker: "none" }),
     ]));
     expect(rows.map((r) => r.id).sort()).toEqual(["bk", "yr"]);
+  });
+});
+
+describe("linkKind covers a whole life, not just counters", () => {
+  it("calls a plain one-off target a done link, at any horizon", () => {
+    expect(linkKind(item({ kind: "goal", tracker: "check", horizon: "week" }))).toBe("done");
+    expect(linkKind(item({ kind: "milestone", tracker: "none", horizon: "quarter" }))).toBe("done");
+    expect(linkKind(item({ kind: "project", tracker: "none", horizon: "year" }))).toBe("done");
+    expect(linkKind(item({ kind: "list", tracker: "none" }))).toBe("done");
+  });
+
+  it("still refuses things you keep rather than do", () => {
+    for (const kind of ["note", "folder", "quote", "principle", "lesson", "memory"] as const) {
+      expect(linkKind(item({ kind, tracker: "none" }))).toBe(null);
+    }
+    expect(linkKind(item({ kind: "routine", tracker: "habit" }))).toBe(null);
+  });
+
+  it("names the effect of each kind in plain words", () => {
+    expect(linkEffect(item({ kind: "book", tracker: "book" }))).toMatch(/count/);
+    expect(linkEffect(item({ kind: "habit", tracker: "habit" }))).toMatch(/both/);
+    expect(linkEffect(item({ kind: "goal", tracker: "check" }))).toMatch(/finishes/);
+  });
+});
+
+describe("linkableItems offers every horizon", () => {
+  const db = (items: Item[]) => ({ items } as unknown as import("@/lib/types").DB);
+
+  it("includes weekly, monthly, quarterly and yearly targets", () => {
+    const rows = linkableItems(db([
+      item({ id: "w", title: "Weekly report", kind: "goal", tracker: "check", horizon: "week" }),
+      item({ id: "m", title: "Monthly review", kind: "goal", tracker: "check", horizon: "month" }),
+      item({ id: "q", title: "Quarter push", kind: "project", tracker: "none", horizon: "quarter" }),
+      item({ id: "y", title: "Read 6 books", kind: "goal", tracker: "counter", horizon: "year" }),
+      item({ id: "n", title: "Some note", kind: "note", tracker: "none" }),
+      item({ id: "f", title: "A folder", kind: "folder", tracker: "none" }),
+    ]));
+    expect(rows.map((r) => r.id).sort()).toEqual(["m", "q", "w", "y"]);
   });
 });

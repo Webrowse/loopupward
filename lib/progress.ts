@@ -241,24 +241,49 @@ export function routineWindowLabel(item: Item): string | null {
 /** Nodes a routine step is allowed to stand for: the repeating rows that show
  *  up on a day and are ticked by logging that day. A one-off task is not one
  *  of these — it has no day to log, and the day's run covers those instead. */
+/** Kinds that are things you keep, not things you do. A step can point at a
+ *  goal or a book; pointing it at a quote or a folder would mean nothing. */
+const REFERENCE_KINDS: ReadonlySet<string> = new Set([
+  "note", "folder", "quote", "principle", "lesson", "memory",
+]);
+
 /**
  * What a linked step does when you tick it, which is not one thing:
  *
+ *  "meter" — anything carrying a number: pages, chapters, money, percent. The
+ *            tick says nothing useful, because the count is the record, so the
+ *            runner puts the count on the step instead.
  *  "day"   — a habit or anything scheduled. The tick means "did it today", so
  *            it logs that day and the day's own row agrees both ways.
- *  "meter" — a target carrying a number: pages, chapters, money, percent. The
- *            tick means nothing on its own, because the useful part is the
- *            count. The runner shows the meter on the step instead so you move
- *            it where you are rather than walking to the goal to do it.
+ *  "done"  — a one-off target: this week's report, a milestone, anything simply
+ *            finished or not. The tick finishes it, and un-ticking reopens it.
+ *
+ * Order matters. Something both counted and scheduled is a meter first, since a
+ * bare "did it today" would throw the count away.
  */
-export function linkKind(item: Item | undefined | null): "day" | "meter" | null {
-  if (!item || item.kind === "routine") return null;
+export function linkKind(item: Item | undefined | null): "day" | "meter" | "done" | null {
+  if (!item || item.kind === "routine" || REFERENCE_KINDS.has(item.kind)) return null;
   if (item.tracker === "counter" || item.tracker === "book" ||
       item.tracker === "money" || item.tracker === "percent") {
     return "meter";
   }
-  if (item.kind === "habit" || item.cadence != null) return "day";
-  return null;
+  if (item.kind === "habit" || item.tracker === "habit" || item.cadence != null) return "day";
+  return "done";
+}
+
+/** Plain words for what ticking a linked step will actually do, so the picker
+ *  can say it rather than leave you to find out. */
+export function linkEffect(item: Item): string {
+  switch (linkKind(item)) {
+    case "meter":
+      return "its count comes to the step, for you to move";
+    case "day":
+      return "ticking either ticks both, for the day";
+    case "done":
+      return "ticking the step finishes it";
+    default:
+      return "";
+  }
 }
 
 export function linkableItems(db: DB, currentId?: string | null): Item[] {

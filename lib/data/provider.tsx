@@ -744,12 +744,23 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     // Only a "day" link syncs on a tick. A metered target keeps its record in
     // its own count, which the runner lets you move on the step itself — the
     // tick adds nothing there, and inventing an amount for it would be a guess.
-    if (linked && linkKind(linked) === "day") {
-      const value = dayLogged(db.logs, linked.id, day);
-      const wanted = done ? value < habitDailyTarget(linked) : value > 0;
-      if (wanted) logOneOccurrence(linked.id, day, done);
+    if (linked) {
+      const kind = linkKind(linked);
+      if (kind === "day") {
+        const value = dayLogged(db.logs, linked.id, day);
+        const wanted = done ? value < habitDailyTarget(linked) : value > 0;
+        if (wanted) logOneOccurrence(linked.id, day, done);
+      } else if (kind === "done") {
+        // a one-off target: the step and the target are the same act, so
+        // finishing one finishes the other. skipLinked stops the two halves
+        // calling each other back.
+        if (done) completeItem(linked.id);
+        else reopenItem(linked.id);
+      }
+      // "meter" writes nothing here: its count is the record, and the runner
+      // puts that count on the step for you to move by hand
     }
-  }, [db.habitDayNotes, db.logs, db.items, upsertRows, removeRows, logOneOccurrence]);
+  }, [db.habitDayNotes, db.logs, db.items, upsertRows, removeRows, logOneOccurrence, completeItem, reopenItem]);
 
   /** Log or unlog one habit occurrence for a single day. This only ever
    *  touches the log history — it never changes the habit's own status,
@@ -808,8 +819,19 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     if (entry.virtualItemTask && entry.item) {
+      const nowDone = !entry.action.done;
       if (entry.action.done) reopenItem(entry.item.id);
       else completeItem(entry.item.id);
+      // and any routine step standing for this same target agrees
+      for (const routine of db.items) {
+        if (routine.kind !== "routine" || !routine.steps?.length) continue;
+        const rDay = routineLogDay(routine);
+        for (const step of routine.steps) {
+          if (step.itemId === entry.item.id) {
+            setRoutineStepDone(routine, rDay, step.id, nowDone, true);
+          }
+        }
+      }
       return;
     }
     const a = entry.action;
@@ -848,7 +870,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  }, [db.items, db.actions, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem, bumpParentMeter]);
+  }, [db.items, db.actions, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem, bumpParentMeter, setRoutineStepDone]);
 
   const reorderDay = useCallback((day: string, orderedEntryIds: string[]) => {
     const existing = db.dayOrder.find((d) => d.date === day);
