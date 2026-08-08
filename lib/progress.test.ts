@@ -7,6 +7,7 @@ import {
   inRoutineWindow,
   linkableItems,
   linkEffect,
+  linkGroupOf,
   linkIsStale,
   linkKind,
   pickedEntries,
@@ -486,5 +487,56 @@ describe("linkableItems offers every horizon", () => {
       item({ id: "f", title: "A folder", kind: "folder", tracker: "none" }),
     ]));
     expect(rows.map((r) => r.id).sort()).toEqual(["m", "q", "w", "y"]);
+  });
+});
+
+describe("linkGroupOf", () => {
+  const db = (items: Item[]) => ({ items } as unknown as import("@/lib/types").DB);
+
+  it("shelves a target by its own horizon", () => {
+    const rows = [
+      item({ id: "w", kind: "goal", tracker: "check", horizon: "week" }),
+      item({ id: "q", kind: "project", tracker: "none", horizon: "quarter" }),
+      item({ id: "y", kind: "goal", tracker: "counter", horizon: "year" }),
+    ];
+    const d = db(rows);
+    expect(rows.map((r) => linkGroupOf(d, r))).toEqual(["week", "quarter", "year"]);
+  });
+
+  it("shelves a nested target where its goal lives, not in the leftovers", () => {
+    // a book under a yearly "read 6 books" is found by opening the yearly list
+    const yearly = item({ id: "yr", kind: "goal", tracker: "counter", horizon: "year" });
+    const book = item({ id: "bk", parentId: "yr", kind: "book", tracker: "book" });
+    expect(linkGroupOf(db([yearly, book]), book)).toBe("year");
+  });
+
+  it("follows the chain up more than one level", () => {
+    const yearly = item({ id: "yr", kind: "goal", tracker: "none", horizon: "year" });
+    const mid = item({ id: "mid", parentId: "yr", kind: "project", tracker: "none" });
+    const leaf = item({ id: "leaf", parentId: "mid", kind: "goal", tracker: "check" });
+    expect(linkGroupOf(db([yearly, mid, leaf]), leaf)).toBe("year");
+  });
+
+  it("gives repeating things and lists their own shelves", () => {
+    const habit = item({ id: "h", kind: "habit", tracker: "habit" });
+    const weekly = item({ id: "wk", kind: "goal", tracker: "check", cadence: "weekly" });
+    const list = item({ id: "l", kind: "list", tracker: "none" });
+    const d = db([habit, weekly, list]);
+    expect(linkGroupOf(d, habit)).toBe("repeating");
+    expect(linkGroupOf(d, weekly)).toBe("repeating");
+    expect(linkGroupOf(d, list)).toBe("lists");
+  });
+
+  it("puts a target with no horizon and no parent in elsewhere", () => {
+    const loose = item({ id: "x", kind: "goal", tracker: "check" });
+    expect(linkGroupOf(db([loose]), loose)).toBe("other");
+  });
+
+  it("treats someday and life as one shelf", () => {
+    const a = item({ id: "a", kind: "goal", tracker: "check", horizon: "someday" });
+    const b = item({ id: "b", kind: "goal", tracker: "check", horizon: "life" });
+    const d = db([a, b]);
+    expect(linkGroupOf(d, a)).toBe("someday");
+    expect(linkGroupOf(d, b)).toBe("someday");
   });
 });

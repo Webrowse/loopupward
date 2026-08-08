@@ -286,6 +286,48 @@ export function linkEffect(item: Item): string {
   }
 }
 
+/** The shelf a linkable target sits on, in the order you would look. */
+export const LINK_GROUPS = [
+  { key: "repeating", label: "Repeating" },
+  { key: "today", label: "Today" },
+  { key: "week", label: "This week" },
+  { key: "month", label: "This month" },
+  { key: "quarter", label: "This quarter" },
+  { key: "year", label: "This year" },
+  { key: "date", label: "Dated" },
+  { key: "someday", label: "Someday" },
+  { key: "lists", label: "Lists" },
+  { key: "other", label: "Elsewhere" },
+] as const;
+
+export type LinkGroupKey = (typeof LINK_GROUPS)[number]["key"];
+
+const HORIZON_GROUP: Record<string, LinkGroupKey> = {
+  today: "today", week: "week", month: "month", quarter: "quarter",
+  year: "year", date: "date", someday: "someday", life: "someday",
+};
+
+/**
+ * Where you would go looking for this target. Horizon mostly answers it, with
+ * two exceptions that matter more than the rule:
+ *
+ * A nested target inherits its ancestor's shelf. "Atomic Habits" has no
+ * horizon of its own — it hangs under a yearly "read 6 books" — and the way
+ * anyone finds it is by opening the yearly list, so that is where it goes.
+ *
+ * Repeating things and lists never sit on a horizon list at all, so they get
+ * shelves of their own rather than being swept into "elsewhere".
+ */
+export function linkGroupOf(db: DB, item: Item): LinkGroupKey {
+  if (item.kind === "list") return "lists";
+  if (item.kind === "habit" || item.tracker === "habit" || item.cadence != null) return "repeating";
+  for (const node of [item, ...ancestors(db, item)]) {
+    const group = node.horizon ? HORIZON_GROUP[node.horizon] : undefined;
+    if (group) return group;
+  }
+  return "other";
+}
+
 export function linkableItems(db: DB, currentId?: string | null): Item[] {
   const rows = db.items.filter(
     (i) =>

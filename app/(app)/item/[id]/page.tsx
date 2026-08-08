@@ -7,8 +7,8 @@ import { useLife } from "@/lib/data/provider";
 import { Horizon, HORIZON_META, Item, KIND_META, ListEntry, RoutineStep } from "@/lib/types";
 import {
   ancestors, bestStreak, children as childrenOf, currentStreak, dayLogged, descendants,
-  formatValue, habitDailyTarget, habitDays, itemProgress, linkableItems, linkEffect, linkIsStale,
-  listTotals, routineLogDay, routineMinutes, scheduleLabel,
+  formatValue, habitDailyTarget, habitDays, itemProgress, LINK_GROUPS, linkableItems, linkEffect,
+  linkGroupOf, LinkGroupKey, linkIsStale, listTotals, routineLogDay, routineMinutes, scheduleLabel,
 } from "@/lib/progress";
 import { useRowDrag } from "@/lib/useRowDrag";
 import { uid } from "@/lib/uid";
@@ -420,6 +420,8 @@ function RoutineStepsEditor({ item }: { item: Item }) {
   const [newTitle, setNewTitle] = useState("");
   const [newMinutes, setNewMinutes] = useState("");
   const [linking, setLinking] = useState<RoutineStep | null>(null);
+  // which shelf the picker is showing; null means all of them, under headings
+  const [linkGroup, setLinkGroup] = useState<LinkGroupKey | null>(null);
   const newTitleRef = useRef<HTMLInputElement>(null);
   const total = routineMinutes(item);
   const optionalCount = steps.filter((s) => s.optional).length;
@@ -525,7 +527,7 @@ function RoutineStepsEditor({ item }: { item: Item }) {
               </button>
               {/* a linked step is the same act as that node's row on the day */}
               <button
-                onClick={() => setLinking(s)}
+                onClick={() => { setLinkGroup(null); setLinking(s); }}
                 aria-label={
                   s.itemId
                     ? `Change or remove what step ${i + 1} is linked to`
@@ -622,8 +624,16 @@ function RoutineStepsEditor({ item }: { item: Item }) {
             </span>
             {linking && !linking.itemId && <span className="shrink-0 text-accent-deep">✓</span>}
           </button>
+        </div>
 
-          {linkable.map((i) => {
+        {linkable.length > 0 && (() => {
+          const shelfOf = new Map(linkable.map((i) => [i.id, linkGroupOf(db, i)]));
+          const shelves = LINK_GROUPS
+            .map((g) => ({ ...g, rows: linkable.filter((i) => shelfOf.get(i.id) === g.key) }))
+            .filter((g) => g.rows.length > 0);
+          const showing = linkGroup ? shelves.filter((g) => g.key === linkGroup) : shelves;
+
+          const row = (i: Item) => {
             const isCurrent = linking?.itemId === i.id;
             const finished = i.status !== "active" || !!i.deletedAt;
             return (
@@ -657,16 +667,53 @@ function RoutineStepsEditor({ item }: { item: Item }) {
                 )}
               </button>
             );
-          })}
+          };
 
-          {linkable.length === 0 && (
-            <p className="text-sm leading-relaxed text-ink-3">
-              Nothing to link to yet. Anything you are actually working towards shows up here,
-              wherever it lives — a habit, this week&rsquo;s report, a book nested under a yearly
-              goal. Notes and folders do not, since a step cannot do anything to them.
-            </p>
-          )}
-        </div>
+          return (
+            <>
+              {/* only worth offering once there is more than one shelf to
+                  choose between — a chip row over a single group is furniture */}
+              {shelves.length > 1 && (
+                <div className="mt-4 -mx-5 overflow-x-auto px-5 pb-1">
+                  <div className="flex w-max gap-1.5">
+                    <Chip active={linkGroup === null} onClick={() => setLinkGroup(null)}>
+                      All {linkable.length}
+                    </Chip>
+                    {shelves.map((g) => (
+                      <Chip key={g.key} active={linkGroup === g.key} onClick={() => setLinkGroup(g.key)}>
+                        {g.label} {g.rows.length}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-2 space-y-3">
+                {showing.map((g) => (
+                  <div key={g.key}>
+                    {/* the heading earns its place in the all-shelves view,
+                        where it says which list a target came from */}
+                    {linkGroup === null && shelves.length > 1 && (
+                      <p className="mb-1 text-[0.68rem] font-medium uppercase tracking-wide text-ink-3">
+                        {g.label}
+                      </p>
+                    )}
+                    <div className="space-y-1.5">{g.rows.map(row)}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          );
+        })()}
+
+        {linkable.length === 0 && (
+          <p className="mt-3 text-sm leading-relaxed text-ink-3">
+            Nothing to link to yet. Anything you are actually working towards shows up here,
+            wherever it lives — a habit, this week&rsquo;s report, a book nested under a yearly
+            goal. Notes and folders do not, since a step cannot do anything to them.
+          </p>
+        )}
+
       </Sheet>
 
       <div className="flex gap-2">
