@@ -35,6 +35,11 @@ pub struct RoutineStep {
     /// the day's list are one act, so ticking either has to tick both.
     #[serde(default)]
     pub item_id: Option<String>,
+    /// A step the routine can finish without. Skipping it still counts the
+    /// day as done, so a script can hold the nice-to-haves without the whole
+    /// routine failing on the morning you leave one out.
+    #[serde(default)]
+    pub optional: bool,
 }
 
 /// One line of a list: "milk — 2 l". Ticked in place, not per day.
