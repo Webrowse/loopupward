@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLife } from "@/lib/data/provider";
-import { routineDoneSteps, routineMinutes, todayEntries, TodayEntry } from "@/lib/progress";
+import { formatValue, linkKind, routineDoneSteps, routineMinutes, todayEntries, TodayEntry } from "@/lib/progress";
 import { Item, RoutineStep } from "@/lib/types";
 import { Button, Chip, Field, Sheet, inputCls } from "@/components/ui";
 
@@ -975,6 +975,95 @@ function RestBreak({
   );
 }
 
+/**
+ * The meter of whatever this step advances, right on the step.
+ *
+ * A book nested under a yearly "read 6 books" has a page count, and the point
+ * of linking it to "read a book" is not to tick anything — it is to move that
+ * count from here instead of walking to the goal to do it. So: the name, where
+ * you are, a plus, and the number itself editable when the plus is too slow.
+ * Saving cascades exactly as it does on the item page, finishing the book and
+ * advancing the goal above it when the last page lands.
+ */
+function StepMeter({ item }: { item: Item }) {
+  const { setTracker } = useLife();
+  const [draft, setDraft] = useState<number | null>(null);
+  const [typing, setTyping] = useState<string | null>(null);
+
+  const stepBy = item.tracker === "money" ? Math.max(1, Math.round((item.target ?? 1000) / 100)) : 1;
+  const cap = item.tracker === "book" ? item.target : item.tracker === "percent" ? 100 : null;
+  const clamp = (n: number) => Math.max(0, cap != null ? Math.min(cap, n) : n);
+  const value = draft ?? item.current;
+  const dirty = draft !== null && draft !== item.current;
+
+  const commit = () => {
+    if (draft !== null && draft !== item.current) setTracker(item, draft);
+    setDraft(null);
+  };
+
+  return (
+    <div className="w-full max-w-sm rounded-(--radius-card) border border-line-soft bg-surface px-4 py-3">
+      <p className="mb-1.5 truncate text-xs text-ink-3">{item.title}</p>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setDraft(clamp(value - stepBy))}
+          aria-label={`Less by ${stepBy}`}
+          className="pressable grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent-soft text-lg font-medium text-accent-deep"
+        >
+          −
+        </button>
+
+        {typing === null ? (
+          <button
+            onClick={() => setTyping(String(value))}
+            aria-label="Type the number instead"
+            className="min-w-0 flex-1 text-center font-display text-2xl tabular-nums text-ink"
+          >
+            {formatValue(item, value)}
+            {item.target != null && (
+              <span className="text-lg text-ink-3"> / {formatValue(item, item.target)}</span>
+            )}
+          </button>
+        ) : (
+          <input
+            autoFocus
+            type="number"
+            aria-label={`Where you are in ${item.title}`}
+            className={`${inputCls} flex-1 text-center`}
+            value={typing}
+            onChange={(e) => setTyping(e.target.value)}
+            onBlur={() => {
+              const v = parseFloat(typing);
+              if (!Number.isNaN(v)) setDraft(clamp(v));
+              setTyping(null);
+            }}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          />
+        )}
+
+        <button
+          onClick={() => setDraft(clamp(value + stepBy))}
+          disabled={cap != null && value >= cap}
+          aria-label={`More by ${stepBy}`}
+          className="pressable grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent-soft text-lg font-medium text-accent-deep disabled:opacity-40"
+        >
+          +
+        </button>
+      </div>
+      {/* nothing is written until you say so, so tapping + eight times leaves
+          one entry in the goal's history rather than eight */}
+      {dirty && (
+        <div className="mt-2.5 flex items-center justify-end gap-3">
+          <button onClick={() => setDraft(null)} className="pressable text-xs text-ink-3 hover:text-ink">
+            Undo
+          </button>
+          <Button small onClick={commit}>Save {formatValue(item, value)}</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ————— running a routine: one step at a time, in order ————— */
 
 const ASK_PRESETS = [5, 10, 15, 20, 30];
@@ -1014,7 +1103,7 @@ function StepRun({
   onFinished: () => void;
   onClose: () => void;
 }) {
-  const { restSeconds } = useLife();
+  const { db, restSeconds } = useLife();
 
   // what's left to do this run — or the whole script again, when the day
   // was already finished and this is a deliberate second lap
@@ -1537,6 +1626,12 @@ function StepRun({
           </div>
         </div>
       )}
+
+      {/* what this step moves, if it moves a number */}
+      {(() => {
+        const target = step.itemId ? db.items.find((i) => i.id === step.itemId) : undefined;
+        return target && linkKind(target) === "meter" ? <StepMeter item={target} /> : null;
+      })()}
 
       <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
         {(phase === "timed" || phase === "open") && (

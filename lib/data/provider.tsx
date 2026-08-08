@@ -15,7 +15,7 @@ import { CloudRepo } from "./cloud";
 import { LocalRepo, clearLocalDB, localHasData, readLocalDB } from "./local";
 import { Repo } from "./repo";
 import { today } from "../dates";
-import { dayLogged, habitDailyTarget, requiredSteps, routineLogDay, TodayEntry } from "../progress";
+import { dayLogged, habitDailyTarget, linkKind, requiredSteps, routineLogDay, TodayEntry } from "../progress";
 import { FREE_LIMITS, PREMIUM_TRASH_DAYS } from "../limits";
 import { DEFAULT_FONT, FontId, isFontId } from "../fonts";
 
@@ -741,7 +741,10 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     const linked = !skipLinked && step?.itemId
       ? db.items.find((i) => i.id === step.itemId)
       : undefined;
-    if (linked) {
+    // Only a "day" link syncs on a tick. A metered target keeps its record in
+    // its own count, which the runner lets you move on the step itself — the
+    // tick adds nothing there, and inventing an amount for it would be a guess.
+    if (linked && linkKind(linked) === "day") {
       const value = dayLogged(db.logs, linked.id, day);
       const wanted = done ? value < habitDailyTarget(linked) : value > 0;
       if (wanted) logOneOccurrence(linked.id, day, done);
@@ -782,12 +785,14 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     // a night routine ticked at 1am belongs to last night, and today's tick
     // has no business reaching into it.
     if (!skipLinked) {
-      for (const routine of db.items) {
-        if (routine.kind !== "routine" || !routine.steps?.length) continue;
-        if (routineLogDay(routine) !== day) continue;
-        for (const step of routine.steps) {
-          if (step.itemId === item.id) {
-            setRoutineStepDone(routine, day, step.id, !currentlyDone, true);
+      if (linkKind(item) === "day") {
+        for (const routine of db.items) {
+          if (routine.kind !== "routine" || !routine.steps?.length) continue;
+          if (routineLogDay(routine) !== day) continue;
+          for (const step of routine.steps) {
+            if (step.itemId === item.id) {
+              setRoutineStepDone(routine, day, step.id, !currentlyDone, true);
+            }
           }
         }
       }

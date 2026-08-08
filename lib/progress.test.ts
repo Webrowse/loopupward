@@ -7,6 +7,7 @@ import {
   inRoutineWindow,
   linkableItems,
   linkIsStale,
+  linkKind,
   pickedEntries,
   requiredSteps,
   routineDayComplete,
@@ -401,5 +402,44 @@ describe("requiredSteps / routineDayComplete", () => {
 
   it("is never complete with no steps at all", () => {
     expect(routineDayComplete(dbWith([]), routine([]), "2026-08-08")).toBe(false);
+  });
+});
+
+describe("linkKind", () => {
+  it("calls a habit or anything scheduled a day link", () => {
+    expect(linkKind(item({ kind: "habit", tracker: "habit" }))).toBe("day");
+    expect(linkKind(item({ kind: "goal", tracker: "check", cadence: "weekly" }))).toBe("day");
+  });
+
+  it("calls anything carrying a number a meter link", () => {
+    expect(linkKind(item({ kind: "book", tracker: "book", target: 176 }))).toBe("meter");
+    expect(linkKind(item({ kind: "goal", tracker: "counter" }))).toBe("meter");
+    expect(linkKind(item({ kind: "goal", tracker: "money" }))).toBe("meter");
+    expect(linkKind(item({ kind: "goal", tracker: "percent" }))).toBe("meter");
+  });
+
+  it("prefers the meter when something is both counted and scheduled", () => {
+    // the count is the useful record; a bare "did it today" would throw it away
+    expect(linkKind(item({ kind: "book", tracker: "book", cadence: "daily" }))).toBe("meter");
+  });
+
+  it("refuses routines and anything with nothing to record", () => {
+    expect(linkKind(item({ kind: "routine", tracker: "habit" }))).toBe(null);
+    expect(linkKind(item({ kind: "note", tracker: "none" }))).toBe(null);
+    expect(linkKind(item({ kind: "goal", tracker: "check" }))).toBe(null);
+    expect(linkKind(undefined)).toBe(null);
+  });
+});
+
+describe("linkableItems reaches nested targets", () => {
+  const db = (items: Item[]) => ({ items } as unknown as import("@/lib/types").DB);
+
+  it("offers a book nested under a yearly goal, which no schedule would surface", () => {
+    const rows = linkableItems(db([
+      item({ id: "yr", title: "Read 6 books", kind: "goal", tracker: "counter", target: 6, horizon: "year" }),
+      item({ id: "bk", parentId: "yr", title: "Atomic Habits", kind: "book", tracker: "book", target: 176 }),
+      item({ id: "note", title: "A note", kind: "note", tracker: "none" }),
+    ]));
+    expect(rows.map((r) => r.id).sort()).toEqual(["bk", "yr"]);
   });
 });

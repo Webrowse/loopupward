@@ -241,13 +241,35 @@ export function routineWindowLabel(item: Item): string | null {
 /** Nodes a routine step is allowed to stand for: the repeating rows that show
  *  up on a day and are ticked by logging that day. A one-off task is not one
  *  of these — it has no day to log, and the day's run covers those instead. */
+/**
+ * What a linked step does when you tick it, which is not one thing:
+ *
+ *  "day"   — a habit or anything scheduled. The tick means "did it today", so
+ *            it logs that day and the day's own row agrees both ways.
+ *  "meter" — a target carrying a number: pages, chapters, money, percent. The
+ *            tick means nothing on its own, because the useful part is the
+ *            count. The runner shows the meter on the step instead so you move
+ *            it where you are rather than walking to the goal to do it.
+ */
+export function linkKind(item: Item | undefined | null): "day" | "meter" | null {
+  if (!item || item.kind === "routine") return null;
+  if (item.tracker === "counter" || item.tracker === "book" ||
+      item.tracker === "money" || item.tracker === "percent") {
+    return "meter";
+  }
+  if (item.kind === "habit" || item.cadence != null) return "day";
+  return null;
+}
+
 export function linkableItems(db: DB, currentId?: string | null): Item[] {
   const rows = db.items.filter(
     (i) =>
       i.status === "active" &&
       !i.deletedAt &&
-      i.kind !== "routine" &&
-      (i.kind === "habit" || i.cadence != null)
+      // A metered target qualifies wherever it lives — a book nested under a
+      // yearly "read 6 books" is exactly the thing a nightly step advances,
+      // and it has no schedule of its own to make it visible on a day.
+      linkKind(i) !== null
   );
   // Whatever the step points at now belongs in the list even when it no longer
   // qualifies. A finished book is precisely the thing you opened this picker to
