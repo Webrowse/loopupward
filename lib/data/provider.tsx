@@ -15,7 +15,7 @@ import { CloudRepo } from "./cloud";
 import { LocalRepo, clearLocalDB, localHasData, readLocalDB } from "./local";
 import { Repo } from "./repo";
 import { today } from "../dates";
-import { dayLogged, habitDailyTarget, routineLogDay, TodayEntry } from "../progress";
+import { dayLogged, habitDailyTarget, requiredSteps, routineLogDay, TodayEntry } from "../progress";
 import { FREE_LIMITS, PREMIUM_TRASH_DAYS } from "../limits";
 import { DEFAULT_FONT, FontId, isFontId } from "../fonts";
 
@@ -718,9 +718,12 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     } else {
       upsertRows("habitDayNotes", [row]);
     }
-    // ticking the last step is doing the routine — log its day; un-ticking
-    // a step on a fully-logged day takes the log back
-    const allDone = doneSteps.length === stepIds.length && stepIds.length > 0;
+    // ticking the last REQUIRED step is doing the routine — log its day;
+    // un-ticking one on a logged day takes the log back. Optional steps never
+    // gate this, which is the whole point of marking them: the morning you
+    // skip the stretch is still a morning you did your routine.
+    const required = requiredSteps(item);
+    const allDone = required.length > 0 && required.every((s) => ticked.has(s.id));
     const dayLogs = db.logs.filter((l) => l.itemId === item.id && l.date === day && l.op === "add");
     const logged = dayLogs.reduce((s, l) => s + l.value, 0) > 0;
     if (allDone && !logged) {

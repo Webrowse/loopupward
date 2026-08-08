@@ -178,6 +178,7 @@ function RoutineCard({ item }: { item: Item }) {
                 </button>
                 <span className={`min-w-0 truncate ${on ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink-2"}`}>
                   {i + 1}. {s.title}
+                  {s.optional && <span className="ml-1.5 text-xs text-ink-3">optional</span>}
                 </span>
                 <span className="ml-auto shrink-0 text-xs text-ink-3 tabular-nums">
                   {s.minutes != null ? `${s.minutes} min` : "–"}

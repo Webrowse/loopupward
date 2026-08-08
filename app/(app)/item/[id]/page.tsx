@@ -422,6 +422,7 @@ function RoutineStepsEditor({ item }: { item: Item }) {
   const [linking, setLinking] = useState<RoutineStep | null>(null);
   const newTitleRef = useRef<HTMLInputElement>(null);
   const total = routineMinutes(item);
+  const optionalCount = steps.filter((s) => s.optional).length;
   const linkable = useMemo(() => linkableItems(db, linking?.itemId), [db, linking]);
 
   const save = (next: RoutineStep[]) => updateItem(item.id, { steps: next });
@@ -438,7 +439,7 @@ function RoutineStepsEditor({ item }: { item: Item }) {
     // means that habit — link it, visibly, so the row shows what happened and
     // the ↳ can be removed in one tap if it was not meant
     const match = linkable.find((i) => i.title.trim().toLowerCase() === title.toLowerCase());
-    save([...steps, { id: uid(), title, minutes: parseMin(newMinutes), itemId: match?.id ?? null }]);
+    save([...steps, { id: uid(), title, minutes: parseMin(newMinutes), itemId: match?.id ?? null, optional: false }]);
     setNewTitle("");
     setNewMinutes("");
     // typing flow is title → tab → minutes → enter; the next step starts
@@ -457,6 +458,7 @@ function RoutineStepsEditor({ item }: { item: Item }) {
       <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-3">
         The script
         {steps.length > 0 && ` · ${steps.length} step${steps.length === 1 ? "" : "s"}`}
+        {optionalCount > 0 && ` (${optionalCount} optional)`}
         {total != null && ` · ${total} min`}
       </p>
 
@@ -503,6 +505,24 @@ function RoutineStepsEditor({ item }: { item: Item }) {
                 className="w-14 shrink-0 rounded-lg border border-line bg-bg px-2 py-1 text-right text-sm text-ink tabular-nums outline-none focus:border-accent"
               />
               <span className="shrink-0 text-xs text-ink-3">min</span>
+              {/* a step the routine can finish without */}
+              <button
+                onClick={() => save(steps.map((x) => (x.id === s.id ? { ...x, optional: !x.optional } : x)))}
+                aria-pressed={!!s.optional}
+                aria-label={`Mark step ${i + 1} ${s.optional ? "required" : "optional"}`}
+                title={
+                  s.optional
+                    ? "Optional — the routine finishes without it"
+                    : "Required — the routine is not done until this is"
+                }
+                className={`pressable shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-medium ${
+                  s.optional
+                    ? "border-line text-ink-3"
+                    : "border-line-soft text-ink-3/50 hover:border-accent hover:text-accent-deep"
+                }`}
+              >
+                {s.optional ? "optional" : "needed"}
+              </button>
               {/* a linked step is the same act as that node's row on the day */}
               <button
                 onClick={() => setLinking(s)}

@@ -8,6 +8,8 @@ import {
   linkableItems,
   linkIsStale,
   pickedEntries,
+  requiredSteps,
+  routineDayComplete,
   routineLogDay,
   routineMinutes,
   routinesLinkedTo,
@@ -345,5 +347,59 @@ describe("linkIsStale", () => {
   it("is false for a live target, and for no link at all", () => {
     expect(linkIsStale(db([item({ id: "a" })]), "a")).toBe(false);
     expect(linkIsStale(db([item({ id: "a" })]), null)).toBe(false);
+  });
+});
+
+/* ————— steps a routine can finish without ————— */
+
+describe("requiredSteps / routineDayComplete", () => {
+  const step = (id: string, optional = false) => ({ id, title: id, minutes: null, optional });
+  const routine = (steps: ReturnType<typeof step>[]) =>
+    item({ id: "r", kind: "routine", steps });
+  const dbWith = (doneIds: string[]) =>
+    ({
+      habitDayNotes: doneIds.length
+        ? [{ id: "n", itemId: "r", date: "2026-08-08", text: "", doneSteps: doneIds, createdAt: 0, updatedAt: 0 }]
+        : [],
+    } as unknown as import("@/lib/types").DB);
+
+  it("counts only the steps that are not optional", () => {
+    const r = routine([step("a"), step("b", true), step("c")]);
+    expect(requiredSteps(r).map((s) => s.id)).toEqual(["a", "c"]);
+  });
+
+  it("finishes the day once every required step is ticked", () => {
+    const r = routine([step("a"), step("b", true), step("c")]);
+    expect(routineDayComplete(dbWith(["a"]), r, "2026-08-08")).toBe(false);
+    expect(routineDayComplete(dbWith(["a", "c"]), r, "2026-08-08")).toBe(true);
+  });
+
+  it("does not need the optional one, but does not mind it either", () => {
+    const r = routine([step("a"), step("b", true)]);
+    expect(routineDayComplete(dbWith(["b"]), r, "2026-08-08")).toBe(false);
+    expect(routineDayComplete(dbWith(["a"]), r, "2026-08-08")).toBe(true);
+    expect(routineDayComplete(dbWith(["a", "b"]), r, "2026-08-08")).toBe(true);
+  });
+
+  it("treats an all-optional script as if nothing were optional", () => {
+    // otherwise the routine would complete on its first tick, which is a
+    // strange thing to own
+    const r = routine([step("a", true), step("b", true)]);
+    expect(requiredSteps(r).map((s) => s.id)).toEqual(["a", "b"]);
+    expect(routineDayComplete(dbWith(["a"]), r, "2026-08-08")).toBe(false);
+    expect(routineDayComplete(dbWith(["a", "b"]), r, "2026-08-08")).toBe(true);
+  });
+
+  it("treats steps written before the field existed as required", () => {
+    const legacy = item({
+      id: "r", kind: "routine",
+      steps: [{ id: "a", title: "a", minutes: null } as import("@/lib/types").RoutineStep],
+    });
+    expect(requiredSteps(legacy).map((s) => s.id)).toEqual(["a"]);
+    expect(routineDayComplete(dbWith([]), legacy, "2026-08-08")).toBe(false);
+  });
+
+  it("is never complete with no steps at all", () => {
+    expect(routineDayComplete(dbWith([]), routine([]), "2026-08-08")).toBe(false);
   });
 });

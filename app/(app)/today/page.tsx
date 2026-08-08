@@ -11,8 +11,8 @@ import {
 import { useToday } from "@/lib/useToday";
 import { areaColor } from "@/lib/palette";
 import {
-  inRoutineWindow, routineDoneSteps, routineMinutes, routinesLinkedTo, routineWindowLabel,
-  sortedByDone, todayEntries, TodayEntry,
+  inRoutineWindow, requiredSteps, routineDoneSteps, routineMinutes, routinesLinkedTo,
+  routineWindowLabel, sortedByDone, todayEntries, TodayEntry,
 } from "@/lib/progress";
 import { Action, Cadence, HORIZON_META, Item } from "@/lib/types";
 import { quickTasks } from "@/lib/suggestions";
@@ -1282,10 +1282,16 @@ function ActionRow({
           {/* a routine wears its length — and, mid-way, how far in it is:
               "1/3 steps · 25 min" */}
           {item?.kind === "routine" && item.steps && item.steps.length > 0 && (() => {
-            const ticked = routineDoneSteps(db, item.id, action.date).size;
+            // counted against the required steps only: with an optional one
+            // left out, "4/5" would call a finished routine unfinished
+            const done = routineDoneSteps(db, item.id, action.date);
+            const need = requiredSteps(item);
+            const ticked = need.filter((s) => done.has(s.id)).length;
+            const optional = item.steps.length - need.length;
             return (
               <span className="shrink-0 tabular-nums">
-                {ticked > 0 && !action.done ? `${ticked}/${item.steps.length}` : item.steps.length} steps
+                {ticked > 0 && !action.done ? `${ticked}/${need.length}` : need.length} steps
+                {optional > 0 ? ` +${optional}` : ""}
                 {routineMinutes(item) != null ? ` · ${routineMinutes(item)} min` : ""}
               </span>
             );

@@ -579,7 +579,10 @@ export function FocusTimer({
           <div className="mb-3 rounded-xl border border-line-soft bg-surface-2/50 px-3.5 py-2.5">
             {steps.map((s, i) => (
               <div key={s.id} className="flex items-baseline justify-between gap-3 py-0.5 text-sm">
-                <span className="min-w-0 truncate text-ink-2">{i + 1}. {s.title}</span>
+                <span className="min-w-0 truncate text-ink-2">
+                  {i + 1}. {s.title}
+                  {s.optional && <span className="ml-1.5 text-xs text-ink-3">optional</span>}
+                </span>
                 <span className="shrink-0 text-xs text-ink-3 tabular-nums">
                   {s.minutes != null ? `${s.minutes} min` : "no timer"}
                 </span>
@@ -1050,6 +1053,9 @@ function StepRun({
   const [pendingQueue, setPendingQueue] = useState<string[] | null>(null);
   // the rest-of-the-run panel: reorder what's left without stopping the run
   const [arranging, setArranging] = useState(false);
+  // whether an optional step was deliberately left out, so the closing line
+  // does not claim every step was walked when one was waved past
+  const [leftSomeOut, setLeftSomeOut] = useState(false);
 
   /** Put a step on screen with a clean clock. Takes an id so every route into
    *  it — next in line, skipped to the back, pulled forward from the panel —
@@ -1176,6 +1182,24 @@ function StepRun({
     enter(rest[0]);
   };
 
+  /** Leave an optional step out of this run for good. "Skip for now" sends a
+   *  step to the back of the line, which is right for something you still owe
+   *  and wrong for something the routine never needed — that one should simply
+   *  be gone, and the run should end when only such steps remain. */
+  const dropStep = () => {
+    if (justChecked) return;
+    setLeftSomeOut(true);
+    const rest = queue.slice(1);
+    if (rest.length === 0) {
+      onRestore?.();
+      setCelebrating(true);
+      setTimeout(onFinished, 1400);
+      return;
+    }
+    setQueue(rest);
+    enter(rest[0]);
+  };
+
   /* ——— rearranging what's left, mid-run ——— */
 
   /** Pull a step to the front and start it now. Everything else keeps its
@@ -1221,7 +1245,7 @@ function StepRun({
     const words = finishedWords ?? {
       emoji: "🌄",
       headline: "Routine done.",
-      sub: "Every step, walked. 🌱",
+      sub: leftSomeOut ? "The ones that mattered, done. 🌱" : "Every step, walked. 🌱",
     };
     return (
       <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-bg px-6 py-10 text-center">
@@ -1381,6 +1405,9 @@ function StepRun({
         <h1 className="font-display text-[2rem] sm:text-[2.75rem] leading-tight text-ink max-w-3xl">
           {step.title}
         </h1>
+        {step.optional && (
+          <p className="mt-1 text-sm text-ink-3">optional — the routine finishes without it</p>
+        )}
         {/* the script at a glance: done, current, still ahead */}
         <div className="mt-3 flex items-center justify-center gap-1.5" aria-hidden>
           {steps.map((s) => (
@@ -1521,10 +1548,16 @@ function StepRun({
             {paused ? "▶ Resume" : "⏸ Pause"}
           </button>
         )}
-        {queue.length > 1 && (
-          <button onClick={skipStep} className="pressable text-sm font-medium text-ink-2 hover:text-ink px-3 py-2">
-            Skip for now ↻
+        {step.optional ? (
+          <button onClick={dropStep} className="pressable text-sm font-medium text-ink-2 hover:text-ink px-3 py-2">
+            Leave it out
           </button>
+        ) : (
+          queue.length > 1 && (
+            <button onClick={skipStep} className="pressable text-sm font-medium text-ink-2 hover:text-ink px-3 py-2">
+              Skip for now ↻
+            </button>
+          )
         )}
         {steps.length > 1 && (
           <button onClick={() => setArranging(true)} className="pressable text-sm font-medium text-ink-2 hover:text-ink px-3 py-2">

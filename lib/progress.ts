@@ -281,6 +281,25 @@ export function routinesLinkedTo(db: DB, itemId: string): { routine: Item; step:
   return out;
 }
 
+/** The steps a routine cannot call itself finished without. A script made
+ *  entirely of optional steps is treated as if none were: "optional" is only
+ *  meaningful against something required, and a routine that completes on its
+ *  first tick would be a strange thing to own. */
+export function requiredSteps(item: Item): RoutineStep[] {
+  const steps = item.steps ?? [];
+  const required = steps.filter((s) => !s.optional);
+  return required.length > 0 ? required : steps;
+}
+
+/** Has this routine been done on `day`? True once every required step is
+ *  ticked; the optional ones are welcome to be left. */
+export function routineDayComplete(db: DB, item: Item, day: string): boolean {
+  const required = requiredSteps(item);
+  if (required.length === 0) return false;
+  const done = routineDoneSteps(db, item.id, day);
+  return required.every((s) => done.has(s.id));
+}
+
 /** Which of a routine's steps are already done on `day`. */
 export function routineDoneSteps(db: DB, itemId: string, day: string): Set<string> {
   const note = db.habitDayNotes.find((n) => n.itemId === itemId && n.date === day);

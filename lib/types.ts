@@ -38,6 +38,10 @@ export interface RoutineStep {
    *  absent, on steps written before this existed) means the step is just a
    *  line of text. */
   itemId?: string | null;
+  /** A step the routine finishes without. Skipping it still counts the day
+   *  as done, so a script can carry its nice-to-haves ("stretch if there's
+   *  time") without the whole routine failing on the morning you skip one. */
+  optional?: boolean;
 }
 
 /** One line of a list: "milk — 2 l". Entries aren't separate items — the
