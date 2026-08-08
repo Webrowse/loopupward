@@ -573,10 +573,10 @@ function RoutineStepsEditor({ item }: { item: Item }) {
         onClose={() => setLinking(null)}
         title="What is this step?"
       >
+        {/* short on purpose: every row below states its own effect, and four
+            lines of preamble here only pushed the list off the screen */}
         <p className="mb-3 text-sm leading-relaxed text-ink-2">
-          Link &ldquo;{linking?.title}&rdquo; to something you already track, and the two stop being
-          separate chores: ticking it here ticks it on the day&rsquo;s list, and ticking it there
-          ticks it here.
+          What does &ldquo;{linking?.title}&rdquo; stand for?
         </p>
 
         {/* A link is not permanent and the sheet has to say so. The old wording
@@ -671,24 +671,34 @@ function RoutineStepsEditor({ item }: { item: Item }) {
 
           return (
             <>
-              {/* only worth offering once there is more than one shelf to
-                  choose between — a chip row over a single group is furniture */}
+              {/* A dropdown rather than a scrolling row of chips: ten shelves
+                  do not fit across a sheet, and half of them being off-screen
+                  is worse than one control that holds them all. */}
               {shelves.length > 1 && (
-                <div className="mt-4 -mx-5 overflow-x-auto px-5 pb-1">
-                  <div className="flex w-max gap-1.5">
-                    <Chip active={linkGroup === null} onClick={() => setLinkGroup(null)}>
-                      All {linkable.length}
-                    </Chip>
+                <div className="mt-4">
+                  <select
+                    aria-label="Which list to choose from"
+                    value={linkGroup ?? "all"}
+                    onChange={(e) =>
+                      setLinkGroup(e.target.value === "all" ? null : (e.target.value as LinkGroupKey))
+                    }
+                    className={inputCls}
+                  >
+                    <option value="all">Everything · {linkable.length}</option>
                     {shelves.map((g) => (
-                      <Chip key={g.key} active={linkGroup === g.key} onClick={() => setLinkGroup(g.key)}>
-                        {g.label} {g.rows.length}
-                      </Chip>
+                      <option key={g.key} value={g.key}>
+                        {g.label} · {g.rows.length}
+                      </option>
                     ))}
-                  </div>
+                  </select>
                 </div>
               )}
 
-              <div className="mt-2 space-y-3">
+              {/* Fixed height, not max-height: the sheet is centred, so a list
+                  that grows with its contents drags the dropdown and the header
+                  up and down every time you switch shelf. The rows scroll
+                  inside this instead, and nothing above them ever moves. */}
+              <div className="mt-2 h-[42vh] space-y-3 overflow-y-auto">
                 {showing.map((g) => (
                   <div key={g.key}>
                     {/* the heading earns its place in the all-shelves view,
