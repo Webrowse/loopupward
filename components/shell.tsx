@@ -159,7 +159,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`pressable flex flex-col items-center gap-0.5 rounded-2xl px-3 py-1.5 text-[0.68rem] font-medium transition-colors ${
+                // six tabs at px-3 come to ~363px and overflowed a 360px
+                // phone; the padding tightens on the narrowest screens and
+                // relaxes again once there is room
+                className={`pressable flex min-w-0 flex-col items-center gap-0.5 rounded-2xl px-2 py-1.5 text-[0.68rem] font-medium transition-colors sm:px-3 ${
                   active ? "text-accent-deep" : "text-ink-3 hover:text-ink-2"
                 }`}
               >

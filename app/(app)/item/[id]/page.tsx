@@ -473,7 +473,12 @@ function RoutineStepsEditor({ item }: { item: Item }) {
             <div
               key={s.id}
               ref={rowRef(s.id)}
-              className={`relative flex items-center gap-2 bg-surface px-3 py-2 ${draggingId === s.id ? "z-20 shadow-(--shadow-float)" : ""}`}
+              // On a phone the drag handle, title, minutes and three chips
+              // cannot share one line: they ran off a 320px screen, and even at
+              // 390px squeezed the title box down to about 50px. The title
+              // keeps the first line to itself and the controls wrap under it,
+              // returning to a single row once there is width for one.
+              className={`relative flex flex-wrap items-center gap-2 bg-surface px-3 py-2 sm:flex-nowrap ${draggingId === s.id ? "z-20 shadow-(--shadow-float)" : ""}`}
             >
               {/* the order IS the routine — drag a step where it belongs */}
               <button
@@ -492,7 +497,7 @@ function RoutineStepsEditor({ item }: { item: Item }) {
                   else e.target.value = s.title;
                 }}
                 aria-label={`Step ${i + 1} title`}
-                className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none"
+                className="min-w-0 flex-1 basis-[60%] bg-transparent text-sm text-ink outline-none"
               />
               <input
                 type="number"

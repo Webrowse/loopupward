@@ -224,22 +224,29 @@ function Today() {
           </div>
           <NavArrow dir="next" onClick={() => setDay(addDays(day, 7))} />
         </div>
-        <div className="mt-2 flex gap-2 text-xs">
+        {/* wraps on a phone: five pills do not fit across 390px, and without
+            this the Lists button hung 40px off the right edge and took the
+            whole page into sideways scroll */}
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
           <DayJump label="Yesterday" onClick={() => setDay(addDays(realToday, -1))} active={day === addDays(realToday, -1)} />
           <DayJump label="Today" onClick={() => setDay(realToday)} active={isToday} />
           <DayJump label="Tomorrow" onClick={() => setDay(addDays(realToday, 1))} active={day === addDays(realToday, 1)} />
-          <Link
-            href="/routines"
-            className="pressable ml-auto inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
-          >
-            <RoutineIcon className="h-4 w-4" /> Routines
-          </Link>
-          <Link
-            href="/lists"
-            className="pressable inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
-          >
-            <ListIcon className="h-4 w-4" /> Lists
-          </Link>
+          {/* the pair travels together, so on a narrow screen they drop to a
+              second line as a unit instead of Lists stranding itself */}
+          <div className="ml-auto flex gap-2">
+            <Link
+              href="/routines"
+              className="pressable inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
+            >
+              <RoutineIcon className="h-4 w-4" /> Routines
+            </Link>
+            <Link
+              href="/lists"
+              className="pressable inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
+            >
+              <ListIcon className="h-4 w-4" /> Lists
+            </Link>
+          </div>
         </div>
       </div>
 

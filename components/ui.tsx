@@ -76,7 +76,11 @@ export function Segmented<T extends string>({
   options, value, onChange,
 }: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {
   return (
-    <div className="inline-flex rounded-full bg-surface-2 p-1 gap-0.5">
+    // Five options come to ~357px, which does not fit a 360px phone and used
+    // to take the whole page into sideways scroll. The row scrolls inside
+    // itself instead — scrollbar hidden, since it is a handful of pills.
+    <div className="no-scrollbar -mx-1 max-w-full overflow-x-auto px-1">
+      <div className="inline-flex w-max rounded-full bg-surface-2 p-1 gap-0.5">
       {options.map((o) => (
         <button
           key={o.value}
@@ -90,6 +94,7 @@ export function Segmented<T extends string>({
           {o.label}
         </button>
       ))}
+      </div>
     </div>
   );
 }
