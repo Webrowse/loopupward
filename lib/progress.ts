@@ -375,16 +375,24 @@ export function routinesLinkedTo(db: DB, itemId: string): { routine: Item; step:
  *  meaningful against something required, and a routine that completes on its
  *  first tick would be a strange thing to own. */
 export function requiredSteps(item: Item): RoutineStep[] {
-  const steps = item.steps ?? [];
-  const required = steps.filter((s) => !s.optional);
-  return required.length > 0 ? required : steps;
+  return (item.steps ?? []).filter((s) => !s.optional);
 }
 
-/** Has this routine been done on `day`? True once every required step is
- *  ticked; the optional ones are welcome to be left. */
+/**
+ * Has this routine been done on `day`? True once every required step is
+ * ticked; the optional ones are welcome to be left.
+ *
+ * A script of nothing but optional steps therefore reads done from the start
+ * — nothing is required, so nothing is outstanding. That is deliberate: such
+ * a routine is a menu rather than an obligation, and it should never be the
+ * reason a day is short of finished. It still needs a script: an empty
+ * routine is unconfigured, not complete.
+ */
 export function routineDayComplete(db: DB, item: Item, day: string): boolean {
+  const steps = item.steps ?? [];
+  if (steps.length === 0) return false;
   const required = requiredSteps(item);
-  if (required.length === 0) return false;
+  if (required.length === 0) return true;
   const done = routineDoneSteps(db, item.id, day);
   return required.every((s) => done.has(s.id));
 }
@@ -611,6 +619,9 @@ export function todayEntries(db: DB, day = today(), includeCarried = day === tod
     const d = day === today() ? routineLogDay(item) : day;
     const state = scheduledState(item, db.logs, d);
     if (!state || !state.due) continue;
+    // a routine of nothing but optional steps has nothing outstanding, so it
+    // reads done without anyone ticking it — see routineDayComplete
+    const done = state.done || (item.kind === "routine" && routineDayComplete(db, item, d));
     const hasRealAction = entries.some((e) => e.action.itemId === item.id);
     if (hasRealAction) continue;
     // what this specific day means for this habit, e.g. "clean" → "clean desk"
@@ -621,7 +632,7 @@ export function todayEntries(db: DB, day = today(), includeCarried = day === tod
         itemId: item.id,
         title: item.title,
         date: d,
-        done: state.done,
+        done,
         doneAt: null,
         amount: 1,
         priority: 0,

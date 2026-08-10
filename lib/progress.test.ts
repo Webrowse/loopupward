@@ -389,13 +389,28 @@ describe("requiredSteps / routineDayComplete", () => {
     expect(routineDayComplete(dbWith(["a", "b"]), r, "2026-08-08")).toBe(true);
   });
 
-  it("treats an all-optional script as if nothing were optional", () => {
-    // otherwise the routine would complete on its first tick, which is a
-    // strange thing to own
+  it("counts nothing as required when every step is optional", () => {
     const r = routine([step("a", true), step("b", true)]);
-    expect(requiredSteps(r).map((s) => s.id)).toEqual(["a", "b"]);
-    expect(routineDayComplete(dbWith(["a"]), r, "2026-08-08")).toBe(false);
+    expect(requiredSteps(r)).toEqual([]);
+  });
+
+  it("reads an all-optional script as done from the start", () => {
+    // it is a menu, not an obligation: nothing is required, so nothing is
+    // outstanding, and it never holds a day back
+    const r = routine([step("a", true), step("b", true)]);
+    expect(routineDayComplete(dbWith([]), r, "2026-08-08")).toBe(true);
+    expect(routineDayComplete(dbWith(["a"]), r, "2026-08-08")).toBe(true);
     expect(routineDayComplete(dbWith(["a", "b"]), r, "2026-08-08")).toBe(true);
+  });
+
+  it("still needs a script: an empty routine is unconfigured, not complete", () => {
+    expect(routineDayComplete(dbWith([]), routine([]), "2026-08-08")).toBe(false);
+  });
+
+  it("one required step among optional ones still gates the day", () => {
+    const r = routine([step("a", true), step("b"), step("c", true)]);
+    expect(routineDayComplete(dbWith(["a", "c"]), r, "2026-08-08")).toBe(false);
+    expect(routineDayComplete(dbWith(["b"]), r, "2026-08-08")).toBe(true);
   });
 
   it("treats steps written before the field existed as required", () => {
@@ -407,9 +422,7 @@ describe("requiredSteps / routineDayComplete", () => {
     expect(routineDayComplete(dbWith([]), legacy, "2026-08-08")).toBe(false);
   });
 
-  it("is never complete with no steps at all", () => {
-    expect(routineDayComplete(dbWith([]), routine([]), "2026-08-08")).toBe(false);
-  });
+
 });
 
 describe("linkKind", () => {

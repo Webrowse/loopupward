@@ -8,7 +8,8 @@ import { Horizon, HORIZON_META, Item, KIND_META, ListEntry, RoutineStep } from "
 import {
   ancestors, bestStreak, children as childrenOf, currentStreak, dayLogged, descendants,
   formatValue, habitDailyTarget, habitDays, itemProgress, LINK_GROUPS, linkableItems, linkEffect,
-  linkGroupOf, LinkGroupKey, linkIsStale, listTotals, routineLogDay, routineMinutes, scheduleLabel,
+  linkGroupOf, LinkGroupKey, linkIsStale, listTotals, routineDayComplete, routineLogDay,
+  routineMinutes, scheduleLabel,
 } from "@/lib/progress";
 import { useRowDrag } from "@/lib/useRowDrag";
 import { uid } from "@/lib/uid";
@@ -993,7 +994,8 @@ function HabitTodayControl({
   const day = routineLogDay(item);
   const dayTarget = habitDailyTarget(item);
   const dayValue = dayLogged(db.logs, item.id, day);
-  const done = dayValue >= dayTarget;
+  // an all-optional routine has nothing outstanding — see routineDayComplete
+  const done = dayValue >= dayTarget || routineDayComplete(db, item, day);
   const multi = dayTarget > 1;
 
   return (

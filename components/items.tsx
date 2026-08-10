@@ -7,6 +7,7 @@ import { useLife } from "@/lib/data/provider";
 import { Cadence, destinationFor, Horizon, HORIZON_META, Item, ItemKind, KIND_META, SPACE_KINDS, TrackerType } from "@/lib/types";
 import {
   carriedHorizonFrom, children as childrenOf, currentStreak, dayLogged, formatValue, habitDailyTarget, habitDays,
+  routineDayComplete,
   horizonEntries, itemProgress, ownProgress, routineMinutes, scheduleLabel,
 } from "@/lib/progress";
 import {
@@ -40,7 +41,9 @@ export function ItemCheck({ item, className = "" }: { item: Item; className?: st
   const day = today();
   const dayTarget = habitDailyTarget(item);
   const dayValue = repeating ? dayLogged(db.logs, item.id, day) : 0;
-  const checked = repeating ? dayValue >= dayTarget : item.status === "done";
+  // an all-optional routine has nothing outstanding — see routineDayComplete
+  const optionalOnly = item.kind === "routine" && routineDayComplete(db, item, day);
+  const checked = repeating ? dayValue >= dayTarget || optionalOnly : item.status === "done";
 
   const toggle = () => {
     if (repeating) toggleHabitDay(item, day, checked);

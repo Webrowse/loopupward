@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLife } from "@/lib/data/provider";
 import {
-  currentStreak, dayLogged, habitDays, routineDoneSteps, routineLogDay, routineMinutes,
+  currentStreak, dayLogged, habitDays, routineDayComplete, routineDoneSteps, routineLogDay,
+  routineMinutes,
   routineWindowLabel,
 } from "@/lib/progress";
 import { Item, RoutineStep } from "@/lib/types";
@@ -115,7 +116,8 @@ function RoutineCard({ item }: { item: Item }) {
   const day = routineLogDay(item);
   const steps = item.steps ?? [];
   const ticked = routineDoneSteps(db, item.id, day);
-  const doneToday = dayLogged(db.logs, item.id, day) > 0;
+  // an all-optional script has nothing outstanding, so it reads done here too
+  const doneToday = dayLogged(db.logs, item.id, day) > 0 || routineDayComplete(db, item, day);
   const streak = currentStreak(habitDays(db.logs, item.id));
   const total = routineMinutes(item);
   const windowLabel = routineWindowLabel(item);
