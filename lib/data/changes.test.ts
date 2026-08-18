@@ -152,3 +152,90 @@ describe("action changes", () => {
     expect(events[0].payload).toMatchObject({ hadNote: false, hasNote: true });
   });
 });
+
+/* ————— the edits that used to leave no trace ————— */
+
+describe("changes that were previously invisible", () => {
+  it("records shelving in both directions", () => {
+    const active = item();
+    const shelved = { ...active, status: "someday" as const, horizon: "someday" as const, horizonPeriod: null };
+    expect(types(itemChangeEvents(active, shelved))).toContain("item.status_changed");
+
+    // "Make active" changed status and nothing else, so it emitted nothing at
+    // all — an ambition you came back to looked like one you never returned to
+    const back = itemChangeEvents(shelved, { ...shelved, status: "active" as const });
+    expect(types(back)).toEqual(["item.status_changed"]);
+    expect(back[0].payload).toMatchObject({ from: "someday", to: "active" });
+  });
+
+  it("records a routine's script changing, with the ids on both sides", () => {
+    const before = item({
+      kind: "routine",
+      steps: [
+        { id: "s1", title: "Wash", minutes: 5 },
+        { id: "s2", title: "Meditate", minutes: 15 },
+      ],
+    });
+    const after = {
+      ...before,
+      steps: [
+        { id: "s1", title: "Wash", minutes: 5 },
+        { id: "s2", title: "Meditate", minutes: 20 },
+        { id: "s3", title: "Journal", minutes: 10 },
+      ],
+    };
+    const events = itemChangeEvents(before, after);
+    const steps = events.find((e) => e.type === "item.steps_changed")!;
+    expect(steps).toBeTruthy();
+    // fromIds is what lets a past day be read against the script it really had
+    expect(steps.payload).toMatchObject({ fromIds: ["s1", "s2"], toIds: ["s1", "s2", "s3"] });
+    expect((steps.payload!.added as { id: string }[]).map((s) => s.id)).toEqual(["s3"]);
+    expect((steps.payload!.edited as { to: { id: string } }[]).map((s) => s.to.id)).toEqual(["s2"]);
+  });
+
+  it("notices a script reordered without anything added or removed", () => {
+    const before = item({
+      kind: "routine",
+      steps: [{ id: "s1", title: "A", minutes: 5 }, { id: "s2", title: "B", minutes: 5 }],
+    });
+    const after = {
+      ...before,
+      steps: [{ id: "s2", title: "B", minutes: 5 }, { id: "s1", title: "A", minutes: 5 }],
+    };
+    const steps = itemChangeEvents(before, after).find((e) => e.type === "item.steps_changed")!;
+    expect(steps.payload).toMatchObject({ reordered: true });
+  });
+
+  it("records when a body was edited, in sizes rather than contents", () => {
+    const before = item({ kind: "note", richBody: "first thoughts" });
+    const events = itemChangeEvents(before, { ...before, richBody: "first thoughts, much expanded" });
+    const edit = events.find((e) => e.type === "item.body_edited")!;
+    // when the thinking moved is the part the current text can never recover;
+    // what it moved to is in the note itself, so it is not duplicated here
+    expect(edit.payload).toMatchObject({ field: "richBody", fromChars: 14, toChars: 29 });
+    expect(JSON.stringify(edit.payload)).not.toContain("expanded");
+  });
+
+  it("treats a unit change as a change to what the numbers mean", () => {
+    const before = item({ tracker: "counter", target: 200, unit: "pages" });
+    const events = itemChangeEvents(before, { ...before, unit: "chapters" });
+    expect(types(events)).toEqual(["item.target_changed"]);
+    expect(events[0].payload).toMatchObject({ fromUnit: "pages", toUnit: "chapters", from: 200, to: 200 });
+  });
+
+  it("records a period goal being pulled onto today and recalled", () => {
+    const before = item();
+    const pulled = { ...before, pulledToday: true };
+    expect(types(itemChangeEvents(before, pulled))).toEqual(["item.pulled_today_changed"]);
+    expect(types(itemChangeEvents(pulled, before))).toEqual(["item.pulled_today_changed"]);
+  });
+
+  it("still says nothing when a routine's script is merely re-saved unchanged", () => {
+    const before = item({
+      kind: "routine",
+      steps: [{ id: "s1", title: "Wash", minutes: 5, optional: false, itemId: null }],
+    });
+    const after = { ...before, steps: [{ id: "s1", title: "Wash", minutes: 5 }] };
+    expect(itemChangeEvents(before, after)).toEqual([]);
+  });
+});

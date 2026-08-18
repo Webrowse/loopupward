@@ -404,7 +404,7 @@ function Today() {
                     {quickTasks(3).map((t) => (
                       <button
                         key={t}
-                        onClick={() => addAction(t, day)}
+                        onClick={() => addAction(t, day, null, 1, { origin: "quick_task" })}
                         className="pressable rounded-full border border-line bg-surface px-3.5 py-1.5 text-sm text-ink-2"
                       >
                         {t}
@@ -632,7 +632,7 @@ function PlanSheet({ open, onClose, day }: { open: boolean; onClose: () => void;
     if (schedule.cadence === null) {
       // one time — on whichever date was chosen, not necessarily today's view
       const amt = linkedId ? Math.max(0, Math.round(parseFloat(linkAmount) || 0)) : 1;
-      addAction(title, taskDate, linkedId, amt, { priority, note });
+      addAction(title, taskDate, linkedId, amt, { priority, note, origin: "plan_sheet" });
     } else {
       // recurring: becomes a scheduled life node that feeds Today automatically —
       // filed under a life area right away, so it lives with your other goals

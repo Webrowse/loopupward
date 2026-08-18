@@ -422,10 +422,11 @@ export const EVENT_TYPES = [
   "item.created", "item.renamed", "item.kind_changed", "item.tracker_changed",
   "item.horizon_changed", "item.target_changed", "item.cadence_changed", "item.window_changed",
   "item.moved", "item.labels_changed", "item.pinned", "item.unpinned",
+  "item.status_changed", "item.steps_changed", "item.body_edited", "item.pulled_today_changed",
   "item.completed", "item.reopened", "item.trashed", "item.restored", "item.purged",
   // what actually got planned, moved, and done
   "action.created", "action.rescheduled", "action.amount_changed", "action.priority_changed",
-  "action.note_edited", "action.done", "action.undone",
+  "action.note_edited", "action.done", "action.undone", "action.deleted",
   // routines, including the steps that did not happen
   "routine.step_done", "routine.step_undone", "routine.step_skipped", "routine.reordered",
   // walking the day one row at a time
@@ -436,6 +437,9 @@ export const EVENT_TYPES = [
   "day.reordered",
   // the writing half
   "journal.saved", "reflection.saved",
+  // what the person says about themselves, and what each area is for — the
+  // only record that these ever read differently than they read today
+  "settings.changed", "area.context_changed",
   // being here at all
   "app.opened", "page.viewed",
 ] as const;

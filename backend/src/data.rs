@@ -1406,10 +1406,23 @@ pub async fn import(
 pub async fn export(State(state): State<AppState>, user: AuthUser) -> ApiResult<Json<Value>> {
     let data = load_everything(&state, user.id).await?;
     let settings = read_settings(&state, user.id).await?;
+    // when the account itself began: the baseline every "how long have I been
+    // doing this" question needs, and the only date in the bundle that cannot
+    // be inferred from the rows (a life imported from a device carries older
+    // rows than the account that now holds them)
+    let created_at: Option<chrono::DateTime<chrono::Utc>> =
+        sqlx::query("select created_at from users where id = $1")
+            .bind(user.id)
+            .fetch_optional(&state.pool)
+            .await?
+            .map(|r| r.get("created_at"));
     Ok(Json(json!({
         "app": "LoopUpward",
         "exportedAt": chrono::Utc::now().to_rfc3339(),
-        "account": { "email": user.email },
+        "account": {
+            "email": user.email,
+            "createdAt": created_at.map(|t| t.to_rfc3339()),
+        },
         "settings": settings,
         "data": data,
     })))

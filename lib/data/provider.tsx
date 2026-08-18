@@ -108,7 +108,7 @@ interface LifeContextValue {
   updateArea: (id: string, patch: Partial<Area>) => void;
   deleteArea: (id: string) => void;
 
-  addItem: (partial: Partial<Item> & { title: string }) => Item | null;
+  addItem: (partial: Partial<Item> & { title: string }, opts?: { origin?: string }) => Item | null;
   updateItem: (id: string, patch: Partial<Item>) => void;
   moveItem: (id: string, dest: { areaId?: string | null; parentId?: string | null }) => void;
   /** moves the item to Trash rather than destroying it outright */
@@ -161,6 +161,24 @@ interface LifeContextValue {
 /** New key — the three that must never be renamed (lifeos-token,
  *  lifeos-db-v1, lifeos-theme) are untouched. */
 const SETTINGS_KEY = "lifeos-settings-v1";
+
+/** The settings that describe a person and the shape of their day, as opposed
+ *  to how the app looks. Only these get a change event: a theme toggle is not
+ *  a fact about a life, and logging it would bury the ones that are. */
+const CONTEXT_FIELDS = [
+  "timezone", "weekStart", "dayRolloverHour", "wakeTime", "sleepTime",
+  "seasonOfLife", "occupation", "becoming", "constraints",
+  "focusMinutesTarget", "habitDaysTarget", "deepWorkDaysTarget",
+] as const satisfies readonly (keyof UserSettings)[];
+
+/** Event payloads are capped server-side, and two 4,000-character answers
+ *  would not fit. Long prose is clipped with a flag rather than dropped, so a
+ *  reader always knows whether they are holding the whole sentence. */
+const MAX_CONTEXT_EVENT_CHARS = 1_000;
+function clipValue(v: unknown): unknown {
+  if (typeof v !== "string" || v.length <= MAX_CONTEXT_EVENT_CHARS) return v;
+  return `${v.slice(0, MAX_CONTEXT_EVENT_CHARS)}…[clipped ${v.length} chars]`;
+}
 
 const LifeContext = createContext<LifeContextValue | null>(null);
 
@@ -244,7 +262,39 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
    * Declared above the individual preference setters because every one of
    * them writes through to here.
    */
+  const settingsRef = useRef(settings);
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
+
   const updateSettings = useCallback((patch: Partial<UserSettings>) => {
+    // Who this person says they are is a single mutable row, so an export taken
+    // years later could only ever show the FINAL answer — and testing 2026
+    // behaviour against a 2031 self-description invents a divergence that never
+    // happened. One event per changed field records the answer as it was given.
+    // Only the fields that describe a person and their clock: theme and font
+    // churn would be noise, and say nothing about a life.
+    //
+    // Diffed out here rather than inside the state updater below: React invokes
+    // an updater twice under StrictMode, and an updater that emits would record
+    // every context change twice in development.
+    const before = settingsRef.current;
+    for (const field of CONTEXT_FIELDS) {
+      if (!(field in patch)) continue;
+      const was = before[field];
+      const now = patch[field] ?? null;
+      if (was === now) continue;
+      emit("settings.changed", {
+        payload: {
+          field,
+          // the new value in full (clipped only if someone writes an essay);
+          // the previous one is the previous event's `to`, so it is not
+          // repeated here and the payload stays well inside its size cap
+          to: clipValue(now),
+          toChars: typeof now === "string" ? now.length : null,
+          fromChars: typeof was === "string" ? was.length : null,
+          hadPrevious: was !== null && was !== undefined && was !== "",
+        },
+      });
+    }
     setSettingsState((prev) => {
       const next = { ...prev, ...patch, updatedAt: Date.now() };
       try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch {}
@@ -258,7 +308,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       }
       return next;
     });
-  }, []);
+  }, [emit]);
 
   /* ————— what this device already knows —————
    *
@@ -550,10 +600,20 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   // trashed items are kept around (for restore/the retention sweep) but
   // hidden from every normal view — filtered once here rather than at each
   // of the many call sites that read db.items directly
-  const visibleDb = useMemo(
-    () => ({ ...db, items: db.items.filter((i) => !i.deletedAt) }),
-    [db]
-  );
+  const visibleDb = useMemo(() => {
+    const trashed = new Set(db.items.filter((i) => i.deletedAt).map((i) => i.id));
+    if (trashed.size === 0) return db;
+    // a trashed item's actions and logs are kept for restore (see deleteItem)
+    // but must not reach a single screen: Today, streaks and every progress
+    // number behave exactly as they did when these rows were destroyed outright
+    return {
+      ...db,
+      items: db.items.filter((i) => !i.deletedAt),
+      actions: db.actions.filter((a) => !a.itemId || !trashed.has(a.itemId)),
+      logs: db.logs.filter((l) => !trashed.has(l.itemId)),
+      habitDayNotes: db.habitDayNotes.filter((n) => !trashed.has(n.itemId)),
+    };
+  }, [db]);
 
   /* ————— seeds ————— */
   const addSeed = useCallback((text: string): Seed => {
@@ -670,8 +730,26 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
 
   const updateArea = useCallback((id: string, patch: Partial<Area>) => {
     const area = db.areas.find((a) => a.id === id);
-    if (area) upsertRows("areas", [{ ...area, ...patch }]);
-  }, [db.areas, upsertRows]);
+    if (!area) return;
+    upsertRows("areas", [{ ...area, ...patch }]);
+    // what an area is FOR, and how much of the person it was meant to get.
+    // Same reason as settings.changed: an area score means something different
+    // once the area says what it is for, and that sentence gets rewritten.
+    for (const field of ["description", "whyItMatters", "targetShare"] as const) {
+      if (!(field in patch)) continue;
+      const before = area[field] ?? null;
+      const after = patch[field] ?? null;
+      if (before === after) continue;
+      emit("area.context_changed", {
+        payload: {
+          areaId: id, areaName: area.name, field,
+          to: clipValue(after),
+          toChars: typeof after === "string" ? after.length : null,
+          fromChars: typeof before === "string" ? before.length : null,
+        },
+      });
+    }
+  }, [db.areas, upsertRows, emit]);
 
   const deleteArea = useCallback((id: string) => {
     // items survive — they simply lose their room
@@ -681,7 +759,10 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   }, [db.items, upsertRows, removeRows]);
 
   /* ————— items ————— */
-  const addItem = useCallback((partial: Partial<Item> & { title: string }): Item | null => {
+  const addItem = useCallback((
+    partial: Partial<Item> & { title: string },
+    opts: { origin?: string } = {}
+  ): Item | null => {
     const item: Item = {
       id: uid(), areaId: null, parentId: null, kind: "note", tracker: "none",
       note: "", target: null, current: 0, unit: null, horizon: null, horizonPeriod: null,
@@ -705,8 +786,15 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       payload: {
         kind: item.kind, tracker: item.tracker, horizon: item.horizon,
         horizonPeriod: item.horizonPeriod, areaId: item.areaId, parentId: item.parentId,
-        target: item.target, cadence: item.cadence, labels: item.labels,
+        target: item.target, unit: item.unit, cadence: item.cadence,
+        cadenceDays: item.cadenceDays, cadenceCount: item.cadenceCount, labels: item.labels,
         titleLength: item.title.length,
+        // the script it was born with, so a routine's history can be read
+        // against the steps that existed on each day rather than today's
+        stepIds: item.steps?.map((st) => st.id) ?? null,
+        // invented, or taken off a shelf — "am I self-directing?" is not
+        // answerable if borrowing looks exactly like authoring
+        origin: opts.origin ?? "manual",
       },
     });
     return item;
@@ -730,22 +818,23 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       .filter((i) => i.parentId === id)
       .map((i) => ({ ...i, parentId: item.parentId, areaId: i.areaId ?? item.areaId }));
     if (kids.length) upsertRows("items", kids);
-    // actions/logs don't carry their own trash UX, so they're cleared now,
-    // same as before this item could be recovered
-    const actionIds = db.actions.filter((a) => a.itemId === id).map((a) => a.id);
-    if (actionIds.length) removeRows("actions", actionIds);
-    const logIds = db.logs.filter((l) => l.itemId === id).map((l) => l.id);
-    if (logIds.length) removeRows("logs", logIds);
+    // The item's actions and logs STAY. They used to be destroyed here, which
+    // made "recoverable for 7 days" untrue of the part that mattered — restore
+    // brought back an empty shell — and quietly deleted the whole progress
+    // history of every abandoned project. They are hidden from the app the
+    // same way the item is (see visibleDb) and destroyed only at purge.
+    const actionCount = db.actions.filter((a) => a.itemId === id).length;
+    const logCount = db.logs.filter((l) => l.itemId === id).length;
     upsertRows("items", [{ ...item, deletedAt: Date.now() }]);
     emit("item.trashed", {
       itemId: id,
       payload: {
         kind: item.kind, status: item.status,
         ageDays: Math.round((Date.now() - item.createdAt) / 86_400_000),
-        childrenLifted: kids.length, actionsRemoved: actionIds.length, logsRemoved: logIds.length,
+        childrenLifted: kids.length, actionsKept: actionCount, logsKept: logCount,
       },
     });
-  }, [db, upsertRows, removeRows, emit]);
+  }, [db, upsertRows, emit]);
 
   const trashedItems = useMemo(
     () => db.items.filter((i) => i.deletedAt).sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)),
@@ -762,11 +851,31 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     });
   }, [db.items, upsertRows, emit]);
 
+  /** Everything belonging to one item, destroyed together. Purge is the one
+   *  place deletion is absolute: trash keeps the record so a restore is real,
+   *  and this is where it stops being kept. */
+  const purgeRowsOf = useCallback((id: string) => {
+    const actionIds = db.actions.filter((a) => a.itemId === id).map((a) => a.id);
+    if (actionIds.length) removeRows("actions", actionIds);
+    const logIds = db.logs.filter((l) => l.itemId === id).map((l) => l.id);
+    if (logIds.length) removeRows("logs", logIds);
+    const noteIds = db.habitDayNotes.filter((n) => n.itemId === id).map((n) => n.id);
+    if (noteIds.length) removeRows("habitDayNotes", noteIds);
+    return { actionIds, logIds, noteIds };
+  }, [db.actions, db.logs, db.habitDayNotes, removeRows]);
+
   const purgeItem = useCallback((id: string) => {
     const item = db.items.find((i) => i.id === id);
+    const gone = purgeRowsOf(id);
     removeRows("items", [id]);
-    emit("item.purged", { itemId: id, payload: { kind: item?.kind ?? null, title: item?.title ?? null } });
-  }, [db.items, removeRows, emit]);
+    emit("item.purged", {
+      itemId: id,
+      payload: {
+        kind: item?.kind ?? null, title: item?.title ?? null,
+        actionsPurged: gone.actionIds.length, logsPurged: gone.logIds.length,
+      },
+    });
+  }, [db.items, purgeRowsOf, removeRows, emit]);
 
   // Trash empties itself after the retention window — no server cron needed,
   // this just sweeps whatever's overdue whenever the item list changes.
@@ -775,12 +884,14 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
     const expired = db.items.filter((i) => i.deletedAt && i.deletedAt < cutoff);
     if (expired.length) {
+      // the rows kept for a possible restore go with the item they belong to
+      for (const i of expired) purgeRowsOf(i.id);
       removeRows("items", expired.map((i) => i.id));
       for (const i of expired) {
         emit("item.purged", { itemId: i.id, payload: { kind: i.kind, title: i.title, by: "retention" } });
       }
     }
-  }, [db.items, premium, removeRows, emit]);
+  }, [db.items, premium, purgeRowsOf, removeRows, emit]);
 
   /** Reorganize the life tree: change area and/or parent. Guards against cycles. */
   const moveItem = useCallback((id: string, dest: { areaId?: string | null; parentId?: string | null }) => {
@@ -966,7 +1077,27 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     for (const e of actionChangeEvents(action, next)) emit(e.type, { ...e, day: next.date });
   }, [db.actions, upsertRows, emit]);
 
-  const deleteAction = useCallback((id: string) => removeRows("actions", [id]), [removeRows]);
+  /** A planned task, given up on. Deleting one used to leave nothing at all,
+   *  so a task abandoned and a task never written looked identical — and every
+   *  completion rate silently counted only the tasks that survived. */
+  const deleteAction = useCallback((id: string) => {
+    const action = db.actions.find((a) => a.id === id);
+    removeRows("actions", [id]);
+    if (action) {
+      emit("action.deleted", {
+        itemId: action.itemId,
+        day: action.date,
+        payload: {
+          actionId: id, title: action.title, plannedFor: action.date, done: action.done,
+          ageDays: Math.round((Date.now() - action.createdAt) / 86_400_000),
+          // deleted after the day it was meant for: given up on, not re-planned
+          daysAfterPlanned: Math.round(
+            (Date.now() - new Date(`${action.date}T12:00:00`).getTime()) / 86_400_000
+          ),
+        },
+      });
+    }
+  }, [db.actions, removeRows, emit]);
 
   /** Add or take back exactly one occurrence of an item's day. One, not all:
    *  a habit with a target of three glasses must not lose the other two

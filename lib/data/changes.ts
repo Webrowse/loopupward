@@ -12,7 +12,7 @@
  * getting it right for the drag, the plan sheet and the item page at once.
  */
 
-import { Action, EventType, Item, ListEntry } from "../types";
+import { Action, EventType, Item, ListEntry, RoutineStep } from "../types";
 
 export interface PendingEvent {
   type: EventType;
@@ -29,6 +29,57 @@ function sameSet(a: string[], b: string[]): boolean {
 function sameNums(a: number[] | null, b: number[] | null): boolean {
   if (a == null || b == null) return a === b;
   return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+/** A step's identity for diffing: what it is, not where it sits. */
+function stepShape(s: RoutineStep) {
+  return { id: s.id, title: s.title, minutes: s.minutes ?? null, optional: !!s.optional, itemId: s.itemId ?? null };
+}
+
+function sameStep(a: RoutineStep, b: RoutineStep): boolean {
+  const x = stepShape(a);
+  const y = stepShape(b);
+  return x.title === y.title && x.minutes === y.minutes && x.optional === y.optional && x.itemId === y.itemId;
+}
+
+/**
+ * What changed about a routine's script.
+ *
+ * Emitted so that a day months from now can be read against the script as it
+ * was THEN. Without this the export has only today's steps to render history
+ * against, which turns a step added last week into six months of apparent
+ * failure. `fromIds`/`toIds` are what the reconstruction actually needs; the
+ * rest is there so the line is readable on its own.
+ */
+function stepChangeEvent(prev: Item, next: Item): PendingEvent | null {
+  const before = prev.steps ?? [];
+  const after = next.steps ?? [];
+  if (before.length === 0 && after.length === 0) return null;
+  const beforeById = new Map(before.map((s) => [s.id, s]));
+  const afterById = new Map(after.map((s) => [s.id, s]));
+  const added = after.filter((s) => !beforeById.has(s.id));
+  const removed = before.filter((s) => !afterById.has(s.id));
+  const edited = after.filter((s) => {
+    const old = beforeById.get(s.id);
+    return old && !sameStep(old, s);
+  });
+  const fromIds = before.map((s) => s.id);
+  const toIds = after.map((s) => s.id);
+  const reordered =
+    added.length === 0 && removed.length === 0 && fromIds.join(",") !== toIds.join(",");
+  if (added.length === 0 && removed.length === 0 && edited.length === 0 && !reordered) return null;
+  return {
+    type: "item.steps_changed",
+    itemId: next.id,
+    payload: {
+      fromIds,
+      toIds,
+      added: added.map(stepShape),
+      removed: removed.map(stepShape),
+      edited: edited.map((s) => ({ from: stepShape(beforeById.get(s.id)!), to: stepShape(s) })),
+      reordered,
+    },
+  };
 }
 
 /** Everything that changed between two versions of one item. */
@@ -52,7 +103,14 @@ export function itemChangeEvents(prev: Item, next: Item): PendingEvent[] {
       horizonPeriod: next.horizonPeriod,
     });
   }
-  if (prev.target !== next.target) at("item.target_changed", { from: prev.target, to: next.target });
+  // unit travels with the target: "200" means nothing without "workouts", and
+  // a unit change alone still changes what every past number meant
+  if (prev.target !== next.target || prev.unit !== next.unit) {
+    at("item.target_changed", {
+      from: prev.target, to: next.target,
+      fromUnit: prev.unit, toUnit: next.unit,
+    });
+  }
   if (prev.cadence !== next.cadence || !sameNums(prev.cadenceDays, next.cadenceDays) || prev.cadenceCount !== next.cadenceCount) {
     at("item.cadence_changed", {
       from: prev.cadence, to: next.cadence,
@@ -76,6 +134,35 @@ export function itemChangeEvents(prev: Item, next: Item): PendingEvent[] {
     at("item.labels_changed", { from: prev.labels, to: next.labels });
   }
   if (prev.pinned !== next.pinned) out.push({ type: next.pinned ? "item.pinned" : "item.unpinned", itemId: next.id });
+
+  // shelving. completeItem/reopenItem announce themselves, but the Someday and
+  // Make active buttons go through here — and "Make active" used to change
+  // nothing else, so coming back to a shelved ambition left no trace at all.
+  if (prev.status !== next.status) {
+    at("item.status_changed", { from: prev.status, to: next.status });
+  }
+
+  // the script, so history can be read against the steps that existed then
+  const steps = stepChangeEvent(prev, next);
+  if (steps) out.push(steps);
+
+  // the body: char counts only, never the text. This says WHEN thinking moved,
+  // which is the part the current text can never recover; what it moved to is
+  // in the note itself.
+  if (prev.richBody !== next.richBody) {
+    at("item.body_edited", {
+      field: "richBody",
+      fromChars: prev.richBody?.length ?? 0,
+      toChars: next.richBody?.length ?? 0,
+    });
+  }
+  if (prev.note !== next.note) {
+    at("item.body_edited", { field: "note", fromChars: prev.note.length, toChars: next.note.length });
+  }
+
+  if (prev.pulledToday !== next.pulledToday) {
+    at("item.pulled_today_changed", { to: next.pulledToday, horizon: next.horizon });
+  }
 
   out.push(...listEntryEvents(prev.entries, next.entries, next.id));
   return out;

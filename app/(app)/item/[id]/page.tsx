@@ -76,7 +76,7 @@ export default function ItemPage() {
     const amt = metered ? Math.max(0, Math.round(parseFloat(pieceAmount) || 0)) : 1;
     // the chosen day sticks after adding — laying out a week of chapters
     // means several pieces on several days in one sitting
-    addAction(todayPiece, pieceDay, item.id, amt);
+    addAction(todayPiece, pieceDay, item.id, amt, { origin: "goal_piece" });
     setTodayPiece("");
     setPieceAmount("0");
   };

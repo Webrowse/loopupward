@@ -20,7 +20,7 @@ export function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: ()
   const add = (s: Suggestion) => {
     if (added.has(s.title)) return;
     if (!s.kind) {
-      addAction(s.title, today());
+      addAction(s.title, today(), null, 1, { origin: "suggestion" });
     } else {
       addItem({
         title: s.title,
@@ -33,7 +33,7 @@ export function SuggestionsSheet({ open, onClose }: { open: boolean; onClose: ()
         horizonPeriod: s.horizon && s.horizon !== "someday" && s.horizon !== "today" ? today() : null,
         target: s.target ?? null,
         unit: s.unit ?? null,
-      });
+      }, { origin: "suggestion" });
     }
     setAdded((prev) => new Set(prev).add(s.title));
   };

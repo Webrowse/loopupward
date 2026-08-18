@@ -56,7 +56,7 @@ export default function RoutinesPage() {
       windowStart: t.window[0],
       windowEnd: t.window[1],
       steps: t.steps.map(([title, minutes]): RoutineStep => ({ id: uid(), title, minutes })),
-    });
+    }, { origin: "routine_template" });
     if (item) router.push(`/item/${item.id}`);
   };
 
