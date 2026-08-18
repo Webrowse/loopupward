@@ -8,7 +8,7 @@ import {
 } from "../api";
 import {
   Action, Area, AppEvent, DB, EMPTY_DB, EMPTY_SETTINGS, EventType, FocusSession, HabitDayNote,
-  DEFAULT_DAY_ROLLOVER_HOUR, Item, JournalEntry, Label, LogSource, Reflection, Seed, SeedStatus,
+  Item, JournalEntry, Label, LogSource, Reflection, Seed, SeedStatus,
   TableName, UserSettings,
 } from "../types";
 import { uid } from "../uid";
@@ -18,7 +18,7 @@ import { clearLocalStreams, readLocalStreams, sinkFor, StreamWriter } from "./st
 import { Repo } from "./repo";
 import { currentTimezone, stamp } from "../clock";
 import { actionChangeEvents, itemChangeEvents } from "./changes";
-import { today } from "../dates";
+import { setDefaultWeekStart, today } from "../dates";
 import { dayLogged, habitDailyTarget, linkKind, requiredSteps, routineLogDay, TodayEntry } from "../progress";
 import { FREE_LIMITS, PREMIUM_TRASH_DAYS } from "../limits";
 import { DEFAULT_FONT, FontId, isFontId } from "../fonts";
@@ -167,7 +167,7 @@ const SETTINGS_KEY = "lifeos-settings-v1";
  *  and logging it would bury the ones that are. Moving your rollover hour or
  *  your timezone changes what every later row means, so both are dated. */
 const CONTEXT_FIELDS = [
-  "timezone", "dayRolloverHour",
+  "timezone", "weekStart",
 ] as const satisfies readonly (keyof UserSettings)[];
 
 /** Event payloads are capped server-side, and two 4,000-character answers
@@ -215,9 +215,6 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     writerRef.current!.setSink(sinkFor(!!user));
   }, [user]);
 
-  /** The hour a day rolls over, from settings — the rule that decides which
-   *  day a wrapped routine's late-night tick belongs to. */
-  const rolloverHour = settings.dayRolloverHour ?? DEFAULT_DAY_ROLLOVER_HOUR;
 
   const emit = useCallback((type: EventType, opts: EmitOptions = {}) => {
     const st = stamp(opts.day);
@@ -294,6 +291,9 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         },
       });
     }
+    // the date helpers read this as their default argument, so it has to move
+    // before the re-render that follows, not in an effect after it
+    if ("weekStart" in patch) setDefaultWeekStart(patch.weekStart);
     setSettingsState((prev) => {
       const next = { ...prev, ...patch, updatedAt: Date.now() };
       try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch {}
@@ -328,7 +328,12 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       }
       const cached = localStorage.getItem(SETTINGS_KEY);
       if (cached) {
-        setSettingsState({ ...EMPTY_SETTINGS, ...(JSON.parse(cached) as Partial<UserSettings>) });
+        const parsed = { ...EMPTY_SETTINGS, ...(JSON.parse(cached) as Partial<UserSettings>) };
+        // the zone is read, never asked (see applyServerSettings)
+        const zone = currentTimezone();
+        if (zone) parsed.timezone = zone;
+        setDefaultWeekStart(parsed.weekStart);
+        setSettingsState(parsed);
       }
     } catch {}
   }, []);
@@ -382,9 +387,22 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
    * written once. Without it no exported timestamp can be read across travel
    * or DST, which is the whole reason the column exists.
    */
+  /**
+   * The timezone is read from the browser and kept in step with it, rather than
+   * being a question on a settings screen. Nobody needs to be shown their own
+   * timezone, and a stored one that never updates is worse than none: it
+   * silently mislabels every timestamp recorded after a move.
+   *
+   * Reconciled here, where the server's copy is applied anyway, so it costs no
+   * extra render. Moving is recorded as a dated settings.changed, which is what
+   * lets an export say where its later rows were lived.
+   */
   const applyServerSettings = useCallback((remote: UserSettings) => {
     const merged: UserSettings = { ...EMPTY_SETTINGS, ...remote };
-    if (!merged.timezone) merged.timezone = currentTimezone() || null;
+    const zone = currentTimezone();
+    const zoneMoved = !!zone && merged.timezone !== zone;
+    if (zoneMoved) merged.timezone = zone;
+    setDefaultWeekStart(merged.weekStart);
     if (merged.theme === "dark" || merged.theme === "light") {
       setThemeState(merged.theme);
       document.documentElement.dataset.theme = merged.theme === "dark" ? "dark" : "";
@@ -405,10 +423,13 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     }
     setSettingsState(merged);
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged)); } catch {}
-    if (!remote.timezone && merged.timezone) {
+    if (zoneMoved) {
+      emit("settings.changed", {
+        payload: { field: "timezone", to: merged.timezone, hadPrevious: !!remote.timezone },
+      });
       api("/v1/settings", { method: "PUT", body: merged }).catch(() => {});
     }
-  }, []);
+  }, [emit]);
 
   /* ————— session & data bootstrap ————— */
   useEffect(() => {
@@ -1249,7 +1270,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       if (linkKind(item) === "day") {
         for (const routine of db.items) {
           if (routine.kind !== "routine" || !routine.steps?.length) continue;
-          if (routineLogDay(routine, new Date(), rolloverHour) !== day) continue;
+          if (routineLogDay(routine, new Date()) !== day) continue;
           for (const step of routine.steps) {
             if (step.itemId === item.id) {
               setRoutineStepDone(routine, day, step.id, !currentlyDone, true);
@@ -1258,7 +1279,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  }, [db.logs, db.habitDayNotes, db.items, upsertRows, removeRows, setRoutineStepDone, rolloverHour]);
+  }, [db.logs, db.habitDayNotes, db.items, upsertRows, removeRows, setRoutineStepDone]);
 
   const toggleEntry = useCallback((entry: TodayEntry, forDay?: string, opts?: LogOrigin) => {
     const day = forDay ?? today();
@@ -1276,7 +1297,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       // and any routine step standing for this same target agrees
       for (const routine of db.items) {
         if (routine.kind !== "routine" || !routine.steps?.length) continue;
-        const rDay = routineLogDay(routine, new Date(), rolloverHour);
+        const rDay = routineLogDay(routine, new Date());
         for (const step of routine.steps) {
           if (step.itemId === entry.item.id) {
             setRoutineStepDone(routine, rDay, step.id, nowDone, true);
@@ -1334,7 +1355,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  }, [db.items, db.actions, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem, bumpParentMeter, setRoutineStepDone, emit, rolloverHour]);
+  }, [db.items, db.actions, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem, bumpParentMeter, setRoutineStepDone, emit]);
 
   const reorderDay = useCallback((day: string, orderedEntryIds: string[], via: "drag" | "sort" = "drag") => {
     const existing = db.dayOrder.find((d) => d.date === day);

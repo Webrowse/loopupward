@@ -32,17 +32,19 @@ A restore brings back the whole thing: the item's tasks and its entire progress 
 
 ## Export
 
-*Download everything* gives you a zip: a folder of plain files holding everything the app knows about you — your items, tasks, progress, focus sessions, journal, reflections and the full record of how you actually used the app, plus a README that explains every file and column, and a `manifest.json` that says where the record's own knowledge starts and stops.
+*Download* gives you a zip: a folder of plain files holding what the app knows about you. Choose **Everything**, **This week**, **This month**, or a **Range** of your own. A narrowed download is the same files with the same columns, plus the goals and areas its rows point at (marked `in_window = false`) and what every counter read on the first day, so a single week can still be read on its own — your items, tasks, progress, focus sessions, journal, reflections and the full record of how you actually used the app, plus a README that explains every file and column, and a `manifest.json` that says where the record's own knowledge starts and stops.
 
 It is built in your browser and **never sent anywhere**. Read it yourself, open it in a spreadsheet, or hand it to whatever tool you like. Signed in or not, the bundle is identical.
 
 See [Your export, file by file](./export.md) for the full reference.
 
-## Your clock
+## Your week
 
-Two settings, and they are mechanics rather than preferences: your **timezone**, without which no exported timestamp can be read across travel or a daylight-saving change, and **the hour your day rolls over** (default 4am), which decides whether a routine finished at 1am counts for last night or for today.
+**Weeks start on** whichever weekday you choose. It drives the day strip on Plan, the "4x a week" counters, every weekly review, and the week numbers in your export.
 
-Weeks always run **Monday to Sunday**. That one is fixed, so a week number means the same seven days in the app and in every export.
+Changing it re-frames which seven days a past weekly review covers, so an old week number lines up with a slightly different week. Your export records both the change and the day weeks start on, so nothing becomes unreadable.
+
+Your **timezone** is not a setting: it is read from your device and kept in step with it, so moving is recorded as a dated change rather than leaving a stale label behind. There is no "day rolls over at" hour either. A routine that should count for last night says so by having visible hours that wrap past midnight (a night routine set to 9pm - 2am), which is a fact about that routine rather than a rule about every hour of your day.
 
 The app does not ask you to describe yourself. There is no field for what you are trying to become or what season of life this is: a standing answer to that is undated and gets silently rewritten, and your export already carries what mattered to you where you said it and when, in each day's one intention, in a period's wins and blockers and promises, and in the areas you actually built.
 

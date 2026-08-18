@@ -15,7 +15,7 @@
  */
 
 import { LifeStats } from "../stats";
-import { EVENT_TYPES, WEEK_STARTS_ON } from "../types";
+import { EVENT_TYPES } from "../types";
 import type { BundleInput, Ctx } from "./bundle";
 
 interface Coverage {
@@ -72,6 +72,19 @@ export function buildManifest(
         created_at: input.account.createdAt ?? null,
       },
 
+      /**
+       * Null for a whole-life bundle. When set, every Record file below holds
+       * only rows inside these days. items.csv, areas.csv and labels.csv still
+       * carry rows from outside it, marked `in_window = false`, so that nothing
+       * inside the window points at a name the bundle does not contain; and
+       * items.csv carries `opening_value`, what each tracker read the moment
+       * the window opened, without which a counter that moved 3 -> 7 inside it
+       * cannot be told from one that started at zero.
+       */
+      window: ctx.window
+        ? { start: ctx.window.start, end: ctx.window.end, label: ctx.window.label }
+        : null,
+
       /* ——— what can be known, and from when ——— */
       coverage,
 
@@ -121,10 +134,14 @@ export function buildManifest(
         complete_copy: ["raw.json"],
       },
 
-      day_rollover_hour: stats.dayRolloverHour,
-      /** Fixed, not a user preference: every week key in this bundle is ISO,
-       *  Monday to Sunday. `2026-W33` always means the same seven days. */
-      week_starts_on: WEEK_STARTS_ON,
+      /**
+       * Which weekday a week begins on, 0 = Sunday. Every `YYYY-Www` key in
+       * this bundle is relative to it, so the two are meaningless apart: with
+       * the Monday default the keys are ISO-8601 exactly. If the user ever
+       * changed this, `settings.changed` in events.ndjson records when.
+       */
+      week_starts_on: stats.weekStart,
+      week_starts_on_name: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][stats.weekStart],
 
       /* ——— vocabularies, so no coded column has to be guessed at ——— */
       vocabularies: {

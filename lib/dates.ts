@@ -1,6 +1,6 @@
 /** Date helpers. All "day" values are local-timezone ISO dates: YYYY-MM-DD. */
 
-import type { Horizon } from "@/lib/types";
+import { DEFAULT_WEEK_START, type Horizon } from "@/lib/types";
 
 export function toDay(d: Date): string {
   const y = d.getFullYear();
@@ -33,11 +33,30 @@ export function daysBetween(a: string, b: string): number {
   return Math.round((fromDay(b).getTime() - fromDay(a).getTime()) / 86400000);
 }
 
-/** Monday-start week. */
-export function startOfWeek(day: string): string {
+/* ————— which weekday a week begins on —————
+ *
+ * A single user-level choice that a dozen call sites need, several of them deep
+ * in components that have no business reading settings. Rather than thread it
+ * through all of them, it lives here as the default argument: every function
+ * below still takes it explicitly, so they stay pure and testable, and the
+ * provider sets the default once when settings load. */
+let defaultWeekStart: number = DEFAULT_WEEK_START;
+
+/** Called by the data provider whenever the setting loads or changes. */
+export function setDefaultWeekStart(weekStart: number | null | undefined) {
+  defaultWeekStart = weekStart == null ? DEFAULT_WEEK_START : ((weekStart % 7) + 7) % 7;
+}
+
+export function getDefaultWeekStart(): number {
+  return defaultWeekStart;
+}
+
+/** The first day of the week containing `day`, counting back to the most
+ *  recent `weekStart` weekday (0 = Sunday). */
+export function startOfWeek(day: string, weekStart: number = defaultWeekStart): string {
   const d = fromDay(day);
-  const dow = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() - dow);
+  const offset = (d.getDay() - weekStart + 7) % 7;
+  d.setDate(d.getDate() - offset);
   return toDay(d);
 }
 
@@ -136,14 +155,22 @@ export function firstAnchorWithin(range: { start: string; end: string }): string
   return t >= range.start && t <= range.end ? t : range.start;
 }
 
-export function isoWeek(day: string): { year: number; week: number } {
-  const d = fromDay(day);
-  const t = new Date(d.getTime());
-  t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7));
-  const firstThursday = new Date(t.getFullYear(), 0, 4);
-  firstThursday.setDate(firstThursday.getDate() + 3 - ((firstThursday.getDay() + 6) % 7));
-  const week = 1 + Math.round((t.getTime() - firstThursday.getTime()) / (7 * 86400000));
-  return { year: t.getFullYear(), week };
+/**
+ * Year and week number for `day`, under the configured week start.
+ *
+ * With the Monday default this is exactly ISO-8601: week 1 is the week holding
+ * January 4th, and a week belongs to the year of its fourth day (the Thursday).
+ * Both rules generalise to any start day, so "2026-W33" keeps meaning one
+ * specific run of seven days once you know which weekday weeks begin on. The
+ * export records that alongside the keys, since the two are meaningless apart.
+ */
+export function isoWeek(day: string, weekStart: number = defaultWeekStart): { year: number; week: number } {
+  const weekStartDay = startOfWeek(day, weekStart);
+  // the week's fourth day decides its year, the way ISO uses the Thursday
+  const year = fromDay(addDays(weekStartDay, 3)).getFullYear();
+  const firstWeek = startOfWeek(`${year}-01-04`, weekStart);
+  const week = 1 + Math.round(daysBetween(firstWeek, weekStartDay) / 7);
+  return { year, week };
 }
 
 export function periodKey(period: Period, anchor: string): string {

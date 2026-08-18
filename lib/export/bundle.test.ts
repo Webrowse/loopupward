@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { csvField, csvFile, timeColumns, timeHeaders } from "@/lib/export/csv";
 import { crc32, makeZip } from "@/lib/export/zip";
-import { buildBundle, BundleInput } from "@/lib/export/bundle";
+import { bundleFilename, buildBundle, BundleInput } from "@/lib/export/bundle";
 import { isoWithOffset, localTime, weekdayName } from "@/lib/clock";
 import { routineLogDay } from "@/lib/progress";
 import {
@@ -34,7 +34,7 @@ function bundleInput(db: Partial<DB> = {}, streams: Partial<Streams> = {}): Bund
   return {
     db: { ...structuredClone(EMPTY_DB), ...db },
     streams: { ...structuredClone(EMPTY_STREAMS), ...streams },
-    settings: { ...EMPTY_SETTINGS, timezone: "Asia/Kolkata", dayRolloverHour: 4 },
+    settings: { ...EMPTY_SETTINGS, timezone: "Asia/Kolkata", weekStart: 1 },
     account: { email: null, mode: "local" },
     generatedAt: Date.parse("2026-08-18T10:00:00"),
     today: "2026-08-18",
@@ -466,7 +466,7 @@ describe("coverage: nothing reaches raw.json and stops there", () => {
     // you trying to become" is gone, and so are the fields it fed. What the
     // person said mattered to them lives in the journal, the reflections and
     // the areas, which this fixture covers through their own markers.
-    const settings = { ...EMPTY_SETTINGS, timezone: M("settingsTz"), dayRolloverHour: 4 };
+    const settings = { ...EMPTY_SETTINGS, timezone: M("settingsTz"), weekStart: 1 };
 
     const files = buildBundle({ ...bundleInput(db, streams), settings });
     const readable = files.filter((f) => f.name !== "raw.json");
@@ -817,5 +817,96 @@ describe("expectations never run ahead of the export", () => {
     const days = rows.slice(1).map((r) => r[header.indexOf("day")]);
     expect(days.at(-1)).toBe("2026-08-18"); // bundleInput's today
     expect(days.some((d) => d > "2026-08-18")).toBe(false);
+  });
+});
+
+/* ————— a slice of time that can still be read on its own ————— */
+
+describe("scoped export", () => {
+  const at = (iso: string) => Date.parse(iso);
+  const oldGoal = item({
+    id: "g1", kind: "goal", tracker: "counter", title: "Read 6 books", target: 6,
+    current: 4, cadence: null, createdAt: at("2026-01-10T09:00:00"),
+  });
+  const chapter = item({
+    id: "b1", kind: "book", tracker: "book", title: "Linchpin", target: 20, current: 12,
+    parentId: "g1", cadence: null, createdAt: at("2026-02-01T09:00:00"),
+  });
+  const db = {
+    areas: [{ id: "a1", name: "Growth", emoji: "G", color: "moss", position: 0, createdAt: at("2026-01-01T09:00:00") }],
+    items: [{ ...oldGoal, areaId: "a1" }, chapter],
+    logs: [
+      // before the window
+      { id: "l1", itemId: "b1", date: "2026-07-01", op: "add" as const, value: 5, createdAt: at("2026-07-01T09:00:00") },
+      { id: "l2", itemId: "b1", date: "2026-07-20", op: "add" as const, value: 4, createdAt: at("2026-07-20T09:00:00") },
+      // inside it
+      { id: "l3", itemId: "b1", date: "2026-08-12", op: "add" as const, value: 3, createdAt: at("2026-08-12T09:00:00") },
+    ],
+    actions: [
+      { id: "ac1", itemId: "b1", title: "Read chapter 10", date: "2026-07-05", done: true, doneAt: at("2026-07-05T20:00:00"), amount: 1, priority: 0, note: "", createdAt: 0 },
+      { id: "ac2", itemId: "b1", title: "Read chapter 13", date: "2026-08-12", done: true, doneAt: at("2026-08-12T20:00:00"), amount: 1, priority: 0, note: "", createdAt: 0 },
+    ],
+  };
+  const window = { start: "2026-08-10", end: "2026-08-18", label: "a chosen range" };
+
+  function scoped() {
+    return buildBundle({ ...bundleInput(db), window });
+  }
+
+  it("keeps only the rows inside the window", () => {
+    const rows = rowsOf(fileNamed(scoped(), "actions.csv"));
+    const header = rows[0];
+    const ids = rows.slice(1).map((r) => r[header.indexOf("action_id")]);
+    expect(ids).toEqual(["ac2"]);
+
+    const logIds = rowsOf(fileNamed(scoped(), "logs.csv")).slice(1).map((r) => r[0]);
+    expect(logIds).toEqual(["l3"]);
+  });
+
+  it("carries the goals its rows point at, even though they are older", () => {
+    const rows = rowsOf(fileNamed(scoped(), "items.csv"));
+    const header = rows[0];
+    const byId = new Map(rows.slice(1).map((r) => [r[header.indexOf("item_id")], r]));
+    // the book is in the window; the year goal above it is not, but the book
+    // names it as a parent, so it comes along rather than dangling
+    expect(byId.get("b1")![header.indexOf("in_window")]).toBe("true");
+    expect(byId.get("g1")).toBeTruthy();
+    expect(byId.get("g1")![header.indexOf("in_window")]).toBe("false");
+    // and its area comes with it, so area_name is never a dangling id
+    expect(byId.get("g1")![header.indexOf("area_name")]).toBe("Growth");
+  });
+
+  it("says what each counter read when the window opened", () => {
+    const rows = rowsOf(fileNamed(scoped(), "items.csv"));
+    const header = rows[0];
+    const book = rows.slice(1).find((r) => r[header.indexOf("item_id")] === "b1")!;
+    // 5 + 4 chapters before the window; the 3 inside it are the window's story
+    expect(book[header.indexOf("opening_value")]).toBe("9");
+  });
+
+  it("records the window in the manifest and names it in the README", () => {
+    const files = scoped();
+    const manifest = JSON.parse(fileNamed(files, "manifest.json"));
+    expect(manifest.window).toEqual({ start: "2026-08-10", end: "2026-08-18", label: "a chosen range" });
+    expect(fileNamed(files, "README.md")).toContain("This is a scoped export");
+  });
+
+  it("leaves a whole-life bundle completely unscoped", () => {
+    const files = buildBundle(bundleInput(db));
+    const manifest = JSON.parse(fileNamed(files, "manifest.json"));
+    expect(manifest.window).toBe(null);
+    const rows = rowsOf(fileNamed(files, "items.csv"));
+    const header = rows[0];
+    // the two scoping columns stay blank rather than claiming anything
+    expect(rows[1][header.indexOf("in_window")]).toBe("");
+    expect(rows[1][header.indexOf("opening_value")]).toBe("");
+    expect(rowsOf(fileNamed(files, "logs.csv")).length - 1).toBe(3);
+  });
+
+  it("names the file after the window it covers", () => {
+    expect(bundleFilename(Date.parse("2026-08-18T10:00:00"), window))
+      .toBe("loopupward-export-2026-08-10-to-2026-08-18.zip");
+    expect(bundleFilename(Date.parse("2026-08-18T10:00:00")))
+      .toBe("loopupward-export-2026-08-18.zip");
   });
 });

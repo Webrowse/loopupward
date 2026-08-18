@@ -14,7 +14,8 @@ import type { BundleInput, Ctx } from "./bundle";
 
 export function buildReadme(input: BundleInput, stats: LifeStats, ctx: Ctx): string {
   const { db, streams, settings, account, generatedAt } = input;
-  const rollover = stats.dayRolloverHour;
+  const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const weekStartName = weekdayNames[stats.weekStart];
   const tz = ctx.zoneName || settings.timezone || "(not recorded)";
   // where the observed record actually starts — the single most important
   // thing a reader needs, and the bundle used to imply it began at day one
@@ -42,6 +43,26 @@ Made ${isoWithOffset(generatedAt)} from ${
     account.mode === "cloud" ? `the account ${account.email ?? ""}`.trim() : "this device's own storage"
   }.
 ${stats.range ? `Covering ${stats.range.start} to ${stats.range.end} — ${stats.daysCovered} days.` : "No activity recorded yet."}
+${
+    ctx.window
+      ? `
+**This is a scoped export**, narrowed to ${ctx.window.label} (${ctx.window.start} to
+${ctx.window.end}). Every Record file below holds only rows inside those days. Two
+things were added so the slice can be read on its own:
+
+- \`items.csv\`, \`areas.csv\` and \`labels.csv\` also carry rows from *outside* the
+  window whenever something inside it points at them, marked
+  \`in_window = false\`. Nothing in this bundle names an id the bundle does not
+  contain.
+- \`items.csv\` carries \`opening_value\`: what each tracker read the moment the
+  window opened. Without it a counter that moved 3 to 7 inside the window cannot
+  be told from one that started at zero.
+
+The schema is identical to a whole-life export, so two of these can be compared
+or concatenated without reconciling anything.
+`
+      : ""
+  }
 
 This is everything the app knows about you, in files you can read yourself or
 hand to any tool you like. **The app never sends any of this anywhere.** It was
@@ -71,25 +92,31 @@ time get **reflections**; days get **journal** entries.
 
 Every file has a \`day\` (or \`planned_day\`) column holding a local calendar
 date, \`YYYY-MM-DD\`. **It is not always the calendar day the timestamp falls
-on.** Two rules move it:
+on**, and exactly one thing moves it:
 
-1. **The rollover hour, currently ${rollover}:00.** The calendar flips at
-   midnight; people don't. Anything recorded before ${rollover}:00 local can
-   belong to the previous day.
-2. **Routines with a window that wraps past midnight.** A night routine set to
-   run 21:00 → 02:00 belongs to *the evening it started*. Tick its last step at
-   1:15am on the 9th and the row says \`day = 2026-08-08\`, because that is the
-   night you were living. The app calls this \`routineLogDay()\`.
+**A routine whose visible hours wrap past midnight belongs to the evening it
+started.** A night routine set to run 21:00 → 02:00 is one thing that happens on
+one night, so ticking its last step at 1:15am on the 9th writes
+\`day = 2026-08-08\`: the night you were living, not the morning you were
+technically in. The spill ends when that routine's own window ends. The app
+calls this \`routineLogDay()\`.
 
-So: **a routine row's \`day\` is deliberately not its calendar day**, and if you
-group by \`day\` you get the answer the person would give; if you group by the
-timestamp you get the answer a clock would give. Both are in every file, on
+Nothing else moves a day. Every other row uses its calendar day. (There was once
+a global "day rollover hour" on top of this; it answered a question the
+routine's own window already answered, so it is gone.)
+
+So: **a routine row's \`day\` is deliberately not always its calendar day**, and
+if you group by \`day\` you get the answer the person would give; if you group by
+the timestamp you get the answer a clock would give. Both are in every file, on
 purpose. Use \`day\` for "how many days did I do this", and the timestamps for
 "what time of day do I do this".
 
-**Weeks run Monday to Sunday.** Every week key (\`2026-W33\`) in this bundle is
-ISO, and it is fixed rather than a preference, so a week number means the same
-seven days everywhere and in every export.
+**Weeks start on ${weekStartName}.** Every week key (\`2026-W33\`) in this bundle
+is relative to that, so the key and the start day are meaningless apart; the
+manifest carries it as \`week_starts_on\`. With the Monday default the keys are
+ISO-8601 exactly. If this was ever changed, \`settings.changed\` in
+\`events.ndjson\` records when, which matters because changing it re-frames which
+seven days an older key covers.
 
 ## How timestamps are written
 

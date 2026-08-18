@@ -1,6 +1,6 @@
 # Your export, file by file
 
-*Settings → **Download everything*** gives you a zip: a folder of plain files
+*Settings → **Download*** gives you a zip: a folder of plain files
 holding everything LoopUpward knows about you. It is built in your browser and
 goes nowhere else.
 
@@ -21,12 +21,12 @@ come back here.
 Every file has a `day` (or `planned_day`) column holding a local date,
 `YYYY-MM-DD`. **It is not always the calendar day its timestamp falls on.**
 
-- **The rollover hour** (Settings → Your clock, default `04:00`). The calendar
-  flips at midnight; people don't. Anything before that hour can count for the
-  previous day.
-- **Routines whose window wraps past midnight.** A night routine set to
-  21:00 → 02:00 belongs to *the evening it started*. Tick its last step at
-  1:15am on the 9th and the row reads `day = 2026-08-08`.
+**Routines whose window wraps past midnight** belong to *the evening they
+started*. A night routine set to 21:00 → 02:00 is one thing that happens on one
+night, so ticking its last step at 1:15am on the 9th writes `day = 2026-08-08`.
+The spill ends when that routine's own window ends.
+
+Nothing else moves a day; every other row uses its calendar day.
 
 Group by `day` for "how many days did I do this". Group by the timestamp for
 "what time of day do I do this". Both are in every file on purpose.
@@ -83,6 +83,22 @@ using today's answer.
 | `manifest.json` | coverage windows, timezone grades, and the vocabulary of every coded column — what the record can and cannot know |
 | `context.md` | your timezone, when your day rolls over, and what each area of your life is for |
 | `summary.md` | the computed numbers, formatted to read |
+
+### Whole life, or one period
+
+The download can be narrowed to the current week, the current month, or any
+range you pick. A scoped bundle has **the same files and the same columns** as a
+whole-life one, so two of them can be compared or concatenated. Two things are
+added so a slice reads on its own:
+
+- `items.csv`, `areas.csv` and `labels.csv` also carry rows from outside the
+  window whenever something inside it points at them, marked `in_window = false`.
+  No id in the bundle is left dangling.
+- `items.csv` carries `opening_value`, what each tracker read the moment the
+  window opened, without which a counter that moved 3 to 7 inside the window
+  cannot be told from one that started at zero.
+
+`manifest.json` records the window under `window`.
 
 ### The three kinds of file
 

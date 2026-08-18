@@ -14,12 +14,11 @@
  * planned, what gets rescheduled, and what gets abandoned.
  */
 
-import { dayWithRollover } from "./clock";
 import { addDays, daysBetween, isoWeek, toDay } from "./dates";
 import {
   AppEvent,
   DB,
-  DEFAULT_DAY_ROLLOVER_HOUR,
+  DEFAULT_WEEK_START,
   FocusSession,
   Item,
   Streams,
@@ -185,9 +184,9 @@ export interface DailyRow {
 export interface LifeStats {
   range: StatsRange | null;
   generatedAt: number;
-  /** The rule every "day" below was bucketed by. Not a statistic, but a
-   *  reader who does not know it cannot reproduce any of these numbers. */
-  dayRolloverHour: number;
+  /** Which weekday weeks begin on. Not a statistic, but a reader who does not
+   *  know it cannot reproduce any weekly figure or read any week key. */
+  weekStart: number;
   /** overall */
   actionsPlanned: number;
   actionsCompleted: number;
@@ -323,7 +322,7 @@ function daysOf(range: StatsRange): string[] {
 
 export function computeStats(input: StatsInput): LifeStats {
   const { db, streams, settings, range, today: todayStr } = input;
-  const rollover = settings.dayRolloverHour ?? DEFAULT_DAY_ROLLOVER_HOUR;
+  const weekStart = settings.weekStart ?? DEFAULT_WEEK_START;
 
   const itemById = new Map(db.items.map((i) => [i.id, i]));
   const areaById = new Map(db.areas.map((a) => [a.id, a]));
@@ -824,7 +823,7 @@ export function computeStats(input: StatsInput): LifeStats {
     journalCoverage: days.length ? round2(journalDaysWritten / days.length) : null,
     moodSeries: daily.map((d) => ({ day: d.day, mood: d.mood, energy: d.energy })),
     daily,
-    dayRolloverHour: rollover,
+    weekStart,
   };
 }
 
@@ -853,6 +852,6 @@ export function spanOf(db: DB, streams: Streams): StatsRange | null {
     if (d < start) start = d;
     if (d > end) end = d;
   }
-  const todayStr = dayWithRollover(Date.now());
+  const todayStr = toDay(new Date());
   return { start, end: end > todayStr ? end : todayStr };
 }

@@ -66,8 +66,12 @@ describe("routineLogDay", () => {
     expect(routineLogDay(night, at("2026-08-06T01:00:00"))).toBe("2026-08-05");
   });
 
-  it("keeps spilling until 4am even when the window closed at 2am", () => {
-    expect(routineLogDay(night, at("2026-08-06T03:30:00"))).toBe("2026-08-05");
+  it("stops at the window's own end, with no global grace hour", () => {
+    // 3:30am is past a window that closed at 2am, so the night is over. There
+    // used to be a "day rollover hour" stretching this to 4am; it answered a
+    // question the window already answers, and applied to nothing else in the
+    // app despite describing itself as a general rule.
+    expect(routineLogDay(night, at("2026-08-06T03:30:00"))).toBe("2026-08-06");
   });
 
   it("has moved on by breakfast", () => {
@@ -78,17 +82,12 @@ describe("routineLogDay", () => {
     expect(routineLogDay(item({ kind: "routine" }), at("2026-08-06T01:00:00"))).toBe("2026-08-06");
   });
 
-  it("honours a rollover hour the user moved", () => {
-    // someone who is up until 6am says their day turns over at 6, and every
-    // exported row's `day` column has to agree with that
-    expect(routineLogDay(night, at("2026-08-06T05:00:00"), 6)).toBe("2026-08-05");
-    expect(routineLogDay(night, at("2026-08-06T06:30:00"), 6)).toBe("2026-08-06");
-  });
-
-  it("still respects a window that closes after the rollover hour", () => {
-    // the spill is until the window's end OR the rollover, whichever is later
-    const veryLate = item({ kind: "routine", windowStart: "22:00", windowEnd: "05:00" });
-    expect(routineLogDay(veryLate, at("2026-08-06T04:30:00"), 2)).toBe("2026-08-05");
+  it("lets a late sleeper say so by widening the window, not a setting", () => {
+    // someone who is up until 6am gives the routine a window that runs to 6am;
+    // the routine's own hours are the whole rule
+    const veryLate = item({ kind: "routine", windowStart: "22:00", windowEnd: "06:00" });
+    expect(routineLogDay(veryLate, at("2026-08-06T05:00:00"))).toBe("2026-08-05");
+    expect(routineLogDay(veryLate, at("2026-08-06T06:30:00"))).toBe("2026-08-06");
   });
 });
 

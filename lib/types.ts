@@ -462,17 +462,12 @@ export interface AppEvent {
 /**
  * Server-owned preferences and clock, one row per user.
  *
- * This used to also hold a self-description: what you are becoming, what
- * season of life this is, what is in the way, the targets you were aiming at.
- * Those were removed deliberately. A settings form is the least reliable place
- * a person describes themselves, and the export already carries the same
- * claims where they were made in earnest and carry a date: a day's one
- * intention, a reflection's wins and blockers, the promises a period makes for
- * the next one, the areas a life was actually divided into.
- *
- * What is left is not description, it is mechanics. Without a timezone no
- * exported timestamp can be placed; without a rollover hour "which day does a
- * 1am tick belong to" has no answer.
+ * This used to also hold a self-description: what you are becoming, what season
+ * of life this is, the targets you were aiming at. Those were removed. A
+ * settings form is the least reliable place a person describes themselves, and
+ * the export already carries the same claims where they were made in earnest
+ * and carry a date: a day's one intention, a reflection's wins and blockers,
+ * the promises a period makes for the next one.
  */
 export interface UserSettings {
   /* display, previously localStorage-only (localStorage stays the offline
@@ -482,26 +477,24 @@ export interface UserSettings {
   simple: boolean | null;
   restSeconds: number | null;
 
-  /* clock — how this person's day is actually shaped */
+  /** IANA zone, detected from the browser and kept in step with it. Not a
+   *  question the user is asked: it is read, and re-read, so that a move shows
+   *  up as a dated change rather than as a stale label. */
   timezone: string | null;
-  /** the hour a "day" rolls over. Default 4: before 4am you are still living
-   *  last night, which is exactly what routineLogDay() assumes. */
-  dayRolloverHour: number | null;
+  /** Which weekday a week begins on: 0 = Sunday ... 6 = Saturday. Governs the
+   *  week strip, weekly quotas, week keys and every weekly review. */
+  weekStart: number | null;
 
   createdAt: number | null;
   updatedAt: number | null;
 }
 
-export const DEFAULT_DAY_ROLLOVER_HOUR = 4;
-
-/** Weeks run Monday to Sunday, everywhere, and this is not configurable.
- *  startOfWeek() and isoWeek() in lib/dates.ts both assume it, so a week
- *  number means one thing in the app and the same thing in the export. */
-export const WEEK_STARTS_ON = "Monday";
+/** Monday, the ISO default, until the user says otherwise. */
+export const DEFAULT_WEEK_START = 1;
 
 export const EMPTY_SETTINGS: UserSettings = {
   theme: null, font: null, simple: null, restSeconds: null,
-  timezone: null, dayRolloverHour: null,
+  timezone: null, weekStart: null,
   createdAt: null, updatedAt: null,
 };
 

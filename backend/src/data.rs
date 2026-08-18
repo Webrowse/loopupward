@@ -369,7 +369,6 @@ pub struct EventRow {
 /// were dropped: a standing answer to "who are you" is undated and silently
 /// rewritten, and the export already carries the same claims where they were
 /// made in earnest and carry a date (a day's intention, a period's promises).
-/// Weeks are Monday-start everywhere and are no longer a setting either.
 ///
 /// Their columns remain in the table, unread and unwritten, rather than being
 /// dropped in a migration: an old client may still send them, serde ignores
@@ -382,7 +381,9 @@ pub struct UserSettings {
     pub simple: Option<bool>,
     pub rest_seconds: Option<i32>,
     pub timezone: Option<String>,
-    pub day_rollover_hour: Option<i32>,
+    /// 0 = Sunday ... 6 = Saturday. Governs the week strip, weekly quotas,
+    /// week keys and every weekly review.
+    pub week_start: Option<i32>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
 }
@@ -1443,7 +1444,7 @@ async fn read_settings(state: &AppState, user: Uuid) -> ApiResult<UserSettings> 
             simple: r.get("simple"),
             rest_seconds: r.get("rest_seconds"),
             timezone: r.get("timezone"),
-            day_rollover_hour: r.get("day_rollover_hour"),
+            week_start: r.get("week_start"),
             created_at: r.get("created_at_ms"),
             updated_at: r.get("updated_at_ms"),
         },
@@ -1455,9 +1456,9 @@ impl UserSettings {
         if let Some(tz) = &self.timezone {
             ck_len("timezone", tz, 64)?;
         }
-        if let Some(h) = self.day_rollover_hour {
-            if !(0..=12).contains(&h) {
-                return Err(bad("dayRolloverHour must be between 0 and 12"));
+        if let Some(w) = self.week_start {
+            if !(0..=6).contains(&w) {
+                return Err(bad("weekStart must be a weekday number 0 to 6"));
             }
         }
         if let Some(r) = self.rest_seconds {
@@ -1488,16 +1489,16 @@ pub async fn put_settings(
     let now = chrono::Utc::now().timestamp_millis();
     sqlx::query(
         "insert into user_settings (user_id, theme, font, simple, rest_seconds, timezone,
-           day_rollover_hour, created_at_ms, updated_at_ms)
+           week_start, created_at_ms, updated_at_ms)
          values ($1,$2,$3,$4,$5,$6,$7,$8,$8)
          on conflict (user_id) do update set
            theme = excluded.theme, font = excluded.font, simple = excluded.simple,
            rest_seconds = excluded.rest_seconds, timezone = excluded.timezone,
-           day_rollover_hour = excluded.day_rollover_hour,
+           week_start = excluded.week_start,
            updated_at_ms = excluded.updated_at_ms",
     )
     .bind(user.id).bind(&body.theme).bind(&body.font).bind(body.simple).bind(body.rest_seconds)
-    .bind(&body.timezone).bind(body.day_rollover_hour).bind(now)
+    .bind(&body.timezone).bind(body.week_start).bind(now)
     .execute(&state.pool)
     .await?;
     Ok(Json(read_settings(&state, user.id).await?))

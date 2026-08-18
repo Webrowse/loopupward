@@ -1,93 +1,59 @@
 "use client";
 
 import { useLife } from "@/lib/data/provider";
-import { currentTimezone } from "@/lib/clock";
-import { DEFAULT_DAY_ROLLOVER_HOUR } from "@/lib/types";
+import { DEFAULT_WEEK_START } from "@/lib/types";
 import { Card, inputCls } from "@/components/ui";
 
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 /**
- * The clock, and nothing else.
+ * One real setting, and nothing that only describes you.
  *
- * This card used to ask who you are: what you are becoming, what season of
- * life this is, what is in the way, how many focus minutes a day you are
- * aiming at. All of it fed one section of the export, and all of it was a form
- * asking a person to describe themselves so that a reader would not have to
- * work it out.
+ * This card has lost, in order: a form asking who you are and what you are
+ * becoming (an interview answer is the least reliable claim in an export, and
+ * the journal and reflections already carry the same claims with dates on
+ * them); a read-only timezone label (nobody needs to be shown their own
+ * timezone, and it is now detected and kept in step automatically, so moving
+ * shows up as a dated change instead of a stale label); and a "day rolls over
+ * at" hour (a routine that should count for last night says so by having
+ * visible hours that wrap past midnight, which is a fact about that routine
+ * rather than a global rule about every hour of the day).
  *
- * That is the wrong trade. What someone says about themselves in a settings
- * form is the least reliable thing in the bundle, and the export already
- * carries the same claims made where they mean something: the day's one
- * intention, a reflection's wins and blockers, the promises a period sets for
- * the next one, the areas a life was actually divided into. Those are stated
- * priorities captured in the flow of living rather than in an interview, and
- * they are dated, which a standing self-description never is.
- *
- * What remains here is not self-description. A timezone and a rollover hour
- * are mechanics: without them no exported timestamp can be placed, and the
- * question "which day does a 1am tick belong to" has no answer.
+ * What is left actually changes what the app does.
  */
 export function ContextCard() {
   const { settings, updateSettings } = useLife();
-  const browserZone = currentTimezone();
+  const weekStart = settings.weekStart ?? DEFAULT_WEEK_START;
 
   return (
     <Card className="p-5 mb-3">
-      <p className="text-sm font-medium text-ink">Your clock</p>
+      <p className="text-sm font-medium text-ink">Your week</p>
       <p className="mt-1 text-sm leading-relaxed text-ink-2">
-        How your day is actually shaped. Without a timezone, no exported timestamp can be
-        read across travel or a daylight-saving change.
+        Which day a week begins on. This drives the day strip on Plan, the
+        &ldquo;4&times; a week&rdquo; counters, every weekly review, and the week numbers in
+        your export.
       </p>
 
-      <div className="mt-4 space-y-3">
-        <Row label="Timezone">
-          <div className="flex items-center gap-2">
-            <span className="text-sm tabular-nums text-ink">
-              {settings.timezone ?? "not set"}
-            </span>
-            {settings.timezone !== browserZone && browserZone && (
-              <button
-                onClick={() => updateSettings({ timezone: browserZone })}
-                className="pressable rounded-full border border-line px-2.5 py-0.5 text-xs font-medium text-ink-2 hover:border-accent hover:text-accent-deep"
-              >
-                Use {browserZone}
-              </button>
-            )}
-          </div>
-        </Row>
-
-        <Row label="A day rolls over at">
-          <select
-            className={`${inputCls} w-40`}
-            value={settings.dayRolloverHour ?? DEFAULT_DAY_ROLLOVER_HOUR}
-            onChange={(e) => updateSettings({ dayRolloverHour: Number(e.target.value) })}
-          >
-            {[0, 1, 2, 3, 4, 5, 6].map((h) => (
-              <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
-            ))}
-          </select>
-        </Row>
-        <p className="text-xs leading-relaxed text-ink-3">
-          Before this hour you are still living the night before, so a routine finished at
-          1am counts for yesterday rather than leaking into today.
-        </p>
-
-        <Row label="Weeks run">
-          <span className="text-sm text-ink">Monday to Sunday</span>
-        </Row>
-        <p className="text-xs leading-relaxed text-ink-3">
-          Fixed, not a preference: every week in the app and in your export starts on a
-          Monday, so a week number always means the same thing.
-        </p>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <span className="text-sm text-ink-2">Weeks start on</span>
+        <select
+          className={`${inputCls} w-40`}
+          value={weekStart}
+          onChange={(e) => updateSettings({ weekStart: Number(e.target.value) })}
+        >
+          {WEEKDAYS.map((d, i) => (
+            <option key={d} value={i}>{d}</option>
+          ))}
+        </select>
       </div>
-    </Card>
-  );
-}
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <span className="text-sm text-ink-2">{label}</span>
-      {children}
-    </div>
+      <p className="mt-2 text-xs leading-relaxed text-ink-3">
+        Weeks run {WEEKDAYS[weekStart]} to {WEEKDAYS[(weekStart + 6) % 7]}.
+        Changing this re-frames which seven days a past weekly review covers, so
+        an old week number will line up with a slightly different week. Your
+        export records the change and the day weeks start on, so nothing becomes
+        unreadable.
+      </p>
+    </Card>
   );
 }

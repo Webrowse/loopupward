@@ -11,7 +11,6 @@
  */
 
 import { toDay } from "./dates";
-import { DEFAULT_DAY_ROLLOVER_HOUR } from "./types";
 
 export interface Stamp {
   /** epoch ms */
@@ -51,20 +50,6 @@ export function stamp(day?: string, at = Date.now()): Stamp {
     tz: currentTimezone(),
     utcOffsetMinutes: utcOffsetMinutes(d),
   };
-}
-
-/**
- * The day a moment belongs to once the rollover hour is applied: with the
- * default 4, anything before 4am counts as the previous day, because the
- * calendar flips at midnight but the person doesn't.
- *
- * This is the same rule routineLogDay() applies to wrapped routines, stated
- * once so the export's README can describe one rule rather than two.
- */
-export function dayWithRollover(at: number, rolloverHour = DEFAULT_DAY_ROLLOVER_HOUR): string {
-  const d = new Date(at);
-  if (d.getHours() < rolloverHour) d.setDate(d.getDate() - 1);
-  return toDay(d);
 }
 
 /** "09:05" — local wall-clock time of a moment, for the export's `local_time`

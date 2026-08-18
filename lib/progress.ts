@@ -212,32 +212,31 @@ export function inRoutineWindow(item: Item, now: Date): boolean {
   return start < end ? t >= start && t < end : t >= start || t < end;
 }
 
-/** How late "tonight" stretches by default: the calendar flips at midnight,
- *  but the person doesn't — before 4 am they're still living the previous
- *  evening. A user setting (user_settings.day_rollover_hour) can move it,
- *  which is why routineLogDay takes the hour rather than reading this. */
-const DEFAULT_ROLLOVER_HOUR = 4;
-
-/** Which day a routine's ticks, steps and streak belong to right now.
- *  A routine whose visible hours wrap past midnight (21:00 → 02:00) belongs
- *  to the evening it started: until its window ends — or until the day's
- *  rollover hour, whichever is later — everything logs to the previous
- *  calendar day, so finishing the night routine at 1 am doesn't leak into
- *  tomorrow. Routines without a wrapped window use the calendar day
- *  unchanged. Every exported row's `day` column follows this same rule, and
- *  the export's README states it in those words. */
-export function routineLogDay(
-  item: Item,
-  now = new Date(),
-  rolloverHour = DEFAULT_ROLLOVER_HOUR
-): string {
+/**
+ * Which day a routine's ticks, steps and streak belong to right now.
+ *
+ * The routine's own visible hours decide it, and nothing else. A window that
+ * wraps past midnight (21:00 -> 02:00) says the routine belongs to the evening
+ * it started, so everything ticked before that window closes logs to the
+ * previous calendar day: finish the night routine at 1am and it counts for the
+ * night you were living, not for the morning you are technically in.
+ *
+ * There used to be a global "day rollover hour" layered on top, extending this
+ * to whichever was later, the window's end or 4am. It was doing no work the
+ * window was not already doing, it applied to nothing else in the app despite
+ * describing itself as a general rule, and it made two settings answer one
+ * question. A routine that should count for last night says so by having a
+ * window that wraps; a routine with no window uses the calendar day, which is
+ * the only honest answer when nothing has told the app otherwise.
+ */
+export function routineLogDay(item: Item, now = new Date()): string {
   const start = parseHM(item.windowStart);
   const end = parseHM(item.windowEnd);
   const wrapped = item.kind === "routine" && start != null && end != null && end < start;
   const day = toDay(now);
   if (!wrapped) return day;
   const t = now.getHours() * 60 + now.getMinutes();
-  return t < Math.max(end, rolloverHour * 60) ? addDays(day, -1) : day;
+  return t < end ? addDays(day, -1) : day;
 }
 
 /** "6:00 am – 12:00 pm", or null when the routine shows all day. */

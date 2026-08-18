@@ -19,11 +19,12 @@ import { daysBetween, periodKey, Period, toDay } from "../dates";
 import { dayLogged, formatEntryAmount, habitDailyTarget, routineMinutes } from "../progress";
 import { scoreIntentions } from "../review";
 import { computeStats, LifeStats } from "../stats";
-import { DB, DEFAULT_DAY_ROLLOVER_HOUR, Item, Streams, UserSettings, WEEK_STARTS_ON } from "../types";
+import { DB, DEFAULT_WEEK_START, Item, Streams, UserSettings } from "../types";
 import { csvFile, CsvValue, dayWeekday, minutesOf, timeColumnsZoned, timeHeaders } from "./csv";
 import { buildHistory, dailyTargetAsOfDay, ItemHistory, stepIdsAsOfDay } from "./history";
 import { buildExpectations, ExpectationRow } from "./expectations";
 import { buildManifest } from "./manifest";
+import { ExportWindow, OpeningValue, scopeToWindow } from "./window";
 import { buildReadme } from "./readme";
 
 export interface BundleInput {
@@ -34,6 +35,10 @@ export interface BundleInput {
   /** epoch ms — passed in so a test can produce a stable bundle */
   generatedAt: number;
   today: string;
+  /** when set, the bundle covers only this stretch: the same files and the
+   *  same columns, filtered, plus the closure and opening balances that make a
+   *  slice readable on its own. See lib/export/window.ts. */
+  window?: ExportWindow | null;
 }
 
 export interface BundleFile {
@@ -53,6 +58,12 @@ export interface Ctx {
   /** the zone's name, for the manifest and the README */
   zoneName: string;
   history: ItemHistory;
+  /** null for a whole-life bundle */
+  window: ExportWindow | null;
+  /** ids that belong to the window itself, as opposed to rows carried along so
+   *  that nothing in the bundle points at something missing from it */
+  inWindow: Set<string> | null;
+  opening: Map<string, OpeningValue> | null;
 }
 
 export function buildCtx(input: BundleInput): Ctx {
@@ -67,19 +78,44 @@ export function buildCtx(input: BundleInput): Ctx {
         ? zone.tz
         : Intl.DateTimeFormat().resolvedOptions().timeZone ?? "(unknown)",
     history: buildHistory(input.streams.events),
+    window: null,
+    inWindow: null,
+    opening: null,
   };
 }
 
 /** Everything the bundle contains, in the order a reader should meet it. */
-export function buildBundle(input: BundleInput): BundleFile[] {
+export function buildBundle(whole: BundleInput): BundleFile[] {
+  // A scoped bundle is this same generator over less data, never a second one.
+  // The history is still built from the FULL event stream, so an item's target
+  // or script on a day inside the window can be reconstructed from a change
+  // made long before it.
+  const fullHistory = buildHistory(whole.streams.events);
+  const scoped = whole.window ? scopeToWindow(whole.db, whole.streams, whole.window) : null;
+  const input: BundleInput = scoped
+    ? { ...whole, db: scoped.db, streams: scoped.streams }
+    : whole;
+
   const stats = computeStats({
     db: input.db,
     streams: input.streams,
     settings: input.settings,
     today: input.today,
+    range: whole.window ? { start: whole.window.start, end: whole.window.end } : undefined,
   });
-  const ctx = buildCtx(input);
-  const expectations = buildExpectations(input.db, ctx.history, stats.range, input.today);
+  const ctx: Ctx = {
+    ...buildCtx(input),
+    history: fullHistory,
+    window: whole.window ?? null,
+    inWindow: scoped?.inWindow ?? null,
+    opening: scoped?.opening ?? null,
+  };
+  const expectations = buildExpectations(
+    input.db,
+    ctx.history,
+    whole.window ? { start: whole.window.start, end: whole.window.end } : stats.range,
+    input.today
+  );
 
   return [
     { name: "README.md", content: buildReadme(input, stats, ctx) },
@@ -115,8 +151,10 @@ export function buildBundle(input: BundleInput): BundleFile[] {
 }
 
 /** The file name the download is offered under. */
-export function bundleFilename(generatedAt: number): string {
-  return `loopupward-export-${toDay(new Date(generatedAt))}.zip`;
+export function bundleFilename(generatedAt: number, window?: ExportWindow | null): string {
+  return window
+    ? `loopupward-export-${window.start}-to-${window.end}.zip`
+    : `loopupward-export-${toDay(new Date(generatedAt))}.zip`;
 }
 
 /* ————— lookups shared by every file —————
@@ -212,6 +250,8 @@ function timeColumnsZoned2(ctx: Ctx, at: number | null | undefined): [string, st
   return timeColumnsZoned(at, ctx.zone);
 }
 
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 /* ————— narrative ————— */
 
 /**
@@ -252,8 +292,7 @@ function contextMd(input: BundleInput): string {
 
   out.push("## The clock", "");
   line("Timezone", settings.timezone ?? "(not recorded)");
-  line("A day rolls over at", `${settings.dayRolloverHour ?? DEFAULT_DAY_ROLLOVER_HOUR}:00 local`);
-  line("Weeks run", `${WEEK_STARTS_ON} to Sunday (fixed, not a preference)`);
+  line("Weeks start on", WEEKDAY_NAMES[settings.weekStart ?? DEFAULT_WEEK_START]);
 
   out.push("## Areas of life", "");
   if (db.areas.length === 0) {
@@ -307,7 +346,7 @@ function summaryMd(input: BundleInput, stats: LifeStats): string {
   if (stats.range) {
     out.push(`**Covering:** ${stats.range.start} to ${stats.range.end} (${stats.daysCovered} days)`, "");
   }
-  out.push(`**A day rolls over at:** ${stats.dayRolloverHour}:00 local — see README.md`, "");
+  out.push(`**Weeks start on:** ${WEEKDAY_NAMES[stats.weekStart]} — see README.md`, "");
 
   out.push("## The shape of it", "");
   table(
@@ -500,6 +539,7 @@ function itemsCsv(input: BundleInput, ctx: Ctx): string {
     "target", "current", "unit", "progress_fraction", "cadence", "cadence_days",
     "cadence_count", "window_start", "window_end", "pulled_today", "pinned", "labels",
     "note", "rich_body_chars", "carried_periods", "origin",
+    "in_window", "opening_value",
     "step_count", "planned_minutes", "entry_count",
     ...timeHeaders("created"), ...timeHeaders("completed"), ...timeHeaders("deleted"),
     "age_days", "days_to_complete",
@@ -520,6 +560,12 @@ function itemsCsv(input: BundleInput, ctx: Ctx): string {
       i.richBody?.length ?? "",
       carriedPeriods(i, input.today),
       ctx.history.itemOrigin.get(i.id) ?? "",
+      // on a scoped export: whether this row is part of the window, or is only
+      // here so that something inside the window has a name to point at
+      ctx.inWindow ? ctx.inWindow.has(i.id) : "",
+      // what this tracker read when the window opened, so a counter that moved
+      // 3 -> 7 inside it is not mistaken for one that started at zero
+      ctx.opening ? ctx.opening.get(i.id)?.value ?? 0 : "",
       i.steps?.length ?? "", routineMinutes(i) ?? "", i.entries?.length ?? "",
       ...timeColumnsZoned2(ctx, i.createdAt), ...timeColumnsZoned2(ctx, i.completedAt), ...timeColumnsZoned2(ctx, i.deletedAt),
       Math.max(0, daysBetween(createdDay, input.today)),

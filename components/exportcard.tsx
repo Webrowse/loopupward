@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLife } from "@/lib/data/provider";
+import { addDays, periodRange, startOfMonth, today as todayStr } from "@/lib/dates";
+import type { ExportWindow } from "@/lib/export/window";
 import { readLocalStreams } from "@/lib/data/streams";
 import { spanOf } from "@/lib/stats";
 import { EMPTY_STREAMS } from "@/lib/types";
 import { collectBundleInput, downloadBundle, prettyBytes, previewBundle } from "@/lib/export/download";
-import { Button, Card } from "@/components/ui";
+import { Button, Card, Segmented, inputCls } from "@/components/ui";
 
 /** What is in the bundle, in the order the reader meets it. Written out
  *  rather than derived, because the point of this list is to say what each
@@ -56,8 +58,29 @@ const CONTENTS: { group: string; files: { name: string; what: string }[] }[] = [
  * is, and what span of their life it covers — and then hands it over in one
  * file with no account, no upload and no service in the middle.
  */
+type Scope = "all" | "week" | "month" | "custom";
+
+/** The stretch a scoped download covers. Null means the whole life. */
+function windowFor(scope: Scope, from: string, to: string): ExportWindow | null {
+  const t = todayStr();
+  if (scope === "all") return null;
+  if (scope === "week") {
+    const { start, end } = periodRange("week", t);
+    return { start, end, label: "the current week" };
+  }
+  if (scope === "month") {
+    return { start: startOfMonth(t), end: t, label: "the current month so far" };
+  }
+  const [start, end] = from <= to ? [from, to] : [to, from];
+  return { start, end, label: "a chosen range" };
+}
+
 export function ExportCard() {
   const { db, mode, user, settings, flushStreams } = useLife();
+  const [scope, setScope] = useState<Scope>("all");
+  const [from, setFrom] = useState(() => addDays(todayStr(), -30));
+  const [to, setTo] = useState(() => todayStr());
+  const window = useMemo(() => windowFor(scope, from, to), [scope, from, to]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [built, setBuilt] = useState<{ files: number; bytes: number } | null>(null);
@@ -94,9 +117,10 @@ export function ExportCard() {
         mode,
         settings,
         email: user?.email ?? null,
+        window,
       });
       const preview = previewBundle(input);
-      downloadBundle(preview.files, input.generatedAt);
+      downloadBundle(preview.files, input.generatedAt, window);
       setBuilt({ files: preview.files.length, bytes: preview.totalBytes });
     } catch (e) {
       console.error("[lifeos] export failed", e);
@@ -160,9 +184,51 @@ export function ExportCard() {
         </div>
       )}
 
+      <div className="mt-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-3">How much</p>
+        <div className="mt-2">
+          <Segmented
+            options={[
+              { value: "all", label: "Everything" },
+              { value: "week", label: "This week" },
+              { value: "month", label: "This month" },
+              { value: "custom", label: "Range" },
+            ]}
+            value={scope}
+            onChange={(v) => setScope(v as Scope)}
+          />
+        </div>
+        {scope === "custom" && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <input
+              type="date"
+              aria-label="From"
+              className={`${inputCls} w-40`}
+              value={from}
+              max={to}
+              onChange={(e) => e.target.value && setFrom(e.target.value)}
+            />
+            <span className="text-sm text-ink-3">to</span>
+            <input
+              type="date"
+              aria-label="To"
+              className={`${inputCls} w-40`}
+              value={to}
+              min={from}
+              onChange={(e) => e.target.value && setTo(e.target.value)}
+            />
+          </div>
+        )}
+        <p className="mt-2 text-xs leading-relaxed text-ink-3">
+          {window
+            ? `Covering ${window.start} to ${window.end}. A slice carries the goals and areas its rows point at even when those were made earlier, plus what every counter read on ${window.start}, so it can be read on its own.`
+            : "Every day the app has ever recorded."}
+        </p>
+      </div>
+
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button small onClick={download} disabled={busy}>
-          {busy ? "Building…" : "Download everything"}
+          {busy ? "Building…" : window ? "Download this period" : "Download everything"}
         </Button>
         {built && !busy && (
           <span className="text-xs text-ink-3">

@@ -16,6 +16,7 @@ import { readLocalStreams } from "../data/streams";
 import { today } from "../dates";
 import { DB, EMPTY_DB, EMPTY_SETTINGS, EMPTY_STREAMS, Streams, UserSettings } from "../types";
 import { BundleFile, bundleFilename, buildBundle, BundleInput } from "./bundle";
+import { ExportWindow } from "./window";
 import { makeZip } from "./zip";
 
 /** What GET /v1/export answers with. */
@@ -37,6 +38,8 @@ export async function collectBundleInput(opts: {
   /** the device's own preferences, used when there is no server to ask */
   settings: UserSettings;
   email: string | null;
+  /** narrow the bundle to one stretch of time; omit for everything */
+  window?: ExportWindow | null;
 }): Promise<BundleInput> {
   const generatedAt = Date.now();
   if (opts.mode === "cloud") {
@@ -59,6 +62,7 @@ export async function collectBundleInput(opts: {
       },
       generatedAt,
       today: today(),
+      window: opts.window ?? null,
     };
   }
   return {
@@ -72,6 +76,7 @@ export async function collectBundleInput(opts: {
     account: { email: null, mode: "local", createdAt: null },
     generatedAt,
     today: today(),
+    window: opts.window ?? null,
   };
 }
 
@@ -86,7 +91,7 @@ export function previewBundle(input: BundleInput): BundlePreview {
 }
 
 /** Zip the files and hand them to the browser. */
-export function downloadBundle(files: BundleFile[], generatedAt: number) {
+export function downloadBundle(files: BundleFile[], generatedAt: number, window?: ExportWindow | null) {
   const zip = makeZip(files, new Date(generatedAt));
   // a fresh ArrayBuffer, because a Uint8Array view over a larger buffer would
   // hand Blob the wrong bytes
@@ -94,7 +99,7 @@ export function downloadBundle(files: BundleFile[], generatedAt: number) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = bundleFilename(generatedAt);
+  a.download = bundleFilename(generatedAt, window);
   a.click();
   URL.revokeObjectURL(url);
 }
