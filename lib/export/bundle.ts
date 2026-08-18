@@ -14,20 +14,23 @@
  * user, for the user to ask their own questions of, wherever they like.
  */
 
-import { isoWithOffset, localTime, weekdayName } from "../clock";
-import { daysBetween, toDay } from "../dates";
+import { isoWithOffset, localTime, profileZone, weekdayName, ZoneRef, ZoneSource } from "../clock";
+import { daysBetween, periodKey, Period, toDay } from "../dates";
 import { dayLogged, formatEntryAmount, habitDailyTarget, routineMinutes } from "../progress";
 import { scoreIntentions } from "../review";
 import { computeStats, LifeStats } from "../stats";
 import { DB, Item, Streams, UserSettings } from "../types";
-import { csvFile, CsvValue, dayWeekday, minutesOf, timeColumns, timeHeaders } from "./csv";
+import { csvFile, CsvValue, dayWeekday, minutesOf, timeColumnsZoned, timeHeaders } from "./csv";
+import { buildHistory, dailyTargetAsOfDay, ItemHistory, stepIdsAsOfDay } from "./history";
+import { buildExpectations, ExpectationRow } from "./expectations";
+import { buildManifest } from "./manifest";
 import { buildReadme } from "./readme";
 
 export interface BundleInput {
   db: DB;
   streams: Streams;
   settings: UserSettings;
-  account: { email: string | null; mode: "cloud" | "local" };
+  account: { email: string | null; mode: "cloud" | "local"; createdAt?: string | null };
   /** epoch ms — passed in so a test can produce a stable bundle */
   generatedAt: number;
   today: string;
@@ -38,6 +41,35 @@ export interface BundleFile {
   content: string;
 }
 
+/**
+ * What every emitter needs and none of them should recompute: the zone
+ * historical rows are read in, and the reconstruction of what items looked like
+ * on days in the past. Both are derived once, here, because getting two files
+ * to disagree about either would be worse than either being wrong.
+ */
+export interface Ctx {
+  zone: ZoneRef;
+  zoneSource: ZoneSource;
+  /** the zone's name, for the manifest and the README */
+  zoneName: string;
+  history: ItemHistory;
+}
+
+export function buildCtx(input: BundleInput): Ctx {
+  // rows that recorded their own offset get it used directly (see clock.ts);
+  // everything else is read in the user's own zone, and the manifest says so
+  const zone = profileZone(input.settings.timezone);
+  return {
+    zone,
+    zoneSource: zone.kind,
+    zoneName:
+      zone.kind === "profile"
+        ? zone.tz
+        : Intl.DateTimeFormat().resolvedOptions().timeZone ?? "(unknown)",
+    history: buildHistory(input.streams.events),
+  };
+}
+
 /** Everything the bundle contains, in the order a reader should meet it. */
 export function buildBundle(input: BundleInput): BundleFile[] {
   const stats = computeStats({
@@ -46,25 +78,33 @@ export function buildBundle(input: BundleInput): BundleFile[] {
     settings: input.settings,
     today: input.today,
   });
+  const ctx = buildCtx(input);
+  const expectations = buildExpectations(input.db, ctx.history, stats.range, input.today);
 
   return [
-    { name: "README.md", content: buildReadme(input, stats) },
+    { name: "README.md", content: buildReadme(input, stats, ctx) },
+    { name: "manifest.json", content: buildManifest(input, stats, ctx, expectations.length) },
     { name: "context.md", content: contextMd(input) },
     { name: "summary.md", content: summaryMd(input, stats) },
 
-    { name: "areas.csv", content: areasCsv(input) },
-    { name: "items.csv", content: itemsCsv(input) },
-    { name: "actions.csv", content: actionsCsv(input) },
-    { name: "logs.csv", content: logsCsv(input) },
+    { name: "areas.csv", content: areasCsv(input, ctx) },
+    { name: "items.csv", content: itemsCsv(input, ctx) },
+    { name: "actions.csv", content: actionsCsv(input, ctx) },
+    { name: "logs.csv", content: logsCsv(input, ctx) },
     { name: "focus_sessions.csv", content: focusSessionsCsv(input) },
-    { name: "habit_days.csv", content: habitDaysCsv(input) },
-    { name: "routine_steps.csv", content: routineStepsCsv(input) },
-    { name: "list_entries.csv", content: listEntriesCsv(input) },
-    { name: "seeds.csv", content: seedsCsv(input) },
-    { name: "labels.csv", content: labelsCsv(input) },
-    { name: "day_order.csv", content: dayOrderCsv(input) },
+    { name: "habit_days.csv", content: habitDaysCsv(input, ctx) },
+    { name: "routine_steps.csv", content: routineStepsCsv(input, ctx) },
+    { name: "schedule_expectations.csv", content: expectationsCsv(input, expectations) },
+    { name: "list_entries.csv", content: listEntriesCsv(input, ctx) },
+    { name: "seeds.csv", content: seedsCsv(input, ctx) },
+    { name: "labels.csv", content: labelsCsv(input, ctx) },
+    { name: "day_order.csv", content: dayOrderCsv(input, ctx) },
     { name: "daily.csv", content: dailyCsv(stats) },
     { name: "events.ndjson", content: eventsNdjson(input) },
+
+    { name: "journal.csv", content: journalCsv(input, ctx) },
+    { name: "reflections.csv", content: reflectionsCsv(input, ctx) },
+    { name: "notes.csv", content: notesCsv(input, ctx) },
 
     { name: "journal.md", content: journalMd(input) },
     { name: "reflections.md", content: reflectionsMd(input) },
@@ -124,6 +164,52 @@ function lookups(db: DB): Lookups {
     itemTitle: (id) => (id ? itemById.get(id)?.title ?? "(deleted item)" : ""),
     labelNames: (ids) => ids.map((id) => labelById.get(id)?.name ?? "(deleted label)").join(" | "),
   };
+}
+
+/**
+ * How many whole week/month/quarter/year instances a period goal has rolled
+ * through unfinished.
+ *
+ * The app carries an unfinished period goal into the current instance without
+ * writing anything at all — it simply keeps appearing — so a goal set twenty
+ * weeks ago and one set on Monday are identical rows. This is the difference,
+ * counted from the instance it was actually filed under.
+ */
+function carriedPeriods(item: Item, today: string): number | "" {
+  const period = item.horizon;
+  if (period !== "week" && period !== "month" && period !== "quarter" && period !== "year") return "";
+  if (!item.horizonPeriod) return "";
+  const from = periodKey(period as Period, item.horizonPeriod);
+  const now = periodKey(period as Period, today);
+  if (from >= now) return 0;
+  let n = 0;
+  let cursor = item.horizonPeriod;
+  // step forward one instance at a time rather than doing calendar arithmetic
+  // per period type; a goal is never carried enough for this to be slow
+  while (periodKey(period as Period, cursor) < now && n < 1000) {
+    cursor = nextInstance(period as Period, cursor);
+    n++;
+  }
+  return n;
+}
+
+function nextInstance(period: Period, anchor: string): string {
+  const d = new Date(`${anchor}T12:00:00`);
+  if (period === "week") d.setDate(d.getDate() + 7);
+  else if (period === "month") d.setMonth(d.getMonth() + 1);
+  else if (period === "quarter") d.setMonth(d.getMonth() + 3);
+  else d.setFullYear(d.getFullYear() + 1);
+  return toDay(d);
+}
+
+/** A row that recorded the offset in force at the time gets it used exactly. */
+function recorded(offsetMinutes: number): ZoneRef {
+  return { kind: "recorded", offsetMinutes };
+}
+
+/** A row that did not gets read in the user's own zone — see buildCtx. */
+function timeColumnsZoned2(ctx: Ctx, at: number | null | undefined): [string, string, string] {
+  return timeColumnsZoned(at, ctx.zone);
 }
 
 /* ————— narrative ————— */
@@ -399,7 +485,7 @@ function summaryMd(input: BundleInput, stats: LifeStats): string {
 
 /* ————— raw streams ————— */
 
-function areasCsv(input: BundleInput): string {
+function areasCsv(input: BundleInput, ctx: Ctx): string {
   const header = [
     "area_id", "name", "emoji", "color", "position", "description", "why_it_matters",
     "target_share", ...timeHeaders("created"),
@@ -408,19 +494,20 @@ function areasCsv(input: BundleInput): string {
     .sort((a, b) => a.position - b.position)
     .map((a) => [
       a.id, a.name, a.emoji, a.color, a.position, a.description ?? "", a.whyItMatters ?? "",
-      a.targetShare ?? "", ...timeColumns(a.createdAt),
+      a.targetShare ?? "", ...timeColumnsZoned2(ctx, a.createdAt),
     ]);
   return csvFile(header, rows);
 }
 
-function itemsCsv(input: BundleInput): string {
+function itemsCsv(input: BundleInput, ctx: Ctx): string {
   const L = lookups(input.db);
   const header = [
     "item_id", "title", "kind", "tracker", "status", "area_id", "area_name",
     "parent_id", "parent_title", "horizon", "horizon_period", "date_repeats_yearly",
     "target", "current", "unit", "progress_fraction", "cadence", "cadence_days",
     "cadence_count", "window_start", "window_end", "pulled_today", "pinned", "labels",
-    "note", "step_count", "planned_minutes", "entry_count",
+    "note", "rich_body_chars", "carried_periods", "origin",
+    "step_count", "planned_minutes", "entry_count",
     ...timeHeaders("created"), ...timeHeaders("completed"), ...timeHeaders("deleted"),
     "age_days", "days_to_complete",
   ];
@@ -437,8 +524,11 @@ function itemsCsv(input: BundleInput): string {
       i.cadence ?? "", (i.cadenceDays ?? []).join(" "), i.cadenceCount ?? "",
       i.windowStart ?? "", i.windowEnd ?? "", i.pulledToday, i.pinned,
       L.labelNames(i.labels), i.note,
+      i.richBody?.length ?? "",
+      carriedPeriods(i, input.today),
+      ctx.history.itemOrigin.get(i.id) ?? "",
       i.steps?.length ?? "", routineMinutes(i) ?? "", i.entries?.length ?? "",
-      ...timeColumns(i.createdAt), ...timeColumns(i.completedAt), ...timeColumns(i.deletedAt),
+      ...timeColumnsZoned2(ctx, i.createdAt), ...timeColumnsZoned2(ctx, i.completedAt), ...timeColumnsZoned2(ctx, i.deletedAt),
       Math.max(0, daysBetween(createdDay, input.today)),
       doneDay ? Math.max(0, daysBetween(createdDay, doneDay)) : "",
     ];
@@ -446,11 +536,12 @@ function itemsCsv(input: BundleInput): string {
   return csvFile(header, rows);
 }
 
-function actionsCsv(input: BundleInput): string {
+function actionsCsv(input: BundleInput, ctx: Ctx): string {
   const L = lookups(input.db);
   const header = [
     "action_id", "title", "planned_day", "planned_weekday", "done", ...timeHeaders("done"),
-    "days_late", "item_id", "item_title", "item_kind", "area_name", "amount", "priority", "note",
+    "days_late", "carried_days", "origin",
+    "item_id", "item_title", "item_kind", "area_name", "amount", "priority", "note",
     ...timeHeaders("created"),
   ];
   const rows: CsvValue[][] = [...input.db.actions]
@@ -459,17 +550,23 @@ function actionsCsv(input: BundleInput): string {
       const item = a.itemId ? L.itemById.get(a.itemId) ?? null : null;
       const doneDay = a.doneAt ? toDay(new Date(a.doneAt)) : null;
       return [
-        a.id, a.title, a.date, dayWeekday(a.date), a.done, ...timeColumns(a.doneAt),
+        a.id, a.title, a.date, dayWeekday(a.date), a.done, ...timeColumnsZoned2(ctx, a.doneAt),
         // negative means finished ahead of the day it was planned for
         doneDay ? daysBetween(a.date, doneDay) : "",
+        // how long it was actually carried: to the day it was done, or — if it
+        // never was — to the day of this export. The app carries an unfinished
+        // task forward silently, without changing its date and without an
+        // event, so this column is the only place that postponement shows.
+        Math.max(0, daysBetween(a.date, doneDay ?? input.today)),
+        ctx.history.actionOrigin.get(a.id) ?? "",
         a.itemId ?? "", item?.title ?? "", item?.kind ?? "", L.areaName(item),
-        a.amount, a.priority, a.note, ...timeColumns(a.createdAt),
+        a.amount, a.priority, a.note, ...timeColumnsZoned2(ctx, a.createdAt),
       ];
     });
   return csvFile(header, rows);
 }
 
-function logsCsv(input: BundleInput): string {
+function logsCsv(input: BundleInput, ctx: Ctx): string {
   const L = lookups(input.db);
   const header = [
     "log_id", "day", "weekday", "item_id", "item_title", "item_kind", "area_name",
@@ -482,7 +579,7 @@ function logsCsv(input: BundleInput): string {
       return [
         l.id, l.date, dayWeekday(l.date), l.itemId, item?.title ?? "(deleted item)",
         item?.kind ?? "", L.areaName(item),
-        l.op, l.value, l.source ?? "unknown", l.via ?? "", ...timeColumns(l.createdAt),
+        l.op, l.value, l.source ?? "unknown", l.via ?? "", ...timeColumnsZoned2(ctx, l.createdAt),
       ];
     });
   return csvFile(header, rows);
@@ -506,7 +603,8 @@ function focusSessionsCsv(input: BundleInput): string {
         s.id, s.day, dayWeekday(s.day), s.kind, s.outcome,
         s.itemId ?? "", item?.title ?? "", L.areaName(item),
         s.stepId ?? "", stepTitle, s.entryId,
-        ...timeColumns(s.startedAt), ...timeColumns(s.endedAt),
+        ...timeColumnsZoned(s.startedAt, recorded(s.utcOffsetMinutes)),
+        ...timeColumnsZoned(s.endedAt, recorded(s.utcOffsetMinutes)),
         minutesOf(s.plannedSeconds), minutesOf(s.actualSeconds), minutesOf(s.pausedSeconds),
         s.pauseCount,
         s.plannedSeconds ? Math.round((s.actualSeconds / s.plannedSeconds) * 100) / 100 : "",
@@ -520,40 +618,66 @@ function focusSessionsCsv(input: BundleInput): string {
  * What each habit or routine meant on one specific day.
  *
  * "Clean" is the habit; "clean the side desk" is what it meant on Tuesday, and
- * that sentence is the human half of the record. It used to survive only in
- * raw.json, because routine_steps.csv skips anything without a script — so a
- * plain habit's day plans, which is most of them, reached no readable file at
- * all.
+ * that sentence is the human half of the record.
+ *
+ * `daily_target` and `logged` used to be computed against the item's target as
+ * it stands TODAY, so raising a water habit from two glasses to three quietly
+ * turned every past two-glass day into a failure. They now use the target of
+ * the day itself and go blank when that cannot be established, with
+ * `daily_target_current` kept beside them so nothing is lost — an empty verdict
+ * is a fact about the record, a wrong one is a fact about the person.
  */
-function habitDaysCsv(input: BundleInput): string {
+function habitDaysCsv(input: BundleInput, ctx: Ctx): string {
   const L = lookups(input.db);
   const header = [
     "item_id", "item_title", "kind", "area_name", "day", "weekday", "day_plan",
-    "logged", "value_logged", "daily_target", "steps_done", "steps_total",
+    "logged", "value_logged", "daily_target", "daily_target_current", "target_source",
+    "steps_done", "steps_total",
     ...timeHeaders("first_written"), ...timeHeaders("last_updated"),
   ];
   const rows: CsvValue[][] = [...input.db.habitDayNotes]
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
     .map((n) => {
       const item = L.itemById.get(n.itemId) ?? null;
-      const target = item ? habitDailyTarget(item) : 1;
       const value = dayLogged(input.db.logs, n.itemId, n.date);
+      const asOf = item
+        ? dailyTargetAsOfDay(ctx.history, item, n.date)
+        : { value: null as number | null, known: false };
+      const currentTarget = item ? habitDailyTarget(item) : "";
       return [
         n.itemId, item?.title ?? "(deleted item)", item?.kind ?? "", L.areaName(item),
         n.date, dayWeekday(n.date), n.text,
-        value >= target, value, target,
+        asOf.known && asOf.value != null ? value >= asOf.value : "",
+        value,
+        asOf.known ? asOf.value ?? "" : "",
+        currentTarget,
+        asOf.known ? "recorded" : "unknown",
         n.doneSteps?.length ?? "", item?.steps?.length ?? "",
-        ...timeColumns(n.createdAt), ...timeColumns(n.updatedAt),
+        ...timeColumnsZoned2(ctx, n.createdAt), ...timeColumnsZoned2(ctx, n.updatedAt),
       ];
     });
   return csvFile(header, rows);
 }
 
-function routineStepsCsv(input: BundleInput): string {
+/**
+ * One row per routine, per day, per step of the script THAT DAY.
+ *
+ * This file used to render every historical day against today's steps, so a
+ * step added last week showed `done = false` on all the mornings before it
+ * existed — indistinguishable from a step repeatedly skipped, and the exact
+ * false-failure evidence the export is meant not to manufacture.
+ *
+ * Now: where the script of the day is known (item.steps_changed / item.created
+ * cover it), steps that did not yet exist produce no row at all. Where it is
+ * not known, the row survives but `done` is blank rather than false — a tick is
+ * proof of doing, the absence of one is not proof of skipping when the step may
+ * not have been there. `script_source` says which case a row is.
+ */
+function routineStepsCsv(input: BundleInput, ctx: Ctx): string {
   const L = lookups(input.db);
   const header = [
     "routine_id", "routine_title", "area_name", "day", "weekday", "step_id", "step_title",
-    "position", "optional", "planned_minutes", "done", ...timeHeaders("done"),
+    "position", "optional", "planned_minutes", "done", "script_source", ...timeHeaders("done"),
     "tick_order", "linked_item_id", "linked_item_title", "day_plan_note",
   ];
   const rows: CsvValue[][] = [];
@@ -565,12 +689,19 @@ function routineStepsCsv(input: BundleInput): string {
     // the order the script was really walked in, which is not the order it is
     // written in — this is exactly what doneSteps alone could never say
     const ticked = Object.entries(at).sort((a, b) => a[1] - b[1]).map(([id]) => id);
+    const script = stepIdsAsOfDay(ctx.history, routine, note.date);
     routine.steps.forEach((step, position) => {
+      const wasTicked = done.has(step.id);
+      // known script, and this step was not part of it: it is not a step that
+      // was missed, it is a step that did not exist. No row.
+      if (script.known && script.value && !script.value.has(step.id) && !wasTicked) return;
       const tickedAt = at[step.id] ?? null;
       rows.push([
         routine.id, routine.title, L.areaName(routine), note.date, dayWeekday(note.date),
         step.id, step.title, position, !!step.optional, step.minutes ?? "",
-        done.has(step.id), ...timeColumns(tickedAt),
+        wasTicked ? true : script.known ? false : "",
+        script.known ? "recorded" : "unknown",
+        ...timeColumnsZoned2(ctx, tickedAt),
         tickedAt ? ticked.indexOf(step.id) + 1 : "",
         step.itemId ?? "", L.itemTitle(step.itemId), note.text,
       ]);
@@ -579,7 +710,40 @@ function routineStepsCsv(input: BundleInput): string {
   return csvFile(header, rows);
 }
 
-function listEntriesCsv(input: BundleInput): string {
+/**
+ * What was supposed to happen, one row per scheduled item per day.
+ *
+ * The counterpart to every other file here: they record what happened, and a
+ * missed day is the absence of a row rather than a row of its own. Without this
+ * the reader has to re-derive the app's five cadence rules — and apply them
+ * against cadences that may have changed since — before "how often did I
+ * actually do this" can even be asked. See lib/export/expectations.ts.
+ */
+function expectationsCsv(input: BundleInput, rows: ExpectationRow[]): string {
+  const L = lookups(input.db);
+  const header = [
+    "item_id", "item_title", "item_kind", "area_name", "day", "weekday",
+    "expectation", "cadence", "cadence_detail", "cadence_source",
+    "quota_period", "quota_target",
+    "daily_target", "target_source", "value_logged", "met",
+  ];
+  const out: CsvValue[][] = rows.map((r) => {
+    const item = L.itemById.get(r.itemId) ?? null;
+    return [
+      r.itemId, item?.title ?? "(deleted item)", item?.kind ?? "", L.areaName(item),
+      r.day, dayWeekday(r.day),
+      r.expectation, r.cadence ?? "", r.cadenceDetail,
+      r.cadenceKnown ? "recorded" : "unknown",
+      r.quotaPeriod, r.quotaTarget ?? "",
+      r.dailyTarget ?? "", r.targetKnown ? "recorded" : "unknown",
+      r.valueLogged,
+      r.met === null ? "" : r.met,
+    ];
+  });
+  return csvFile(header, out);
+}
+
+function listEntriesCsv(input: BundleInput, ctx: Ctx): string {
   const L = lookups(input.db);
   const header = [
     "list_id", "list_title", "area_name", "entry_id", "position", "text", "amount", "unit",
@@ -593,7 +757,7 @@ function listEntriesCsv(input: BundleInput): string {
         item.id, item.title, L.areaName(item), e.id, position, e.text,
         e.amount ?? "", e.unit ?? "",
         e.amount != null ? formatEntryAmount(e.amount, e.unit) : "",
-        e.done, ...timeColumns(e.pickedAt),
+        e.done, ...timeColumnsZoned2(ctx, e.pickedAt),
         e.pickedAt ? Math.max(0, daysBetween(toDay(new Date(e.pickedAt)), input.today)) : "",
       ]);
     });
@@ -601,7 +765,7 @@ function listEntriesCsv(input: BundleInput): string {
   return csvFile(header, rows);
 }
 
-function seedsCsv(input: BundleInput): string {
+function seedsCsv(input: BundleInput, ctx: Ctx): string {
   const L = lookups(input.db);
   const header = [
     "seed_id", "text", "status", ...timeHeaders("captured"), ...timeHeaders("archived"),
@@ -610,26 +774,26 @@ function seedsCsv(input: BundleInput): string {
   const rows: CsvValue[][] = [...input.db.seeds]
     .sort((a, b) => a.createdAt - b.createdAt)
     .map((s) => [
-      s.id, s.text, s.status, ...timeColumns(s.createdAt), ...timeColumns(s.archivedAt),
+      s.id, s.text, s.status, ...timeColumnsZoned2(ctx, s.createdAt), ...timeColumnsZoned2(ctx, s.archivedAt),
       s.itemId ?? "", L.itemTitle(s.itemId),
       Math.max(0, daysBetween(toDay(new Date(s.createdAt)), toDay(new Date(s.archivedAt ?? Date.now())))),
     ]);
   return csvFile(header, rows);
 }
 
-function labelsCsv(input: BundleInput): string {
+function labelsCsv(input: BundleInput, ctx: Ctx): string {
   const header = ["label_id", "name", "emoji", "color", "position", "items_tagged", ...timeHeaders("created")];
   const rows: CsvValue[][] = [...input.db.labels]
     .sort((a, b) => a.position - b.position)
     .map((l) => [
       l.id, l.name, l.emoji, l.color, l.position,
       input.db.items.filter((i) => i.labels.includes(l.id)).length,
-      ...timeColumns(l.createdAt),
+      ...timeColumnsZoned2(ctx, l.createdAt),
     ]);
   return csvFile(header, rows);
 }
 
-function dayOrderCsv(input: BundleInput): string {
+function dayOrderCsv(input: BundleInput, ctx: Ctx): string {
   const header = ["day", "weekday", "position", "entry_id", "entry_kind", ...timeHeaders("updated")];
   const rows: CsvValue[][] = [];
   for (const d of [...input.db.dayOrder].sort((a, b) => (a.date < b.date ? -1 : 1))) {
@@ -641,7 +805,7 @@ function dayOrderCsv(input: BundleInput): string {
         : entryId.startsWith("today-item:")
           ? "item"
           : "action";
-      rows.push([d.date, dayWeekday(d.date), position, entryId, kind, ...timeColumns(d.updatedAt)]);
+      rows.push([d.date, dayWeekday(d.date), position, entryId, kind, ...timeColumnsZoned2(ctx, d.updatedAt)]);
     });
   }
   return csvFile(header, rows);
@@ -694,6 +858,83 @@ function eventsNdjson(input: BundleInput): string {
   );
 }
 
+/* ————— human text, in tables —————
+ *
+ * The markdown files below stay exactly as they were: the words, verbatim,
+ * meant to be read. These are the same rows in a shape a tool can join —
+ * carrying the ids and the written/edited timestamps that the prose cannot,
+ * because "when did I say this" is a different fact from "what did I say", and
+ * an entry dated the 5th may have been written on the 26th.
+ */
+
+function journalCsv(input: BundleInput, ctx: Ctx): string {
+  const header = [
+    "entry_id", "day", "weekday", "mood", "energy", "sleep_hours", "sleep_quality",
+    "stress", "focus_rating", "tags", "intention", "gratitude",
+    "rough_notes_chars", "end_of_day_chars", "written_same_day",
+    ...timeHeaders("first_written"), ...timeHeaders("last_updated"),
+  ];
+  const rows: CsvValue[][] = [...input.db.journal]
+    .sort((a, b) => (a.date < b.date ? -1 : 1))
+    .map((j) => [
+      j.id, j.date, dayWeekday(j.date), j.mood, j.energy, j.sleepHours ?? "", j.sleepQuality ?? "",
+      j.stress ?? "", j.focus ?? "", (j.tags ?? []).join(" | "), j.intention ?? "", j.gratitude ?? "",
+      j.roughNotes.length, j.endOfDay.length,
+      // a day written up on the day, or reconstructed later: different evidence
+      toDay(new Date(j.createdAt)) === j.date,
+      ...timeColumnsZoned2(ctx, j.createdAt), ...timeColumnsZoned2(ctx, j.updatedAt),
+    ]);
+  return csvFile(header, rows);
+}
+
+function reflectionsCsv(input: BundleInput, ctx: Ctx): string {
+  const header = [
+    "reflection_id", "period", "period_key", "rating_overall", "rating_energy", "rating_progress",
+    "text_chars", "win_count", "lesson_count", "blocker_count", "area_note_count",
+    "intention_count", ...timeHeaders("first_written"), ...timeHeaders("last_updated"),
+  ];
+  const rows: CsvValue[][] = [...input.db.reflections]
+    .sort((a, b) => (a.periodKey < b.periodKey ? -1 : a.periodKey > b.periodKey ? 1 : 0))
+    .map((r) => [
+      r.id, r.period, r.periodKey,
+      r.ratings?.overall ?? "", r.ratings?.energy ?? "", r.ratings?.progress ?? "",
+      r.text.length, r.wins?.length ?? 0, r.lessons?.length ?? 0, r.blockers?.length ?? 0,
+      r.areaNotes ? Object.keys(r.areaNotes).length : 0, r.intentions?.length ?? 0,
+      ...timeColumnsZoned2(ctx, r.createdAt), ...timeColumnsZoned2(ctx, r.updatedAt),
+    ]);
+  return csvFile(header, rows);
+}
+
+/** Notes had no id anywhere readable, so a note could not be joined to its own
+ *  events, its folder or anything happening around it. */
+function notesCsv(input: BundleInput, ctx: Ctx): string {
+  const L = lookups(input.db);
+  const folderPath = (item: Item): string => {
+    const parts: string[] = [];
+    let cur = item.parentId ? L.itemById.get(item.parentId) : undefined;
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      parts.unshift(cur.title);
+      cur = cur.parentId ? L.itemById.get(cur.parentId) : undefined;
+    }
+    return parts.join(" / ");
+  };
+  const header = [
+    "item_id", "title", "kind", "folder_path", "parent_id", "area_name", "labels",
+    "body_chars", "annotation_chars", "in_trash", ...timeHeaders("created"), ...timeHeaders("deleted"),
+  ];
+  const rows: CsvValue[][] = input.db.items
+    .filter((i) => i.kind === "note" || i.kind === "folder")
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((n) => [
+      n.id, n.title, n.kind, folderPath(n), n.parentId ?? "", L.areaName(n), L.labelNames(n.labels),
+      n.richBody?.length ?? 0, n.note.length, !!n.deletedAt,
+      ...timeColumnsZoned2(ctx, n.createdAt), ...timeColumnsZoned2(ctx, n.deletedAt),
+    ]);
+  return csvFile(header, rows);
+}
+
 /* ————— human text ————— */
 
 function journalMd(input: BundleInput): string {
@@ -706,6 +947,18 @@ function journalMd(input: BundleInput): string {
   out.push(`${entries.length} entries, oldest first.`, "");
   for (const j of entries) {
     out.push(`## ${j.date} · ${dayWeekday(j.date)}`, "");
+    // when it was actually written, which is not always the day it is about —
+    // a day written up that evening and one reconstructed three weeks later
+    // are different evidence, and the date alone could never tell them apart
+    const writtenDay = toDay(new Date(j.createdAt));
+    const editedDay = toDay(new Date(j.updatedAt));
+    out.push(
+      `<!-- entry_id: ${j.id} -->`,
+      writtenDay === j.date && editedDay === j.date
+        ? `_written on the day_`
+        : `_written ${writtenDay}${editedDay !== writtenDay ? `, last edited ${editedDay}` : ""}_`,
+      ""
+    );
     const facts: string[] = [];
     if (j.mood != null) facts.push(`mood ${j.mood}/5`);
     if (j.energy != null) facts.push(`energy ${j.energy}/5`);
@@ -743,6 +996,13 @@ function reflectionsMd(input: BundleInput): string {
 
   for (const r of reflections) {
     out.push(`## ${r.periodKey} (${r.period})`, "");
+    const written = toDay(new Date(r.createdAt));
+    const edited = toDay(new Date(r.updatedAt));
+    out.push(
+      `<!-- reflection_id: ${r.id} -->`,
+      `_written ${written}${edited !== written ? `, last edited ${edited}` : ""}_`,
+      ""
+    );
     if (r.ratings) {
       const bits: string[] = [];
       if (r.ratings.overall != null) bits.push(`overall ${r.ratings.overall}/5`);
@@ -856,8 +1116,11 @@ function nextPeriodRange(
 function notesMd(input: BundleInput): string {
   const L = lookups(input.db);
   const out: string[] = ["# Notes", ""];
+  // trashed notes are included, and marked. Leaving them out put their whole
+  // body in raw.json and nowhere a person would read — a note deleted last
+  // month is still something the writer thought.
   const notes = input.db.items
-    .filter((i) => (i.kind === "note" || i.kind === "folder") && !i.deletedAt)
+    .filter((i) => i.kind === "note" || i.kind === "folder")
     .filter((i) => i.richBody?.trim() || i.note.trim())
     .sort((a, b) => a.createdAt - b.createdAt);
   if (notes.length === 0) {
@@ -871,8 +1134,14 @@ function notesMd(input: BundleInput): string {
   for (const n of notes) {
     out.push(`## ${n.title}`, "");
     const area = L.areaName(n);
+    const parent = n.parentId ? L.itemTitle(n.parentId) : "";
     out.push(
-      `_${toDay(new Date(n.createdAt))}${area ? ` · ${area}` : ""}${n.labels.length ? ` · ${L.labelNames(n.labels)}` : ""}_`,
+      `<!-- item_id: ${n.id} -->`,
+      `_${toDay(new Date(n.createdAt))}` +
+        `${area ? ` · ${area}` : ""}` +
+        `${parent ? ` · in ${parent}` : ""}` +
+        `${n.labels.length ? ` · ${L.labelNames(n.labels)}` : ""}` +
+        `${n.deletedAt ? ` · in trash since ${toDay(new Date(n.deletedAt))}` : ""}_`,
       ""
     );
     if (n.richBody?.trim()) out.push(n.richBody.trim(), "");

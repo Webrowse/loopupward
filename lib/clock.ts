@@ -102,3 +102,105 @@ export function isoWithOffset(at: number): string {
     `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
   );
 }
+
+/* ————— rendering a moment in the zone it actually happened in —————
+ *
+ * Every timestamp in the export used to be rendered with `new Date(ms)` in
+ * whatever zone the EXPORTING device happened to sit in. Export from London a
+ * year of living in Delhi and every local time shifted by five and a half
+ * hours, some weekdays flipped, and focus_sessions.csv contradicted its own
+ * `timezone` column. The README promised the opposite in bold.
+ *
+ * There are three grades of answer available, and the export says which one
+ * each file got rather than quietly presenting all three as the same thing:
+ *
+ *   recorded — the row stored the offset in force at that instant (the two
+ *              capture streams do). Exact, travel and DST included.
+ *   profile  — the row did not, so the user's own timezone is used. Right
+ *              except while travelling, and honest about being an assumption.
+ *   exporter — no zone is known at all. Last resort.
+ */
+
+export type ZoneRef =
+  | { kind: "recorded"; offsetMinutes: number }
+  | { kind: "profile"; tz: string }
+  | { kind: "exporter" };
+
+export type ZoneSource = ZoneRef["kind"];
+
+export interface RenderedTime {
+  iso: string;
+  local: string;
+  weekday: string;
+  offsetMinutes: number;
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function offsetSuffix(min: number): string {
+  const sign = min < 0 ? "-" : "+";
+  const abs = Math.abs(min);
+  return `${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
+}
+
+/** Civil date-time fields for an instant in a named IANA zone. Computed via
+ *  Intl rather than by date arithmetic, so historical DST rules apply. */
+function partsInZone(at: number, tz: string): { y: number; mo: number; d: number; h: number; mi: number; s: number } | null {
+  try {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, hour12: false,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    });
+    const got: Record<string, number> = {};
+    for (const part of dtf.formatToParts(new Date(at))) {
+      if (part.type !== "literal") got[part.type] = Number(part.value);
+    }
+    if (![got.year, got.month, got.day, got.hour, got.minute, got.second].every(Number.isFinite)) return null;
+    // Intl renders midnight as hour 24 in some engines
+    return { y: got.year, mo: got.month, d: got.day, h: got.hour % 24, mi: got.minute, s: got.second };
+  } catch {
+    return null; // an unknown zone string is not worth throwing an export away for
+  }
+}
+
+/** Render one instant according to `zone`, falling back down the grades rather
+ *  than failing: a wrong-looking zone name must never lose the timestamp. */
+export function renderTime(at: number, zone: ZoneRef): RenderedTime {
+  if (zone.kind === "recorded") {
+    // shift the instant by the offset that was in force and read it as UTC:
+    // exact, and it uses the number the row itself recorded
+    const shifted = new Date(at + zone.offsetMinutes * 60_000);
+    return {
+      iso:
+        `${shifted.getUTCFullYear()}-${pad2(shifted.getUTCMonth() + 1)}-${pad2(shifted.getUTCDate())}` +
+        `T${pad2(shifted.getUTCHours())}:${pad2(shifted.getUTCMinutes())}:${pad2(shifted.getUTCSeconds())}` +
+        offsetSuffix(zone.offsetMinutes),
+      local: `${pad2(shifted.getUTCHours())}:${pad2(shifted.getUTCMinutes())}`,
+      weekday: WEEKDAYS[shifted.getUTCDay()],
+      offsetMinutes: zone.offsetMinutes,
+    };
+  }
+  if (zone.kind === "profile") {
+    const p = partsInZone(at, zone.tz);
+    if (p) {
+      const offset = Math.round((Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s) - at) / 60_000);
+      return renderTime(at, { kind: "recorded", offsetMinutes: offset });
+    }
+  }
+  // exporter's own zone — what every column used to do, now only the fallback
+  const d = new Date(at);
+  return {
+    iso: isoWithOffset(at),
+    local: localTime(at),
+    weekday: weekdayName(at),
+    offsetMinutes: utcOffsetMinutes(d),
+  };
+}
+
+/** The zone a row without its own recorded offset should be read in. */
+export function profileZone(timezone: string | null | undefined): ZoneRef {
+  return timezone ? { kind: "profile", tz: timezone } : { kind: "exporter" };
+}

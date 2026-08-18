@@ -8,7 +8,7 @@
  * separate settings file.
  */
 
-import { isoWithOffset, localTime, weekdayName, weekdayOfDay } from "../clock";
+import { isoWithOffset, localTime, renderTime, weekdayName, weekdayOfDay, ZoneRef } from "../clock";
 
 export type CsvValue = string | number | boolean | null | undefined;
 
@@ -40,6 +40,18 @@ export function csvFile(header: string[], rows: CsvValue[][]): string {
 export function timeColumns(at: number | null | undefined): [string, string, string] {
   if (at === null || at === undefined) return ["", "", ""];
   return [isoWithOffset(at), localTime(at), weekdayName(at)];
+}
+
+/**
+ * The same three columns, rendered in the zone the moment actually happened
+ * in rather than the zone the export was taken in. See clock.ts: a row that
+ * recorded its own offset gets an exact answer, everything else is read in the
+ * user's own timezone and the file says so in its `timezone_source` column.
+ */
+export function timeColumnsZoned(at: number | null | undefined, zone: ZoneRef): [string, string, string] {
+  if (at === null || at === undefined) return ["", "", ""];
+  const r = renderTime(at, zone);
+  return [r.iso, r.local, r.weekday];
 }
 
 /** Header names for a timestamp column group, e.g. timeHeaders("done") →

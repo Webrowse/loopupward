@@ -20,7 +20,7 @@ import { makeZip } from "./zip";
 
 /** What GET /v1/export answers with. */
 interface ServerExport {
-  account?: { email?: string | null };
+  account?: { email?: string | null; createdAt?: string | null };
   settings?: Partial<UserSettings>;
   data?: Partial<DB> & Partial<Streams>;
 }
@@ -50,7 +50,13 @@ export async function collectBundleInput(opts: {
         events: events ?? [],
       },
       settings: { ...EMPTY_SETTINGS, ...(remote.settings ?? {}) },
-      account: { email: remote.account?.email ?? opts.email, mode: "cloud" },
+      account: {
+        email: remote.account?.email ?? opts.email,
+        mode: "cloud",
+        // when the account began, which no row can tell you: a life imported
+        // from a device carries rows older than the account now holding them
+        createdAt: remote.account?.createdAt ?? null,
+      },
       generatedAt,
       today: today(),
     };
@@ -62,7 +68,8 @@ export async function collectBundleInput(opts: {
     db: { ...structuredClone(EMPTY_DB), ...readLocalDB() },
     streams: { ...structuredClone(EMPTY_STREAMS), ...readLocalStreams() },
     settings: opts.settings,
-    account: { email: null, mode: "local" },
+    // device mode has no account, so no creation date to report
+    account: { email: null, mode: "local", createdAt: null },
     generatedAt,
     today: today(),
   };

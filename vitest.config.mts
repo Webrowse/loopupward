@@ -11,6 +11,10 @@ export default defineConfig({
   test: {
     include: ["lib/**/*.test.ts", "components/**/*.test.ts"],
     environment: "node",
+    // Pinned: the export now renders timestamps in the zone a moment happened
+    // in, so anything asserting a local time is meaningless without a fixed
+    // zone. These tests used to pass only because the author's machine is IST.
+    env: { TZ: "Asia/Kolkata" },
   },
   resolve: {
     alias: {

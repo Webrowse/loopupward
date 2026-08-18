@@ -10,12 +10,17 @@
 
 import { isoWithOffset } from "../clock";
 import { LifeStats } from "../stats";
-import type { BundleInput } from "./bundle";
+import type { BundleInput, Ctx } from "./bundle";
 
-export function buildReadme(input: BundleInput, stats: LifeStats): string {
+export function buildReadme(input: BundleInput, stats: LifeStats, ctx: Ctx): string {
   const { db, streams, settings, account, generatedAt } = input;
   const rollover = stats.dayRolloverHour;
-  const tz = settings.timezone || "(not recorded)";
+  const tz = ctx.zoneName || settings.timezone || "(not recorded)";
+  // where the observed record actually starts — the single most important
+  // thing a reader needs, and the bundle used to imply it began at day one
+  const eventsFrom = streams.events.length
+    ? [...streams.events].sort((a, b) => a.at - b.at)[0].day
+    : null;
   const counts = {
     areas: db.areas.length,
     items: db.items.length,
@@ -102,6 +107,53 @@ and minutes in another.
 Empty means "nothing recorded", which is not the same as zero. A blank \`mood\`
 is a day you did not rate; a \`0\` is a day you rated as zero. Nowhere in this
 bundle is a blank filled in with a guess.
+
+**Which zone a timestamp was rendered in.** Rows that recorded the offset in
+force at the moment — \`focus_sessions.csv\` and \`events.ndjson\` — are exact,
+travel and DST included. Every other file is rendered in your own timezone
+(**${tz}**), which is right except while you were travelling. \`manifest.json\`
+lists which files got which. Timestamps used to be rendered in whatever zone the
+export was *taken* in, which was wrong for anyone who had moved; that is fixed,
+and the manifest now says so per file rather than asking you to trust it.
+
+---
+
+## What this record does not know
+
+Two tables — \`events.ndjson\` and \`focus_sessions.csv\` — began later than the
+rest. **${
+    eventsFrom
+      ? `Nothing was observed before ${eventsFrom}.`
+      : "No behavioural events were ever recorded."
+  }**
+
+This matters more than it sounds:
+
+- Zero \`app_opens\`, \`events\` or \`focus_sessions\` in \`daily.csv\` before that
+  day means **not observed**, not "did nothing". Do not read it as dormancy.
+- What an item was *called*, what it was *aiming at*, what *schedule* it was on,
+  and what steps a routine's script held are reconstructable only from that day
+  onward — by replaying the change events. Before it, only today's values exist,
+  and today's values are **not** evidence about a day two years ago.
+
+Wherever that reconstruction fails, the affected file says \`unknown\` in a
+\`*_source\` column and leaves the verdict column **blank**. A blank verdict is a
+fact about this record; a filled-in one would have been a fact about you. The
+files never substitute the second for the first.
+
+\`manifest.json\` carries the per-table coverage windows in machine-readable form.
+
+---
+
+## Record, state, and derived
+
+Three kinds of file, and it matters which you are reading:
+
+| Kind | Files | What it is |
+| --- | --- | --- |
+| **Record** | \`logs.csv\`, \`actions.csv\`, \`focus_sessions.csv\`, \`events.ndjson\`, \`habit_days.csv\`, \`routine_steps.csv\`, \`seeds.csv\`, \`list_entries.csv\`, \`day_order.csv\`, \`journal.*\`, \`reflections.*\`, \`notes.*\` | things that happened, at the time they happened. Append-only in spirit; the evidence. |
+| **State as of export** | \`items.csv\`, \`areas.csv\`, \`labels.csv\`, \`context.md\` | how things look **today**. A completed goal here tells you nothing about the journey — that is in the Record files. |
+| **Derived** | \`schedule_expectations.csv\`, \`daily.csv\`, \`summary.md\` | computed from the Record by plain counting, and recomputable. If you disagree with one, the rows that made it are in the Record files and they win. |
 
 ---
 
@@ -196,8 +248,22 @@ One row per concrete thing planned for a day.
 | \`created_*\` | when the task was written down |
 
 Tasks that were *moved* between days do not show that here — this file has only
-the final date. Every move is in \`events.ndjson\` as \`action.rescheduled\`, and
-the totals are in \`summary.md\`.
+the final date. Every explicit move is in \`events.ndjson\` as
+\`action.rescheduled\`.
+
+**But that is the rare case, and counting it will under-count postponement.**
+The app carries an unfinished task forward by itself: it keeps appearing on
+later days without its date changing and without any event being written. So the
+column that actually measures dragging is \`carried_days\` — from the day it was
+planned for to the day it was done, or to the day of this export if it never
+was. The same thing happens to period goals: an unfinished week/month/quarter
+goal rolls into the current instance silently, and \`carried_periods\` in
+\`items.csv\` is how many instances it has rolled through.
+
+\`origin\` says where the task came from: \`plan_sheet\` typed into a day,
+\`goal_piece\` broken off a goal, \`suggestion\` taken off the borrow shelf,
+\`quick_task\` a one-tap chip. Blank means it was created before this was
+recorded — **not** that it was typed by hand.
 
 ---
 
@@ -302,11 +368,54 @@ actually do it in" lives.
 | \`step_id\`, \`step_title\`, \`position\` | the step, and its place in the written script (0-based) |
 | \`optional\` | the routine finishes without it; leaving it out does not fail the day |
 | \`planned_minutes\` | what the script claims it takes |
-| \`done\` | whether it was ticked that day |
+| \`done\` | whether it was ticked that day. **Blank means the script of that day is unknown** — a tick proves doing, but no tick does not prove skipping when the step may not have existed yet |
+| \`script_source\` | \`recorded\`: the script that day is known, and steps that did not yet exist produce no row · \`unknown\`: only ticks can be trusted |
 | \`done_at\`, \`done_local_time\`, \`done_weekday\` | when. **Blank on days recorded before step timestamps existed**, even where \`done\` is true |
 | \`tick_order\` | 1-based order the steps were actually ticked that day, which is often not \`position\` |
 | \`linked_item_id\`, \`linked_item_title\` | the step stands for a real item elsewhere (ticking one ticks both) |
 | \`day_plan_note\` | what you wrote that this day's occurrence meant ("clean" → "clean desk") |
+
+---
+
+#### \`schedule_expectations.csv\` — what was *supposed* to happen
+
+The counterpart to every other file. The rest of the bundle records what you
+did, and **a missed day is not a row anywhere — it is the absence of one.** So
+"how often did I actually keep this" had no denominator. This file supplies it:
+one row per scheduled item per day it was alive.
+
+| Column | Meaning |
+| --- | --- |
+| \`item_id\`, \`item_title\`, \`item_kind\`, \`area_name\` | which habit, routine or scheduled thing |
+| \`day\`, \`weekday\` | the day the expectation is about |
+| \`expectation\` | \`required\` a fixed schedule named this exact day · \`not_due\` a fixed schedule ran and did not name it · \`eligible\` a quota schedule ("4× a week"), where no single day is owed but the period is · \`unknown\` the schedule of the time was never recorded |
+| \`cadence\`, \`cadence_detail\` | the schedule **in force that day**, not today's. \`cadence_detail\` holds the weekday numbers for \`days\` (0 = Sunday) or the count for \`weekly\` |
+| \`cadence_source\` | \`recorded\` or \`unknown\` |
+| \`quota_period\`, \`quota_target\` | for \`eligible\` rows: the week or month the day counts toward, and how many days that period asked for |
+| \`daily_target\`, \`target_source\` | how much the day had to reach, **as of that day** |
+| \`value_logged\` | how much was actually logged |
+| \`met\` | true/false — **blank when the target of the time is unknown.** Never guessed |
+
+Adherence is then a join, not a reconstruction: filter \`expectation = required\`
+and take the share with \`met = true\`. For quota schedules, group by
+\`quota_period\` and compare distinct days met against \`quota_target\`.
+
+The window closes when the item does: retiring a habit ends its expectations
+that day, so the months after you deliberately stopped are not counted against
+you.
+
+---
+
+#### \`journal.csv\`, \`reflections.csv\`, \`notes.csv\`
+
+The same entries as the three markdown files, in a shape you can join. The
+markdown holds the words; these hold the ids and the timestamps the prose
+cannot carry.
+
+The column worth knowing about is \`written_same_day\` in \`journal.csv\`: an entry
+*about* the 5th may have been written on the 26th, and those are different kinds
+of evidence. \`first_written_at\` and \`last_updated_at\` are on every row of all
+three. \`notes.csv\` adds \`folder_path\` and \`in_trash\`.
 
 ---
 
@@ -428,6 +537,13 @@ nuance to being a table, it is here.
 ## What this export does not contain
 
 - **Nothing has been sent anywhere.** These files were built in your browser.
+- **Trashed items keep their history; purged ones do not.** An item in the trash
+  still has all of its tasks and progress here (its \`deleted_at\` is set, and
+  \`in_trash\`/\`deleted_at\` columns mark it), because a restore has to be real.
+  Once it is purged — by hand, or by the retention sweep — its logs, tasks and
+  day-notes go with it and are not recoverable from this bundle. \`item.purged\`
+  in \`events.ndjson\` is the last trace, and it records the title and how much
+  went with it.
 - Rows written before a field existed are blank, not backfilled: \`source\` on
   old logs reads \`unknown\`, and \`done_at\` on old routine steps is empty.
 - \`page.viewed\` records the shape of a route, never which specific note or item
@@ -470,5 +586,8 @@ Questions this bundle can actually answer, which most exports cannot:
 | routine_steps.csv (day rows) | ${counts.habitDayNotes} |
 | day_order.csv (days) | ${counts.dayOrder} |
 | daily.csv | ${stats.daysCovered} |
+| journal.csv | ${counts.journal} |
+| reflections.csv | ${counts.reflections} |
+| notes.csv | ${db.items.filter((i) => i.kind === "note" || i.kind === "folder").length} |
 `;
 }
