@@ -77,6 +77,19 @@ describe("routineLogDay", () => {
   it("leaves a routine with no window alone", () => {
     expect(routineLogDay(item({ kind: "routine" }), at("2026-08-06T01:00:00"))).toBe("2026-08-06");
   });
+
+  it("honours a rollover hour the user moved", () => {
+    // someone who is up until 6am says their day turns over at 6, and every
+    // exported row's `day` column has to agree with that
+    expect(routineLogDay(night, at("2026-08-06T05:00:00"), 6)).toBe("2026-08-05");
+    expect(routineLogDay(night, at("2026-08-06T06:30:00"), 6)).toBe("2026-08-06");
+  });
+
+  it("still respects a window that closes after the rollover hour", () => {
+    // the spill is until the window's end OR the rollover, whichever is later
+    const veryLate = item({ kind: "routine", windowStart: "22:00", windowEnd: "05:00" });
+    expect(routineLogDay(veryLate, at("2026-08-06T04:30:00"), 2)).toBe("2026-08-05");
+  });
 });
 
 describe("inRoutineWindow", () => {

@@ -51,6 +51,10 @@ function chunk(text: string, max: number): string[] {
 
 const clamp = (s: string, max: number) => (s.length > max ? s.slice(0, max) : s);
 const clampOrNull = (s: string | null, max: number) => (s == null ? s : clamp(s, max));
+/** A reflection's bullet lists: bounded in both directions, since the server
+ *  rejects the whole import over one stray line. */
+const clampLines = (lines: string[] | undefined) =>
+  lines?.slice(0, SERVER_CAPS.reflectionLines).map((l) => clamp(l, SERVER_CAPS.reflectionLine));
 
 /**
  * The import endpoint is all-or-nothing: one row over a server cap used to
@@ -86,11 +90,25 @@ export function fitToServerCaps(db: DB): DB {
       title: clamp(a.title, SERVER_CAPS.title),
       note: clamp(a.note, SERVER_CAPS.note),
     })),
-    reflections: db.reflections.map((r) => ({ ...r, text: clamp(r.text, SERVER_CAPS.reflectionText) })),
+    areas: db.areas.map((a) => ({
+      ...a,
+      description: a.description ? clamp(a.description, SERVER_CAPS.areaText) : a.description,
+      whyItMatters: a.whyItMatters ? clamp(a.whyItMatters, SERVER_CAPS.areaText) : a.whyItMatters,
+    })),
+    reflections: db.reflections.map((r) => ({
+      ...r,
+      text: clamp(r.text, SERVER_CAPS.reflectionText),
+      wins: clampLines(r.wins),
+      lessons: clampLines(r.lessons),
+      blockers: clampLines(r.blockers),
+    })),
     journal: db.journal.map((j) => ({
       ...j,
       roughNotes: clamp(j.roughNotes, SERVER_CAPS.journalRough),
       endOfDay: clamp(j.endOfDay, SERVER_CAPS.journalEod),
+      gratitude: j.gratitude ? clamp(j.gratitude, SERVER_CAPS.dailyExtra) : j.gratitude,
+      intention: j.intention ? clamp(j.intention, SERVER_CAPS.dailyExtra) : j.intention,
+      tags: j.tags?.slice(0, SERVER_CAPS.dayTags),
     })),
     habitDayNotes: db.habitDayNotes.map((n) => ({ ...n, text: clamp(n.text, SERVER_CAPS.habitDayNote) })),
   };

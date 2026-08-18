@@ -64,7 +64,10 @@ export function planPrice(plan: (typeof PLANS)[number], currency: BillingCurrenc
 /** Server-side text caps (backend/src/limits.rs) — mirrored here so the
  *  first-sign-in import can make local data fit before sending, and the
  *  capture box can stop oversized seeds from existing at all. Journal caps
- *  are the free-plan ones: a first sign-in is never premium yet. */
+ *  are the free-plan ones: a first sign-in is never premium yet.
+ *
+ *  These have to stay in step with backend/src/limits.rs — an import rejected
+ *  for one over-long field takes the whole first sign-in with it. */
 export const SERVER_CAPS = {
   seedText: 2_000,
   title: 400,
@@ -74,6 +77,16 @@ export const SERVER_CAPS = {
   habitDayNote: 500,
   journalRough: 5_000,
   journalEod: 3_000,
+  /* an area explains itself in a paragraph, not an essay */
+  areaText: 2_000,
+  /* who you are and what you are becoming — context for reading the export */
+  contextText: 4_000,
+  /* the optional half of a day: gratitude, the one intention */
+  dailyExtra: 2_000,
+  dayTags: 20,
+  /* a reflection's wins/lessons/blockers are bullet points, not chapters */
+  reflectionLines: 50,
+  reflectionLine: 1_000,
 } as const;
 
 export function isPremium(premiumUntil: string | null | undefined): boolean {

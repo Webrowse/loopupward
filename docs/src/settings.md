@@ -30,7 +30,15 @@ Deleted items rest in Trash, restorable for **7 days** (free) or **30 days** (Pr
 
 ## Export
 
-*Export everything* downloads your entire life as one JSON file: every item, seed, action, log, journal entry. It's yours — feed it to a spreadsheet, an AI tool, an archive. No lock-in.
+*Download everything* gives you a zip: a folder of plain files holding everything the app knows about you — your items, tasks, progress, focus sessions, journal, reflections and the full record of how you actually used the app, plus a README that explains every file and column.
+
+It is built in your browser and **never sent anywhere**. Read it yourself, open it in a spreadsheet, or hand it to whatever tool you like. Signed in or not, the bundle is identical.
+
+See [Your export, file by file](./export.md) for the full reference.
+
+## Context included in your export
+
+A year of tick marks is hard to read back. Settings holds a few optional lines that make it interpretable later: your timezone and the hour your day rolls over, what you're trying to become, what season of life this is, and what you're aiming at. Nothing here switches a feature on, and leaving any of it blank costs nothing.
 
 ## Free vs Premium
 

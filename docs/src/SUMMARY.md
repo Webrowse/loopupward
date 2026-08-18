@@ -13,4 +13,5 @@
 - [The completion rule](./completion.md)
 - [Reflect: journal and reviews](./reflect.md)
 - [Settings, sync and your data](./settings.md)
+- [Your export, file by file](./export.md)
 - [FAQ and gotchas](./faq.md)

@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "searchindex-e14abfe5.js";
+            window.path_to_searchindex_js = "searchindex-91a71b2a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-147a5ce1.js"></script>
+        <script src="toc-60f42c93.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -421,7 +421,9 @@ Normal paragraph text.
 <h2 id="the-focus-timer"><a class="header" href="#the-focus-timer">The focus timer</a></h2>
 <p>The timer icon on any row opens a full-screen timer for that one task — for when starting is the hard part. Finish, check it off from inside, move to the next.</p>
 <h2 id="week-month-quarter-year"><a class="header" href="#week-month-quarter-year">Week, month, quarter, year</a></h2>
-<p>The tabs across the top hold standing lists for each period, navigable like a calendar (July, August… 2026, 2027…). Anything whose planning horizon is “this week” appears in that specific week’s list — with its progress, and a <strong>→ Today</strong> button that pulls it onto the day when you’re ready to act.</p>
+<p>The tabs across the top hold standing lists for each period, navigable like a calendar (July, August… 2026, 2027…). Anything whose planning horizon is “this week” appears in that specific week’s list, with its progress and a <strong>→ Today</strong> button.</p>
+<p><strong>→ Today doesn’t move the goal out of its list — it lends it to today.</strong> The goal appears on Today so you can act on it, and it stays right where it was in the week/month/quarter/year list. The button becomes <strong>↩ Recall</strong> while it’s out on loan. Because it’s one and the same goal, checking it off in either place marks it done in both, and it keeps its spot in the period list as <em>done</em> — so a month’s list is also the record of which monthly goals you actually reached.</p>
+<p><strong>Unfinished goals carry forward.</strong> A monthly goal you didn’t reach in July shows up in August’s list too, marked “carried from July”, exactly like an unfinished task follows you to the next day. It also stays visible in July, still open, so looking back stays honest. The same holds for weeks, quarters and years. A goal you <em>did</em> finish stays put in the period it belonged to.</p>
 <p>These lists are the planning layer: on Sunday, look at the week list; each morning, pull from it. Nothing here nags — it waits.</p>
 <h2 id="browsing-days"><a class="header" href="#browsing-days">Browsing days</a></h2>
 <p>The week strip and Yesterday / Today / Tomorrow jumps let you look back (what did Tuesday look like?) or plan ahead (load Saturday with errands). Only the real today shows carried-over tasks; other days show just what belongs to them.</p>
@@ -582,7 +584,11 @@ A <strong>square</strong> checkbox completes the thing for good. A <strong>round
 <h2 id="trash"><a class="header" href="#trash">Trash</a></h2>
 <p>Deleted items rest in Trash, restorable for <strong>7 days</strong> (free) or <strong>30 days</strong> (Premium), then they’re gone for good. Deleting a parent never deletes its children — they step up a level.</p>
 <h2 id="export"><a class="header" href="#export">Export</a></h2>
-<p><em>Export everything</em> downloads your entire life as one JSON file: every item, seed, action, log, journal entry. It’s yours — feed it to a spreadsheet, an AI tool, an archive. No lock-in.</p>
+<p><em>Download everything</em> gives you a zip: a folder of plain files holding everything the app knows about you — your items, tasks, progress, focus sessions, journal, reflections and the full record of how you actually used the app, plus a README that explains every file and column.</p>
+<p>It is built in your browser and <strong>never sent anywhere</strong>. Read it yourself, open it in a spreadsheet, or hand it to whatever tool you like. Signed in or not, the bundle is identical.</p>
+<p>See <a href="#your-export-file-by-file">Your export, file by file</a> for the full reference.</p>
+<h2 id="context-included-in-your-export"><a class="header" href="#context-included-in-your-export">Context included in your export</a></h2>
+<p>A year of tick marks is hard to read back. Settings holds a few optional lines that make it interpretable later: your timezone and the hour your day rolls over, what you’re trying to become, what season of life this is, and what you’re aiming at. Nothing here switches a feature on, and leaving any of it blank costs nothing.</p>
 <h2 id="free-vs-premium"><a class="header" href="#free-vs-premium">Free vs Premium</a></h2>
 <div class="table-wrapper">
 <table>
@@ -598,6 +604,225 @@ A <strong>square</strong> checkbox completes the thing for good. A <strong>round
 </tbody>
 </table>
 </div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="your-export-file-by-file"><a class="header" href="#your-export-file-by-file">Your export, file by file</a></h1>
+<p><em>Settings → <strong>Download everything</strong></em> gives you a zip: a folder of plain files
+holding everything LoopUpward knows about you. It is built in your browser and
+goes nowhere else.</p>
+<p>This page documents every file and every column. The same reference ships
+inside the zip as <code>README.md</code>, so the export explains itself even if you never
+come back here.</p>
+<blockquote>
+<p><strong>LoopUpward contains no AI and never calls one.</strong> What it does instead is
+record honestly — including the parts that did not go well — so that when
+<em>you</em> want to ask something of your own life, you have the material to ask
+with. The export is the deliverable; the rest of the app exists to make it
+worth reading.</p>
+</blockquote>
+<h2 id="two-rules-that-shape-every-file"><a class="header" href="#two-rules-that-shape-every-file">Two rules that shape every file</a></h2>
+<h3 id="1-which-day-a-row-belongs-to"><a class="header" href="#1-which-day-a-row-belongs-to">1. Which day a row belongs to</a></h3>
+<p>Every file has a <code>day</code> (or <code>planned_day</code>) column holding a local date,
+<code>YYYY-MM-DD</code>. <strong>It is not always the calendar day its timestamp falls on.</strong></p>
+<ul>
+<li><strong>The rollover hour</strong> (Settings → Your clock, default <code>04:00</code>). The calendar
+flips at midnight; people don’t. Anything before that hour can count for the
+previous day.</li>
+<li><strong>Routines whose window wraps past midnight.</strong> A night routine set to
+21:00 → 02:00 belongs to <em>the evening it started</em>. Tick its last step at
+1:15am on the 9th and the row reads <code>day = 2026-08-08</code>.</li>
+</ul>
+<p>Group by <code>day</code> for “how many days did I do this”. Group by the timestamp for
+“what time of day do I do this”. Both are in every file on purpose.</p>
+<h3 id="2-how-timestamps-are-written"><a class="header" href="#2-how-timestamps-are-written">2. How timestamps are written</a></h3>
+<p>Each moment appears three ways, so you never do timezone arithmetic:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Column</th><th>Example</th><th>What it is</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*_at</code></td><td><code>2026-08-18T06:12:44+05:30</code></td><td>ISO-8601 with the UTC offset in force <strong>at that moment</strong></td></tr>
+<tr><td><code>*_local_time</code></td><td><code>06:12</code></td><td>the wall clock you saw</td></tr>
+<tr><td><code>*_weekday</code></td><td><code>Tuesday</code></td><td>the weekday it fell on</td></tr>
+</tbody>
+</table>
+</div>
+<p>The offset is per row, not per file, so a year spanning travel and DST stays
+readable. Durations are always <strong>minutes</strong>, one decimal, everywhere.</p>
+<p><strong>Empty means “not recorded”, never zero.</strong> A blank <code>mood</code> is a day you did not
+rate. Nothing in the bundle is backfilled with a guess.</p>
+<h2 id="the-files"><a class="header" href="#the-files">The files</a></h2>
+<h3 id="read-first"><a class="header" href="#read-first">Read first</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>File</th><th>What it is</th></tr>
+</thead>
+<tbody>
+<tr><td><code>README.md</code></td><td>this reference, written for someone who has never seen the app</td></tr>
+<tr><td><code>context.md</code></td><td>who you said you are, what you’re becoming, your targets, and what each area is for</td></tr>
+<tr><td><code>summary.md</code></td><td>the computed numbers, formatted to read</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="areascsv"><a class="header" href="#areascsv"><code>areas.csv</code></a></h3>
+<p><code>area_id</code> · <code>name</code> · <code>emoji</code> · <code>color</code> · <code>position</code> · <code>description</code> ·
+<code>why_it_matters</code> · <code>target_share</code> (0–1) · <code>created_at</code> / <code>created_local_time</code> /
+<code>created_weekday</code>.</p>
+<h3 id="itemscsv"><a class="header" href="#itemscsv"><code>items.csv</code></a></h3>
+<p>Every node, including finished, archived and trashed ones.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Column</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>item_id</code>, <code>title</code></td><td>identity</td></tr>
+<tr><td><code>kind</code></td><td>note, folder, quote, idea, dream, goal, habit, routine, list, project, book, milestone, principle, promise, lesson, memory</td></tr>
+<tr><td><code>tracker</code></td><td><code>none</code>, <code>check</code>, <code>counter</code>, <code>percent</code>, <code>money</code>, <code>habit</code>, <code>book</code></td></tr>
+<tr><td><code>status</code></td><td><code>active</code>, <code>done</code>, <code>someday</code>, <code>archived</code></td></tr>
+<tr><td><code>area_id</code>, <code>area_name</code></td><td>resolved up the parent chain, exactly as the app reads it</td></tr>
+<tr><td><code>parent_id</code>, <code>parent_title</code></td><td>what it nests inside</td></tr>
+<tr><td><code>horizon</code></td><td><code>someday</code>, <code>life</code>, <code>year</code>, <code>quarter</code>, <code>month</code>, <code>week</code>, <code>today</code>, <code>date</code></td></tr>
+<tr><td><code>horizon_period</code></td><td>which instance: <code>2026-W28</code>, <code>2026-08</code>, <code>2026-Q3</code>, <code>2026</code>, or the pinned day</td></tr>
+<tr><td><code>date_repeats_yearly</code></td><td>a birthday rather than a one-off</td></tr>
+<tr><td><code>target</code>, <code>current</code>, <code>unit</code>, <code>progress_fraction</code></td><td>the meter</td></tr>
+<tr><td><code>cadence</code>, <code>cadence_days</code>, <code>cadence_count</code></td><td>the schedule. Weekday numbers are <strong>0 = Sunday</strong></td></tr>
+<tr><td><code>window_start</code>, <code>window_end</code></td><td>routines only. <strong>End before start = wraps past midnight</strong></td></tr>
+<tr><td><code>pulled_today</code>, <code>pinned</code>, <code>labels</code>, <code>note</code></td><td>the rest of its state</td></tr>
+<tr><td><code>step_count</code>, <code>planned_minutes</code>, <code>entry_count</code></td><td>routine and list contents</td></tr>
+<tr><td><code>created_*</code>, <code>completed_*</code>, <code>deleted_*</code></td><td>three timestamp groups</td></tr>
+<tr><td><code>age_days</code>, <code>days_to_complete</code></td><td>computed for you</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="actionscsv"><a class="header" href="#actionscsv"><code>actions.csv</code></a></h3>
+<p>Every concrete thing planned for a day. <code>planned_day</code> is what it was <em>meant</em>
+for; <code>done_at</code> is when it was actually ticked; <code>days_late</code> is the gap, and
+<strong>negative means early</strong>.</p>
+<p>Moves between days are not visible here — this file only has the final date.
+Every move is an <code>action.rescheduled</code> event, and the totals are in
+<code>summary.md</code>.</p>
+<p><code>amount</code> is how much finishing it moves the linked item’s counter. <code>0</code> is a
+deliberate choice: a directional step that belongs to a goal without pretending
+to move its meter.</p>
+<h3 id="logscsv"><a class="header" href="#logscsv"><code>logs.csv</code></a></h3>
+<p>Every unit of progress ever recorded. Item counters are derived from these, not
+the other way round.</p>
+<p><code>op</code> is <code>add</code> (a delta — a habit day, +1 chapter) or <code>set</code> (a snapshot — money
+now reads ₹40,000). <strong>Sum <code>add</code> rows; take the last <code>set</code> row.</strong> Mixing them
+gives nonsense.</p>
+<p><code>source</code> says how the value got there:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Value</th><th>Means</th></tr>
+</thead>
+<tbody>
+<tr><td><code>today_check</code></td><td>ticked on the Today list</td></tr>
+<tr><td><code>item_page</code></td><td>changed on the item’s own page</td></tr>
+<tr><td><code>focus_timer</code></td><td>recorded inside a focus session</td></tr>
+<tr><td><code>routine_run</code></td><td>written by a routine’s script</td></tr>
+<tr><td><code>parent_cascade</code></td><td>a child finished, so this parent’s meter moved. <code>via</code> names the child</td></tr>
+<tr><td><code>manual</code></td><td>typed in somewhere else</td></tr>
+<tr><td><code>import</code></td><td>carried in from another device</td></tr>
+<tr><td><code>unknown</code></td><td>written before provenance existed — not a bug, and not a claim it was manual</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="focus_sessionscsv"><a class="header" href="#focus_sessionscsv"><code>focus_sessions.csv</code></a></h3>
+<p>One row per timer attempt, <strong>written when it ended for any reason</strong>. Abandoned
+attempts sit here on the same footing as completed ones; that is the point of
+the file.</p>
+<p><code>kind</code> is <code>focus</code>, <code>routine_step</code>, <code>routine_run</code>, <code>day_run</code> or <code>rest</code>.
+<code>outcome</code> is <code>completed</code>, <code>expired</code> (countdown ran out and the screen was
+left), <code>abandoned</code> (closed mid-session), <code>skipped</code> or <code>interrupted</code> (swapped
+for something else).</p>
+<p><code>planned_minutes</code> blank means it was untimed and counted up.
+<code>actual_minutes</code> is wall clock <strong>with pauses excluded</strong>.
+<code>over_under_ratio</code> is <code>actual ÷ planned</code> — above 1 means it took longer than
+you thought.</p>
+<p>A routine produces one <code>routine_run</code> row <strong>plus</strong> one <code>routine_step</code> row per
+step. Do not add both, or you double-count the time.</p>
+<h3 id="routine_stepscsv"><a class="header" href="#routine_stepscsv"><code>routine_steps.csv</code></a></h3>
+<p>One row per routine, per day, per step. <code>position</code> is where the step sits in
+the written script; <code>tick_order</code> is the order you <em>actually</em> did them, which is
+often different. <code>done_at</code> is blank on days recorded before step timestamps
+existed, even where <code>done</code> is true.</p>
+<h3 id="dailycsv"><a class="header" href="#dailycsv"><code>daily.csv</code></a></h3>
+<p>One row per day, everything paired and nothing interpreted: journal presence,
+mood, energy, sleep hours and quality, stress, focus rating, tasks planned and
+completed, habit and routine days, focus minutes planned versus actual,
+abandoned sessions, pauses, app opens, first open, last write, distinct routes,
+and total events.</p>
+<p><strong>The app deliberately does not compute correlations for you.</strong> It emits honest
+columns; the question is yours.</p>
+<p>There is no usage table: the app-open columns are derived from <code>app.opened</code> and
+<code>page.viewed</code> events, so there is one record of what happened rather than a
+counter to reconcile.</p>
+<h3 id="list_entriescsv-seedscsv-labelscsv-day_ordercsv"><a class="header" href="#list_entriescsv-seedscsv-labelscsv-day_ordercsv"><code>list_entries.csv</code>, <code>seeds.csv</code>, <code>labels.csv</code>, <code>day_order.csv</code></a></h3>
+<ul>
+<li><strong><code>list_entries.csv</code></strong> — lines inside list items. <code>picked_at</code> is when a line
+became “the one I’m on”; <code>days_being_tried</code> counts from there.</li>
+<li><strong><code>seeds.csv</code></strong> — raw captures. <code>days_resting</code> is how long a thought sat
+before it grew into something.</li>
+<li><strong><code>labels.csv</code></strong> — your tags, with <code>items_tagged</code> counted for you.</li>
+<li><strong><code>day_order.csv</code></strong> — the manual order you dragged a day into, one row per
+position. <code>entry_kind</code> separates a real <code>action</code> from a scheduled <code>habit</code> row
+or a longer-horizon <code>item</code> pulled onto today.</li>
+</ul>
+<h3 id="eventsndjson"><a class="header" href="#eventsndjson"><code>events.ndjson</code></a></h3>
+<p>The full behavioural log: one JSON object per line, oldest first. Read it with
+<code>jq</code>, or <code>pandas.read_json(lines=True)</code>.</p>
+<p>Every line carries <code>id</code>, <code>type</code>, <code>at</code>, <code>at_ms</code>, <code>local_time</code>, <code>weekday</code>, <code>day</code>,
+<code>timezone</code>, <code>utc_offset_minutes</code>, <code>item_id</code>, <code>item_title</code> and a <code>payload</code>.</p>
+<p>Notable types:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>type</code></th><th>What it records</th></tr>
+</thead>
+<tbody>
+<tr><td><code>item.created</code></td><td>the birth snapshot: kind, tracker, horizon, area, parent, target, cadence, labels</td></tr>
+<tr><td><code>item.horizon_changed</code></td><td><strong>re-scoping</strong> — how a goal drifts from “this quarter” to “someday”</td></tr>
+<tr><td><code>item.completed</code></td><td>with <code>ageDays</code> and <code>openActionsRemaining</code></td></tr>
+<tr><td><code>action.rescheduled</code></td><td><strong>the procrastination signal</strong> — <code>from</code>, <code>to</code>, <code>daysMoved</code></td></tr>
+<tr><td><code>routine.step_skipped</code></td><td><code>sentToBack: true</code> = “skip for now”; <code>false</code> = an optional step left out</td></tr>
+<tr><td><code>day_run.abandoned</code></td><td>with <code>completedBefore</code> — how far it got</td></tr>
+<tr><td><code>day.reordered</code></td><td><code>via: "drag"</code> or <code>via: "sort"</code> — different acts, recorded differently</td></tr>
+<tr><td><code>app.opened</code>, <code>page.viewed</code></td><td>being here at all. Routes are recorded in shape (<code>/item/[id]</code>), never which note you had open</td></tr>
+</tbody>
+</table>
+</div>
+<p>Events are append-only. Nothing is edited or deleted, including the records of
+things that did not work out.</p>
+<h3 id="human-text"><a class="header" href="#human-text">Human text</a></h3>
+<ul>
+<li><strong><code>journal.md</code></strong> — every daily entry in order, with ratings and your words.</li>
+<li><strong><code>reflections.md</code></strong> — every period reflection, and whether its intentions
+were met. Scoring is plain counting against the named items: days logged for
+a habit, units added for a meter, done-or-not for a one-off. An intention
+naming nothing countable is shown as not scored.</li>
+<li><strong><code>notes.md</code></strong> — note bodies, in the app’s own markdown.</li>
+</ul>
+<h3 id="rawjson"><a class="header" href="#rawjson"><code>raw.json</code></a></h3>
+<p>Every table exactly as stored, plus both streams and your settings. If a CSV
+lost some nuance to being a table, it is here.</p>
+<h2 id="questions-this-bundle-can-answer"><a class="header" href="#questions-this-bundle-can-answer">Questions this bundle can answer</a></h2>
+<ul>
+<li>What time of day do I really work, versus when I think I do?</li>
+<li>How much longer do things take than I plan for?</li>
+<li>What do I keep pushing, and by how many days in total?</li>
+<li>Which routine step do I quit on?</li>
+<li>Am I creating things faster than I finish them?</li>
+<li>Which weekday breaks my streaks?</li>
+<li>Does sleep track with what I get done?</li>
+</ul>
+<h2 id="signed-in-or-not"><a class="header" href="#signed-in-or-not">Signed in or not</a></h2>
+<p>The bundle is identical either way. Signed in, the rows come from your private
+cloud; signed out, they come from this browser’s own storage. The same
+generator builds the same files, so keeping your data local never costs you a
+lesser export.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="faq-and-gotchas"><a class="header" href="#faq-and-gotchas">FAQ and gotchas</a></h1>
 <p><strong>I checked a habit off. Why isn’t it “completed” in Life?</strong>
