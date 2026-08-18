@@ -1,0 +1,68 @@
+# Push to main that touches backend/ → the Rust API deploys to Cloud Run.
+# Railway used to watch this repo and rebuild on its own; Cloud Run does not,
+# so this workflow is what replaces that. Kept in its own file rather than as a
+# job in deploy.yml because `on.push.paths` filters the whole workflow — a path
+# filter added there would stop the frontend deploying on non-backend pushes.
+#
+# Deliberately does NOT pass --set-env-vars or --set-secrets: `gcloud run
+# deploy` leaves unspecified settings alone, so the service keeps the env and
+# Secret Manager bindings configured at migration time. That keeps every
+# credential out of GitHub — CI can ship code, but cannot read or change them.
+#
+# Required repository variables (Settings → Secrets and variables → Actions →
+# Variables), neither of them secret:
+#   GCP_WIF_PROVIDER  projects/199373033727/locations/global/workloadIdentityPools/github/providers/github
+#   GCP_DEPLOY_SA     github-deployer@loopupward.iam.gserviceaccount.com
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+
+# Never cancel a deploy that is already rolling out — a half-applied revision
+# is worse than waiting for the previous one to finish.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # required for Workload Identity Federation
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # Cloud Build compiles the Dockerfile server-side; the runner never needs
+      # docker or a Rust toolchain. backend/.gcloudignore keeps target/ out of
+      # the upload.
+      - name: Build and deploy to Cloud Run
+        run: |
+          gcloud run deploy loopupward \
+            --quiet \
+            --source backend \
+            --region us-east4 \
+            --service-account lifeos-api@loopupward.iam.gserviceaccount.com
+
+      - name: Verify the new revision serves /health
+        run: |
+          URL=$(gcloud run services describe loopupward --region us-east4 --format='value(status.url)')
+          for i in $(seq 1 10); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' "$URL/health" || true)
+            [ "$code" = "200" ] && echo "health ok" && exit 0
+            echo "attempt $i: HTTP $code, retrying"; sleep 6
+          done
+          echo "::error title=Health check failed::${URL}/health never returned 200"
+          exit 1

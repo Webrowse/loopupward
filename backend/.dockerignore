@@ -1,0 +1,7 @@
+# Keep the Cloud Build upload to source only — target/ is ~2 GB of local
+# build artifacts that the builder recompiles from scratch anyway.
+target/
+.env
+.env.*
+**/*.rs.bk
+.DS_Store
