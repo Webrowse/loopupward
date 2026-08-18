@@ -12,6 +12,7 @@ import { FREE_LIMITS } from "@/lib/limits";
 import { areaColor } from "@/lib/palette";
 import { formatValue } from "@/lib/progress";
 import { Bar, Heatmap, Ring, StatTile } from "@/components/progress";
+import { PromisesKept, ReflectionForm } from "@/components/reflectionform";
 import { Button, EmptyState, Segmented } from "@/components/ui";
 import { ENERGY_ICONS, MOOD_ICONS } from "@/components/icons";
 
@@ -31,7 +32,7 @@ export default function ReflectPage() {
 }
 
 function Reflect() {
-  const { db, premium, saveReflection } = useLife();
+  const { db, premium } = useLife();
   const params = useSearchParams();
   // arriving from "Reflect on this period" (Today's Week/Month/Quarter/Year
   // tabs) lands on that exact period, instead of always resetting to Week
@@ -258,23 +259,11 @@ function Reflect() {
             <Heatmap counts={heatCounts} weeks={premium ? 20 : 12} />
           </section>
 
-          {/* written reflection */}
-          <section className="mb-6">
-            <p className="text-xs font-medium uppercase tracking-wide text-ink-3 mb-2">
-              A note to future you
-            </p>
-            <textarea
-              key={key}
-              defaultValue={reflection?.text ?? ""}
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                if (v !== (reflection?.text ?? "")) saveReflection(period, key, { text: v });
-              }}
-              placeholder="What did this period teach you?"
-              className="w-full min-h-24 resize-none rounded-(--radius-card) border border-line bg-surface px-4 py-3 text-[0.95rem] text-ink placeholder:text-ink-3 outline-none focus:border-accent shadow-(--shadow-card)"
-            />
-            <p className="text-xs text-ink-3 mt-1">Saved automatically.</p>
-          </section>
+          {/* what the last period promised about this one, counted */}
+          <PromisesKept promised={review.promised} period={period} />
+
+          {/* written reflection, and what the next period is for */}
+          <ReflectionForm period={period} periodKey={key} reflection={reflection} />
         </>
       )}
     </div>

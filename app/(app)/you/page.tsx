@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
 import { useLife } from "@/lib/data/provider";
-import { api } from "@/lib/api";
 import { Button, Card, Segmented } from "@/components/ui";
+import { ContextCard } from "@/components/contextcard";
+import { ExportCard } from "@/components/exportcard";
 import { FONT_OPTIONS, FontId } from "@/lib/fonts";
 
 const FONT_VARS: Record<FontId, string> = {
@@ -18,28 +18,10 @@ const FONT_VARS: Record<FontId, string> = {
 
 export default function YouPage() {
   const {
-    db, user, premium, owner, mode, cloudAvailable,
+    user, premium, owner, mode, cloudAvailable,
     theme, setTheme, font, setFont, simple, setSimple, restSeconds, setRestSeconds,
-    signOut, exportJSON, trashedItems,
+    signOut, trashedItems,
   } = useLife();
-  const [exporting, setExporting] = useState(false);
-
-  const download = async () => {
-    setExporting(true);
-    try {
-      const payload =
-        mode === "cloud" ? JSON.stringify(await api("/v1/export"), null, 2) : exportJSON();
-      const blob = new Blob([payload], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `loopupward-export-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } finally {
-      setExporting(false);
-    }
-  };
 
   const lifetime =
     user?.premiumUntil && new Date(user.premiumUntil).getFullYear() > new Date().getFullYear() + 50;
@@ -183,20 +165,9 @@ export default function YouPage() {
         </div>
       </Card>
 
-      {/* your data */}
-      <Card className="p-5 mb-3">
-        <p className="text-sm font-medium text-ink">Your data is yours</p>
-        <p className="text-sm text-ink-2 mt-1 leading-relaxed">
-          Download everything: {db.items.length} items, {db.seeds.length} seeds,{" "}
-          {db.actions.length} actions, as JSON, anytime. Use it however you like, including
-          with AI tools. We never sell personal data.
-        </p>
-        <div className="mt-4">
-          <Button small variant="soft" onClick={download} disabled={exporting}>
-            {exporting ? "Preparing…" : "Export everything"}
-          </Button>
-        </div>
-      </Card>
+      {/* the export, and the context that makes it readable */}
+      <ExportCard />
+      <ContextCard />
 
       <Card className="p-5 mb-3">
         <div className="flex items-center justify-between">

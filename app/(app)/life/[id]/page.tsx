@@ -110,6 +110,54 @@ export default function AreaPage() {
             ))}
           </div>
         </Field>
+
+        {/* what this part of life is for. Optional, and written for reading
+            back later: an area's score means more once the area says what it
+            was meant to be. */}
+        <Field label="What is this part of life?">
+          <textarea
+            className={`${inputCls} min-h-20 resize-y`}
+            defaultValue={area.description ?? ""}
+            maxLength={2000}
+            placeholder="Sleep, food, movement — the body I have to live in"
+            onBlur={(e) => updateArea(area.id, { description: e.target.value.trim() })}
+          />
+        </Field>
+        <Field label="Why it matters">
+          <textarea
+            className={`${inputCls} min-h-20 resize-y`}
+            defaultValue={area.whyItMatters ?? ""}
+            maxLength={2000}
+            placeholder="Everything else gets harder when this slips"
+            onBlur={(e) => updateArea(area.id, { whyItMatters: e.target.value.trim() })}
+          />
+        </Field>
+        <Field label="Share of your attention this is meant to get">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              max={100}
+              className={`${inputCls} w-24 text-right`}
+              defaultValue={area.targetShare != null ? Math.round(area.targetShare * 100) : ""}
+              placeholder="none"
+              onBlur={(e) => {
+                const raw = e.target.value.trim();
+                if (raw === "") {
+                  updateArea(area.id, { targetShare: null });
+                  return;
+                }
+                const pct = Math.max(0, Math.min(100, Math.round(Number(raw))));
+                if (Number.isFinite(pct)) updateArea(area.id, { targetShare: pct / 100 });
+              }}
+            />
+            <span className="text-sm text-ink-3">%</span>
+          </div>
+          <p className="mt-1.5 text-xs leading-relaxed text-ink-3">
+            Optional, and nothing enforces it. It travels with your export so a lopsided
+            month can be read against what you actually intended.
+          </p>
+        </Field>
         <div className="mt-6 border-t border-line-soft pt-4">
           {!confirmDelete ? (
             <Button variant="danger" full onClick={() => setConfirmDelete(true)}>

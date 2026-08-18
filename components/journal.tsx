@@ -3,8 +3,9 @@
 import { ComponentType, useState } from "react";
 import { useLife } from "@/lib/data/provider";
 import { prettyDay } from "@/lib/dates";
+import { JournalEntry } from "@/lib/types";
 import { ENERGY_ICONS, MOOD_ICONS } from "./icons";
-import { Button, Sheet } from "./ui";
+import { Button, Sheet, inputCls } from "./ui";
 
 const DEFAULT_ROUGH_MAX = 5000;
 const DEFAULT_EOD_MAX = 3000;
@@ -58,6 +59,8 @@ export function DailyJournal({ date }: { date: string }) {
     energy: entry?.energy ?? null,
     onMood: (v: number | null) => saveJournal(date, { mood: v }),
     onEnergy: (v: number | null) => saveJournal(date, { energy: v }),
+    entry,
+    onExtra: (patch: Partial<JournalEntry>) => saveJournal(date, patch),
   };
 
   return (
@@ -97,7 +100,8 @@ export function DailyJournal({ date }: { date: string }) {
 }
 
 function JournalFields({
-  rough, setRough, eod, setEod, showEod, setShowEod, roughMax, eodMax, mood, energy, onMood, onEnergy, compact,
+  rough, setRough, eod, setEod, showEod, setShowEod, roughMax, eodMax, mood, energy, onMood, onEnergy,
+  entry, onExtra, compact,
 }: {
   rough: string;
   setRough: (v: string) => void;
@@ -111,6 +115,8 @@ function JournalFields({
   energy: number | null;
   onMood: (v: number | null) => void;
   onEnergy: (v: number | null) => void;
+  entry: JournalEntry | undefined;
+  onExtra: (patch: Partial<JournalEntry>) => void;
   compact: boolean;
 }) {
   return (
@@ -133,6 +139,10 @@ function JournalFields({
         <ScaleRow label="Mood" icons={MOOD_ICONS} value={mood} onChange={onMood} />
         <ScaleRow label="Energy" icons={ENERGY_ICONS} value={energy} onChange={onEnergy} />
       </div>
+
+      {/* the quiet half of a day, behind a disclosure so the daily loop
+          stays exactly as short as it already was */}
+      <MoreAboutToday entry={entry} onChange={onExtra} compact={compact} />
 
       {/* end-of-day reflection — optional, gently offered */}
       <div className="mt-5 border-t border-line-soft pt-4">
@@ -165,6 +175,146 @@ function JournalFields({
             )}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Sleep, stress, focus, the one thing that would have made today good, and
+ * what you were grateful for.
+ *
+ * Every field is optional and the whole block starts closed: a person who
+ * wants to write two lines and get on with their life must not be made to
+ * scroll past six inputs they will never fill. Nothing here nags about being
+ * empty, and nothing here is required for anything else to work — these are
+ * the columns that make a year of daily.csv worth reading later.
+ */
+function MoreAboutToday({
+  entry, onChange, compact,
+}: {
+  entry: JournalEntry | undefined;
+  onChange: (patch: Partial<JournalEntry>) => void;
+  compact: boolean;
+}) {
+  const filled =
+    entry?.sleepHours != null || entry?.sleepQuality != null || entry?.stress != null ||
+    entry?.focus != null || !!entry?.gratitude?.trim() || !!entry?.intention?.trim();
+  const [open, setOpen] = useState(filled);
+  const [intention, setIntention] = useState(entry?.intention ?? "");
+  const [gratitude, setGratitude] = useState(entry?.gratitude ?? "");
+  const [sleep, setSleep] = useState(entry?.sleepHours != null ? String(entry.sleepHours) : "");
+
+  // switching days (or loading a saved entry) swaps the text under the cursor
+  const [lastId, setLastId] = useState(entry?.id ?? null);
+  if ((entry?.id ?? null) !== lastId) {
+    setLastId(entry?.id ?? null);
+    setIntention(entry?.intention ?? "");
+    setGratitude(entry?.gratitude ?? "");
+    setSleep(entry?.sleepHours != null ? String(entry.sleepHours) : "");
+  }
+
+  if (!open) {
+    return (
+      <div className="mt-4">
+        <button
+          onClick={() => setOpen(true)}
+          className="pressable text-sm font-medium text-ink-3 hover:text-ink-2"
+        >
+          Add more about today +
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 space-y-3 rounded-xl border border-line-soft bg-surface-2/40 p-3.5">
+      <p className="text-xs leading-relaxed text-ink-3">
+        All optional. These are the details that make this day readable again in a year,
+        or in your export.
+      </p>
+
+      <label className="block">
+        <span className="text-xs text-ink-2">One thing that would make today good</span>
+        <input
+          className={`${inputCls} mt-1`}
+          value={intention}
+          maxLength={2000}
+          onChange={(e) => setIntention(e.target.value)}
+          onBlur={() => { if (intention !== (entry?.intention ?? "")) onChange({ intention }); }}
+          placeholder="Finish the draft"
+        />
+      </label>
+
+      <label className="block">
+        <span className="text-xs text-ink-2">Grateful for</span>
+        <input
+          className={`${inputCls} mt-1`}
+          value={gratitude}
+          maxLength={2000}
+          onChange={(e) => setGratitude(e.target.value)}
+          onBlur={() => { if (gratitude !== (entry?.gratitude ?? "")) onChange({ gratitude }); }}
+          placeholder="A slow morning"
+        />
+      </label>
+
+      <label className="flex items-center justify-between gap-3">
+        <span className="text-sm text-ink-2">Hours slept</span>
+        <input
+          type="number"
+          min={0}
+          max={24}
+          step={0.5}
+          className={`${inputCls} w-24 text-right`}
+          value={sleep}
+          onChange={(e) => setSleep(e.target.value)}
+          onBlur={() => {
+            const v = sleep.trim() === "" ? null : Math.max(0, Math.min(24, parseFloat(sleep)));
+            if (v !== (entry?.sleepHours ?? null) && !Number.isNaN(v)) onChange({ sleepHours: v });
+          }}
+        />
+      </label>
+
+      <NumberScale label="Sleep quality" value={entry?.sleepQuality ?? null} onChange={(v) => onChange({ sleepQuality: v })} />
+      <NumberScale label="Stress" value={entry?.stress ?? null} onChange={(v) => onChange({ stress: v })} />
+      <NumberScale label="Focus" value={entry?.focus ?? null} onChange={(v) => onChange({ focus: v })} />
+
+      {!compact && (
+        <p className="text-xs leading-relaxed text-ink-3">
+          Blank stays blank. An unrated day is recorded as unrated, never as a zero.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** A plain 1–5 row for the fields that have no icon set of their own. */
+function NumberScale({
+  label, value, onChange,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-sm text-ink-2">{label}</span>
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((v) => (
+          <button
+            key={v}
+            onClick={() => onChange(value === v ? null : v)}
+            aria-label={`${label} ${v} of 5`}
+            aria-pressed={value === v}
+            className={`pressable grid h-8 w-8 place-items-center rounded-full text-sm tabular-nums transition-all ${
+              value === v
+                ? "bg-accent-soft scale-110 text-accent-deep font-medium"
+                : value !== null ? "text-ink-3 opacity-50" : "text-ink-2 opacity-70 hover:opacity-100"
+            }`}
+          >
+            {v}
+          </button>
+        ))}
       </div>
     </div>
   );
