@@ -19,7 +19,7 @@ import { daysBetween, periodKey, Period, toDay } from "../dates";
 import { dayLogged, formatEntryAmount, habitDailyTarget, routineMinutes } from "../progress";
 import { scoreIntentions } from "../review";
 import { computeStats, LifeStats } from "../stats";
-import { DB, Item, Streams, UserSettings } from "../types";
+import { DB, DEFAULT_DAY_ROLLOVER_HOUR, Item, Streams, UserSettings, WEEK_STARTS_ON } from "../types";
 import { csvFile, CsvValue, dayWeekday, minutesOf, timeColumnsZoned, timeHeaders } from "./csv";
 import { buildHistory, dailyTargetAsOfDay, ItemHistory, stepIdsAsOfDay } from "./history";
 import { buildExpectations, ExpectationRow } from "./expectations";
@@ -214,6 +214,23 @@ function timeColumnsZoned2(ctx: Ctx, at: number | null | undefined): [string, st
 
 /* ————— narrative ————— */
 
+/**
+ * The frame the numbers sit in: how this person's clock works, and what they
+ * divided their life into.
+ *
+ * This file used to open with a self-description typed into a settings form:
+ * what the user was becoming, their season of life, the targets they were
+ * aiming at. That is gone on purpose. A standing answer to "who are you" is
+ * undated, rewritten silently, and the least reliable claim in the bundle;
+ * testing years of behaviour against whatever it happened to say on export day
+ * invents divergences that never occurred.
+ *
+ * The same claims are still here, made where they cost something and carrying
+ * the date they were made: `journal.md` has each day's one intention,
+ * `reflections.md` has the wins, blockers and the promises each period set for
+ * the next, and the areas below are the division of life the user actually
+ * built and used. Read those for what mattered to them, and when.
+ */
 function contextMd(input: BundleInput): string {
   const { settings, db } = input;
   const out: string[] = [];
@@ -224,38 +241,19 @@ function contextMd(input: BundleInput): string {
 
   out.push("# Context", "");
   out.push(
-    "Who this data belongs to and what they were trying to do, in their own words.",
-    "Everything here is optional and was typed by the user; blank means not filled in,",
-    "which is not the same as zero.",
+    "How to place this person's days, and what they divided their life into.",
+    "",
+    "There is no self-description in this file. What the person said mattered to them",
+    "is in `journal.md` (each day's one intention), in `reflections.md` (wins, lessons,",
+    "blockers, and the promises each period made for the next), and in the areas below.",
+    "Those are dated, which a standing answer in a settings form never is.",
     ""
   );
 
-  out.push("## The person", "");
-  line("Trying to become", settings.becoming);
-  line("Season of life", settings.seasonOfLife);
-  line("Occupation", settings.occupation);
-  line("Genuinely in the way right now", settings.constraints);
-  if (!settings.becoming && !settings.seasonOfLife && !settings.occupation && !settings.constraints) {
-    out.push("_Not filled in._", "");
-  }
-
   out.push("## The clock", "");
   line("Timezone", settings.timezone ?? "(not recorded)");
-  line("Week starts on", weekdayLabel(settings.weekStart));
-  line("A day rolls over at", `${settings.dayRolloverHour ?? 4}:00 local`);
-  line("Usually awake", settings.wakeTime && settings.sleepTime ? `${settings.wakeTime} – ${settings.sleepTime}` : null);
-
-  out.push("## What they were aiming at", "");
-  line("Focus minutes per day", settings.focusMinutesTarget);
-  line("Habit days per week", settings.habitDaysTarget);
-  line("Deep work days per week", settings.deepWorkDaysTarget);
-  if (
-    settings.focusMinutesTarget == null &&
-    settings.habitDaysTarget == null &&
-    settings.deepWorkDaysTarget == null
-  ) {
-    out.push("_No targets set. The numbers in summary.md stand on their own._", "");
-  }
+  line("A day rolls over at", `${settings.dayRolloverHour ?? DEFAULT_DAY_ROLLOVER_HOUR}:00 local`);
+  line("Weeks run", `${WEEK_STARTS_ON} to Sunday (fixed, not a preference)`);
 
   out.push("## Areas of life", "");
   if (db.areas.length === 0) {
@@ -275,11 +273,6 @@ function contextMd(input: BundleInput): string {
   }
 
   return out.join("\n");
-}
-
-function weekdayLabel(n: number | null | undefined): string | null {
-  if (n == null) return null;
-  return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][n] ?? null;
 }
 
 function pct(v: number | null): string {

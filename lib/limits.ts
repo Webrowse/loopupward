@@ -79,8 +79,6 @@ export const SERVER_CAPS = {
   journalEod: 3_000,
   /* an area explains itself in a paragraph, not an essay */
   areaText: 2_000,
-  /* who you are and what you are becoming — context for reading the export */
-  contextText: 4_000,
   /* the optional half of a day: gratitude, the one intention */
   dailyExtra: 2_000,
   dayTags: 20,

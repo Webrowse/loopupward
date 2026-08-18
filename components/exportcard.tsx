@@ -17,7 +17,7 @@ const CONTENTS: { group: string; files: { name: string; what: string }[] }[] = [
     files: [
       { name: "README.md", what: "what every file and every column means, written for someone who has never seen this app" },
       { name: "manifest.json", what: "what the record can and cannot know: when each kind of record starts, and which timestamps are exact" },
-      { name: "context.md", what: "what you said you're becoming, your targets, and what each area of your life is for" },
+      { name: "context.md", what: "your timezone, when your day rolls over, and what each area of your life is for" },
       { name: "summary.md", what: "the computed numbers, formatted to read" },
     ],
   },

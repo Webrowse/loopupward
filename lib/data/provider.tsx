@@ -162,13 +162,12 @@ interface LifeContextValue {
  *  lifeos-db-v1, lifeos-theme) are untouched. */
 const SETTINGS_KEY = "lifeos-settings-v1";
 
-/** The settings that describe a person and the shape of their day, as opposed
- *  to how the app looks. Only these get a change event: a theme toggle is not
- *  a fact about a life, and logging it would bury the ones that are. */
+/** The settings that shape how a day is read, as opposed to how the app looks.
+ *  Only these get a change event: a theme toggle is not a fact about a life,
+ *  and logging it would bury the ones that are. Moving your rollover hour or
+ *  your timezone changes what every later row means, so both are dated. */
 const CONTEXT_FIELDS = [
-  "timezone", "weekStart", "dayRolloverHour", "wakeTime", "sleepTime",
-  "seasonOfLife", "occupation", "becoming", "constraints",
-  "focusMinutesTarget", "habitDaysTarget", "deepWorkDaysTarget",
+  "timezone", "dayRolloverHour",
 ] as const satisfies readonly (keyof UserSettings)[];
 
 /** Event payloads are capped server-side, and two 4,000-character answers

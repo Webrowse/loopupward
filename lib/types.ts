@@ -460,11 +460,19 @@ export interface AppEvent {
 }
 
 /**
- * Server-owned preferences and context, one row per user. Everything is
- * optional and nothing gates a feature: a user who fills in none of it sees
- * exactly today's app. The context fields exist for one reason — they are
- * what makes an exported year readable a year later, by you or by whatever
- * tool you hand it to.
+ * Server-owned preferences and clock, one row per user.
+ *
+ * This used to also hold a self-description: what you are becoming, what
+ * season of life this is, what is in the way, the targets you were aiming at.
+ * Those were removed deliberately. A settings form is the least reliable place
+ * a person describes themselves, and the export already carries the same
+ * claims where they were made in earnest and carry a date: a day's one
+ * intention, a reflection's wins and blockers, the promises a period makes for
+ * the next one, the areas a life was actually divided into.
+ *
+ * What is left is not description, it is mechanics. Without a timezone no
+ * exported timestamp can be placed; without a rollover hour "which day does a
+ * 1am tick belong to" has no answer.
  */
 export interface UserSettings {
   /* display, previously localStorage-only (localStorage stays the offline
@@ -476,26 +484,9 @@ export interface UserSettings {
 
   /* clock — how this person's day is actually shaped */
   timezone: string | null;
-  /** 0 = Sunday … 6 = Saturday */
-  weekStart: number | null;
   /** the hour a "day" rolls over. Default 4: before 4am you are still living
    *  last night, which is exactly what routineLogDay() assumes. */
   dayRolloverHour: number | null;
-  wakeTime: string | null;
-  sleepTime: string | null;
-
-  /* context, all free text */
-  seasonOfLife: string | null;
-  occupation: string | null;
-  /** in one line: who you are trying to become */
-  becoming: string | null;
-  /** what is genuinely in the way right now */
-  constraints: string | null;
-
-  /* what you are aiming at, so the numbers have something to mean */
-  focusMinutesTarget: number | null;
-  habitDaysTarget: number | null;
-  deepWorkDaysTarget: number | null;
 
   createdAt: number | null;
   updatedAt: number | null;
@@ -503,11 +494,14 @@ export interface UserSettings {
 
 export const DEFAULT_DAY_ROLLOVER_HOUR = 4;
 
+/** Weeks run Monday to Sunday, everywhere, and this is not configurable.
+ *  startOfWeek() and isoWeek() in lib/dates.ts both assume it, so a week
+ *  number means one thing in the app and the same thing in the export. */
+export const WEEK_STARTS_ON = "Monday";
+
 export const EMPTY_SETTINGS: UserSettings = {
   theme: null, font: null, simple: null, restSeconds: null,
-  timezone: null, weekStart: null, dayRolloverHour: null, wakeTime: null, sleepTime: null,
-  seasonOfLife: null, occupation: null, becoming: null, constraints: null,
-  focusMinutesTarget: null, habitDaysTarget: null, deepWorkDaysTarget: null,
+  timezone: null, dayRolloverHour: null,
   createdAt: null, updatedAt: null,
 };
 

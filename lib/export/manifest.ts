@@ -15,7 +15,7 @@
  */
 
 import { LifeStats } from "../stats";
-import { EVENT_TYPES } from "../types";
+import { EVENT_TYPES, WEEK_STARTS_ON } from "../types";
 import type { BundleInput, Ctx } from "./bundle";
 
 interface Coverage {
@@ -122,6 +122,9 @@ export function buildManifest(
       },
 
       day_rollover_hour: stats.dayRolloverHour,
+      /** Fixed, not a user preference: every week key in this bundle is ISO,
+       *  Monday to Sunday. `2026-W33` always means the same seven days. */
+      week_starts_on: WEEK_STARTS_ON,
 
       /* ——— vocabularies, so no coded column has to be guessed at ——— */
       vocabularies: {

@@ -38,9 +38,13 @@ It is built in your browser and **never sent anywhere**. Read it yourself, open 
 
 See [Your export, file by file](./export.md) for the full reference.
 
-## Context included in your export
+## Your clock
 
-A year of tick marks is hard to read back. Settings holds a few optional lines that make it interpretable later: your timezone and the hour your day rolls over, what you're trying to become, what season of life this is, and what you're aiming at. Nothing here switches a feature on, and leaving any of it blank costs nothing.
+Two settings, and they are mechanics rather than preferences: your **timezone**, without which no exported timestamp can be read across travel or a daylight-saving change, and **the hour your day rolls over** (default 4am), which decides whether a routine finished at 1am counts for last night or for today.
+
+Weeks always run **Monday to Sunday**. That one is fixed, so a week number means the same seven days in the app and in every export.
+
+The app does not ask you to describe yourself. There is no field for what you are trying to become or what season of life this is: a standing answer to that is undated and gets silently rewritten, and your export already carries what mattered to you where you said it and when, in each day's one intention, in a period's wins and blockers and promises, and in the areas you actually built.
 
 ## Free vs Premium
 

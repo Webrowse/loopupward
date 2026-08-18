@@ -87,6 +87,10 @@ timestamp you get the answer a clock would give. Both are in every file, on
 purpose. Use \`day\` for "how many days did I do this", and the timestamps for
 "what time of day do I do this".
 
+**Weeks run Monday to Sunday.** Every week key (\`2026-W33\`) in this bundle is
+ISO, and it is fixed rather than a preference, so a week number means the same
+seven days everywhere and in every export.
+
 ## How timestamps are written
 
 Every moment appears three ways, so no timezone arithmetic is ever needed:
@@ -163,11 +167,17 @@ Three kinds of file, and it matters which you are reading:
 
 **\`README.md\`** — this file.
 
-**\`context.md\`** — who you said you are, what you said you were becoming, your
-targets, and what each area of your life is for. All of it optional and all of
-it typed by you. This is what makes the rest interpretable: an area with the
-lowest completion rate means something different once the area says what it is
-for.
+**\`context.md\`** — how to place your days: your timezone, the hour your day
+rolls over, and what each area of your life is for.
+
+It deliberately contains **no self-description**. There is no field in this app
+where you answered "what are you trying to become", because a standing answer to
+that is undated, silently rewritten, and the least reliable claim in the bundle
+— testing years of behaviour against whatever it happened to say on export day
+would invent divergences that never happened. What you said mattered to you is
+in \`journal.md\` (each day's one intention), in \`reflections.md\` (wins,
+lessons, blockers, and the promises each period made for the next), and in the
+areas you actually built. Those carry the date they were written.
 
 **\`summary.md\`** — the computed statistics, formatted to read. Nothing in it
 is inferred; the legend below says what each figure counted.

@@ -90,8 +90,6 @@ pub const MAX_DAY_ORDER_ENTRIES: usize = 500;
 pub const MAX_NAME: usize = 120;
 /* an area explains itself in a paragraph, not an essay */
 pub const MAX_AREA_TEXT: usize = 2_000;
-/* who you are and what you are becoming — context for reading the export */
-pub const MAX_CONTEXT_TEXT: usize = 4_000;
 /* the optional half of a day: gratitude, the one intention */
 pub const MAX_DAILY_EXTRA: usize = 2_000;
 pub const MAX_DAY_TAGS: usize = 20;

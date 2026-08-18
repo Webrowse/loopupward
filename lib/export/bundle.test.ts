@@ -462,11 +462,11 @@ describe("coverage: nothing reaches raw.json and stops there", () => {
       events: [{ id: "ev1", at: 1, day: "2026-08-17", tz: "T", utcOffsetMinutes: 330, type: "item.created",
         itemId: "i1", payload: { note: M("eventPayload") }, createdAt: 1 }],
     };
-    const settings = {
-      ...EMPTY_SETTINGS, becoming: M("becoming"), seasonOfLife: M("season"), occupation: M("occupation"),
-      constraints: M("constraints"), timezone: M("settingsTz"), wakeTime: "07:00", sleepTime: "23:00",
-      focusMinutesTarget: 90, habitDaysTarget: 5, deepWorkDaysTarget: 3, weekStart: 1, dayRolloverHour: 4,
-    };
+    // No self-description here any more: the settings form that asked "what are
+    // you trying to become" is gone, and so are the fields it fed. What the
+    // person said mattered to them lives in the journal, the reflections and
+    // the areas, which this fixture covers through their own markers.
+    const settings = { ...EMPTY_SETTINGS, timezone: M("settingsTz"), dayRolloverHour: 4 };
 
     const files = buildBundle({ ...bundleInput(db, streams), settings });
     const readable = files.filter((f) => f.name !== "raw.json");

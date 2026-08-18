@@ -81,7 +81,7 @@ using today's answer.
 | --- | --- |
 | `README.md` | this reference, written for someone who has never seen the app |
 | `manifest.json` | coverage windows, timezone grades, and the vocabulary of every coded column — what the record can and cannot know |
-| `context.md` | who you said you are, what you're becoming, your targets, and what each area is for |
+| `context.md` | your timezone, when your day rolls over, and what each area of your life is for |
 | `summary.md` | the computed numbers, formatted to read |
 
 ### The three kinds of file

@@ -362,8 +362,18 @@ pub struct EventRow {
     pub created_at: i64,
 }
 
-/// Server-owned preferences and context (Postgres table: user_settings).
-/// Everything is optional: a user who fills in nothing sees today's app.
+/// Server-owned preferences and clock (Postgres table: user_settings).
+///
+/// This used to carry a self-description too: season_of_life, occupation,
+/// becoming, constraints, and three targets, all fed by a settings form. They
+/// were dropped: a standing answer to "who are you" is undated and silently
+/// rewritten, and the export already carries the same claims where they were
+/// made in earnest and carry a date (a day's intention, a period's promises).
+/// Weeks are Monday-start everywhere and are no longer a setting either.
+///
+/// Their columns remain in the table, unread and unwritten, rather than being
+/// dropped in a migration: an old client may still send them, serde ignores
+/// unknown fields, and an unused nullable column costs nothing.
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct UserSettings {
@@ -372,17 +382,7 @@ pub struct UserSettings {
     pub simple: Option<bool>,
     pub rest_seconds: Option<i32>,
     pub timezone: Option<String>,
-    pub week_start: Option<i32>,
     pub day_rollover_hour: Option<i32>,
-    pub wake_time: Option<String>,
-    pub sleep_time: Option<String>,
-    pub season_of_life: Option<String>,
-    pub occupation: Option<String>,
-    pub becoming: Option<String>,
-    pub constraints: Option<String>,
-    pub focus_minutes_target: Option<i32>,
-    pub habit_days_target: Option<i32>,
-    pub deep_work_days_target: Option<i32>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
 }
@@ -1443,17 +1443,7 @@ async fn read_settings(state: &AppState, user: Uuid) -> ApiResult<UserSettings> 
             simple: r.get("simple"),
             rest_seconds: r.get("rest_seconds"),
             timezone: r.get("timezone"),
-            week_start: r.get("week_start"),
             day_rollover_hour: r.get("day_rollover_hour"),
-            wake_time: r.get("wake_time"),
-            sleep_time: r.get("sleep_time"),
-            season_of_life: r.get("season_of_life"),
-            occupation: r.get("occupation"),
-            becoming: r.get("becoming"),
-            constraints: r.get("constraints"),
-            focus_minutes_target: r.get("focus_minutes_target"),
-            habit_days_target: r.get("habit_days_target"),
-            deep_work_days_target: r.get("deep_work_days_target"),
             created_at: r.get("created_at_ms"),
             updated_at: r.get("updated_at_ms"),
         },
@@ -1462,30 +1452,8 @@ async fn read_settings(state: &AppState, user: Uuid) -> ApiResult<UserSettings> 
 
 impl UserSettings {
     fn validate(&self) -> ApiResult<()> {
-        for (field, v) in [
-            ("seasonOfLife", &self.season_of_life),
-            ("occupation", &self.occupation),
-            ("becoming", &self.becoming),
-            ("constraints", &self.constraints),
-        ] {
-            if let Some(text) = v {
-                ck_len(field, text, MAX_CONTEXT_TEXT)?;
-            }
-        }
         if let Some(tz) = &self.timezone {
             ck_len("timezone", tz, 64)?;
-        }
-        for (field, v) in [("wakeTime", &self.wake_time), ("sleepTime", &self.sleep_time)] {
-            if let Some(t) = v {
-                if !t.is_empty() && !is_hm(t) {
-                    return Err(bad(format!("{field} must be HH:MM")));
-                }
-            }
-        }
-        if let Some(w) = self.week_start {
-            if !(0..=6).contains(&w) {
-                return Err(bad("weekStart must be a weekday number 0–6"));
-            }
         }
         if let Some(h) = self.day_rollover_hour {
             if !(0..=12).contains(&h) {
@@ -1495,17 +1463,6 @@ impl UserSettings {
         if let Some(r) = self.rest_seconds {
             if !(0..=600).contains(&r) {
                 return Err(bad("restSeconds is out of range"));
-            }
-        }
-        for (field, v) in [
-            ("focusMinutesTarget", self.focus_minutes_target),
-            ("habitDaysTarget", self.habit_days_target),
-            ("deepWorkDaysTarget", self.deep_work_days_target),
-        ] {
-            if let Some(n) = v {
-                if !(0..=10_000).contains(&n) {
-                    return Err(bad(format!("{field} is out of range")));
-                }
             }
         }
         Ok(())
@@ -1531,28 +1488,16 @@ pub async fn put_settings(
     let now = chrono::Utc::now().timestamp_millis();
     sqlx::query(
         "insert into user_settings (user_id, theme, font, simple, rest_seconds, timezone,
-           week_start, day_rollover_hour, wake_time, sleep_time, season_of_life, occupation,
-           becoming, constraints, focus_minutes_target, habit_days_target,
-           deep_work_days_target, created_at_ms, updated_at_ms)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$18)
+           day_rollover_hour, created_at_ms, updated_at_ms)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$8)
          on conflict (user_id) do update set
            theme = excluded.theme, font = excluded.font, simple = excluded.simple,
            rest_seconds = excluded.rest_seconds, timezone = excluded.timezone,
-           week_start = excluded.week_start, day_rollover_hour = excluded.day_rollover_hour,
-           wake_time = excluded.wake_time, sleep_time = excluded.sleep_time,
-           season_of_life = excluded.season_of_life, occupation = excluded.occupation,
-           becoming = excluded.becoming, constraints = excluded.constraints,
-           focus_minutes_target = excluded.focus_minutes_target,
-           habit_days_target = excluded.habit_days_target,
-           deep_work_days_target = excluded.deep_work_days_target,
+           day_rollover_hour = excluded.day_rollover_hour,
            updated_at_ms = excluded.updated_at_ms",
     )
     .bind(user.id).bind(&body.theme).bind(&body.font).bind(body.simple).bind(body.rest_seconds)
-    .bind(&body.timezone).bind(body.week_start).bind(body.day_rollover_hour)
-    .bind(&body.wake_time).bind(&body.sleep_time).bind(&body.season_of_life)
-    .bind(&body.occupation).bind(&body.becoming).bind(&body.constraints)
-    .bind(body.focus_minutes_target).bind(body.habit_days_target)
-    .bind(body.deep_work_days_target).bind(now)
+    .bind(&body.timezone).bind(body.day_rollover_hour).bind(now)
     .execute(&state.pool)
     .await?;
     Ok(Json(read_settings(&state, user.id).await?))
