@@ -296,6 +296,12 @@ function plannedVsActual(key: string, label: string, rows: FocusSession[]): Plan
   };
 }
 
+/** A run holds the steps inside it, so its minutes are their minutes again.
+ *  Every total is over the leaves; the containers get their own view. */
+function isContainer(s: FocusSession): boolean {
+  return s.kind === "routine_run" || s.kind === "day_run";
+}
+
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -391,7 +397,12 @@ export function computeStats(input: StatsInput): LifeStats {
   for (const l of logs) if (l.op === "add" && l.value > 0) addToTimeOfDay(habitsLoggedByTime, l.createdAt);
 
   const focusStartedByTime = emptyTimeOfDay();
-  for (const s of sessions) if (s.kind !== "rest") addToTimeOfDay(focusStartedByTime, s.startedAt);
+  for (const s of sessions) {
+    if (s.kind === "rest" || isContainer(s)) continue;
+    // a routine run and its first step start in the same second, so counting
+    // both would put a second bump on every morning
+    addToTimeOfDay(focusStartedByTime, s.startedAt);
+  }
 
   // step ticks carry their own timestamps now, which is the only way to know
   // what order a script was really walked in
@@ -401,21 +412,30 @@ export function computeStats(input: StatsInput): LifeStats {
     for (const at of Object.values(note.doneStepsAt ?? {})) addToTimeOfDay(routineStepsByTime, at);
   }
 
-  /* ——— planned vs actual: the most interesting number in the export ——— */
+  /* ——— planned vs actual: the most interesting number in the export ———
+   *
+   * A run and the steps inside it are both real rows, and adding them
+   * together would count the same hour twice. So every total below is over
+   * the LEAF attempts — focus blocks and routine steps — and the whole-run
+   * view is kept separately, in focusByRoutine.
+   */
   const work = sessions.filter((s) => s.kind !== "rest");
+  const leaf = work.filter((s) => !isContainer(s));
   const byItemSessions = new Map<string, FocusSession[]>();
   const byRoutineSessions = new Map<string, FocusSession[]>();
   const byStepSessions = new Map<string, FocusSession[]>();
-  for (const s of work) {
+  for (const s of leaf) {
     if (s.itemId) {
       byItemSessions.set(s.itemId, [...(byItemSessions.get(s.itemId) ?? []), s]);
-    }
-    if (s.kind === "routine_run" && s.itemId) {
-      byRoutineSessions.set(s.itemId, [...(byRoutineSessions.get(s.itemId) ?? []), s]);
     }
     if (s.kind === "routine_step" && s.stepId) {
       const key = `${s.itemId ?? ""}:${s.stepId}`;
       byStepSessions.set(key, [...(byStepSessions.get(key) ?? []), s]);
+    }
+  }
+  for (const s of work) {
+    if (s.kind === "routine_run" && s.itemId) {
+      byRoutineSessions.set(s.itemId, [...(byRoutineSessions.get(s.itemId) ?? []), s]);
     }
   }
 
@@ -436,7 +456,7 @@ export function computeStats(input: StatsInput): LifeStats {
       return plannedVsActual(key, stepTitle(itemId || null, stepId), rows);
     })
     .sort((a, b) => b.actualMinutes - a.actualMinutes);
-  const focusOverall = plannedVsActual("all", "All focused work", work);
+  const focusOverall = plannedVsActual("all", "All focused work", leaf);
 
   /* ——— lead times ——— */
   const firstActionFor = new Map<string, string>();
@@ -521,7 +541,9 @@ export function computeStats(input: StatsInput): LifeStats {
   const reschedulesByItem = [...perItem.values()].sort((a, b) => b.times - a.times);
 
   /* ——— abandonment ——— */
-  const counted = (outcome: string) => work.filter((s) => s.outcome === outcome).length;
+  // leaf attempts again: a run's outcome is the day-run counters below, and
+  // counting it here as well would say every routine was two attempts
+  const counted = (outcome: string) => leaf.filter((s) => s.outcome === outcome).length;
   const dayRunsStarted = events.filter((e) => e.type === "day_run.started").length;
   const dayRunsFinished = events.filter((e) => e.type === "day_run.finished").length;
   const abandonedRuns = events.filter((e) => e.type === "day_run.abandoned");
@@ -529,13 +551,13 @@ export function computeStats(input: StatsInput): LifeStats {
     .map((e) => (e.payload as { completedBefore?: number }).completedBefore)
     .filter((n): n is number => typeof n === "number");
   const abandonment: AbandonmentStats = {
-    sessionsStarted: work.length,
+    sessionsStarted: leaf.length,
     sessionsCompleted: counted("completed"),
     sessionsAbandoned: counted("abandoned"),
     sessionsExpired: counted("expired"),
     sessionsSkipped: counted("skipped"),
     sessionsInterrupted: counted("interrupted"),
-    completionRate: work.length ? round2(counted("completed") / work.length) : null,
+    completionRate: leaf.length ? round2(counted("completed") / leaf.length) : null,
     dayRunsStarted,
     dayRunsFinished,
     dayRunsAbandoned: abandonedRuns.length,
@@ -715,7 +737,7 @@ export function computeStats(input: StatsInput): LifeStats {
     }
   }
   const sessionsByDay = new Map<string, FocusSession[]>();
-  for (const s of work) sessionsByDay.set(s.day, [...(sessionsByDay.get(s.day) ?? []), s]);
+  for (const s of leaf) sessionsByDay.set(s.day, [...(sessionsByDay.get(s.day) ?? []), s]);
   const eventsByDay = new Map<string, AppEvent[]>();
   for (const e of events) eventsByDay.set(e.day, [...(eventsByDay.get(e.day) ?? []), e]);
 

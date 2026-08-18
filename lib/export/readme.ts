@@ -264,7 +264,11 @@ tick-counting timer would systematically under-report exactly the sessions
 where you walked away.
 
 A whole routine produces one \`routine_run\` row **plus** one \`routine_step\` row
-per step. Do not add both together, or you will double-count the time.
+per step. **Do not add both together** — the run holds the steps, so its minutes
+are their minutes again. To total time spent, sum only the leaf rows
+(\`kind\` of \`focus\` or \`routine_step\`); to see how long whole routines take,
+look at \`routine_run\` rows on their own. \`summary.md\` and \`daily.csv\` already
+do exactly that.
 
 ---
 

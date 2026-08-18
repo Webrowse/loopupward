@@ -152,7 +152,6 @@ interface LifeContextValue {
   setHabitDayNote: (itemId: string, date: string, text: string) => void;
 
   signOut: () => Promise<void>;
-  exportJSON: () => string;
 }
 
 /** New key — the three that must never be renamed (lifeos-token,
@@ -1262,7 +1261,9 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [db.habitDayNotes, upsertRows, removeRows]);
 
-  /* ————— auth & export ————— */
+  /* ————— auth —————
+   * Exporting lives in lib/export/, not here: the bundle is built from the
+   * stored rows and the streams, which this provider is only one source of. */
   const signOut = useCallback(async () => {
     try {
       await api("/v1/auth/logout", { method: "POST" });
@@ -1272,14 +1273,6 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     clearToken();
     window.location.href = "/";
   }, []);
-
-  const exportJSON = useCallback(() => {
-    return JSON.stringify(
-      { app: "LoopUpward", exportedAt: new Date().toISOString(), data: db },
-      null,
-      2
-    );
-  }, [db]);
 
   const dismissSyncError = useCallback(() => setSyncError(null), []);
 
@@ -1302,7 +1295,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     addAction, updateAction, deleteAction, toggleEntry, toggleHabitDay, setRoutineStepDone, reorderDay,
     saveReflection,
     setHabitDayNote,
-    signOut, exportJSON,
+    signOut,
   };
 
   return <LifeContext.Provider value={value}>{children}</LifeContext.Provider>;

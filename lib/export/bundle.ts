@@ -254,6 +254,10 @@ function summaryMd(input: BundleInput, stats: LifeStats): string {
     "The ratio is actual ÷ planned. Above 1 means it took longer than expected;",
     "below 1 means it finished early or was cut short. This is usually the most",
     "interesting number in the export.",
+    "",
+    "The totals count focus blocks and routine steps. A whole routine run holds",
+    "the steps inside it, so its minutes are their minutes again — the routine",
+    "rows below are a separate view of the same time, not more of it.",
     ""
   );
   table(

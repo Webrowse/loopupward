@@ -1200,8 +1200,10 @@ function StepRun({
   const stepId = queue[0] ?? null;
   const step = steps.find((s) => s.id === stepId) ?? null;
   const queueRef = useRef(queue);
+  const stepsRef = useRef(steps);
   useEffect(() => {
     queueRef.current = queue;
+    stepsRef.current = steps;
   });
 
   const [phase, setPhase] = useState<"ask" | "timed" | "open">(() =>
@@ -1239,9 +1241,15 @@ function StepRun({
   /** The run itself, from first step to last. Its planned length is the sum
    *  of what the script claims; its actual length is what the clock says —
    *  and the ratio of those two is the most interesting number the export
-   *  carries. */
+   *  carries.
+   *
+   *  Opened once, on mount, and closed by whichever exit is taken. Deliberately
+   *  not keyed on `steps`: a day run builds that array inline on every render,
+   *  so a dependency on it would restart the run — and re-announce it — several
+   *  times a second. A run is one thing that happened, and it gets one row. */
   useEffect(() => {
-    const plannedMinutes = steps.reduce((sum, st) => sum + (st.minutes ?? 0), 0);
+    const script = stepsRef.current;
+    const plannedMinutes = script.reduce((sum, st) => sum + (st.minutes ?? 0), 0);
     runAttempt.begin({
       kind: runKind,
       itemId: runItemId,
@@ -1250,10 +1258,13 @@ function StepRun({
       plannedSeconds: plannedMinutes > 0 ? Math.round(plannedMinutes * 60) : null,
     });
     if (runKind === "day_run") {
-      emit("day_run.started", { day, payload: { plannedStepIds: steps.map((st) => st.id), stepCount: steps.length } });
+      emit("day_run.started", {
+        day,
+        payload: { plannedStepIds: script.map((st) => st.id), stepCount: script.length },
+      });
     }
-    // opened once for this run; every exit below closes it
-  }, [runAttempt, runKind, runItemId, day, steps, emit]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** How many of the planned steps were actually walked, for the closing
    *  event of a run that ended early. */
@@ -1282,7 +1293,7 @@ function StepRun({
   // the first step of a run arrives through the initial queue state rather
   // than through enter(), so it opens its own attempt here
   useEffect(() => {
-    const first = steps.find((st) => st.id === queueRef.current[0]);
+    const first = stepsRef.current.find((st) => st.id === queueRef.current[0]);
     if (first) beginStepAttempt(first);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

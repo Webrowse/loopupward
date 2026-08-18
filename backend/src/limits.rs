@@ -110,4 +110,9 @@ pub const MAX_JOURNAL_EOD_PREMIUM: usize = 10_000;
 pub const MAX_EMOJI: usize = 16;
 pub const MAX_UNIT: usize = 32;
 pub const MAX_BATCH_ROWS: usize = 500;
-pub const MAX_IMPORT_ROWS: usize = 20_000;
+/* First sign-in carries a whole on-device life across in one transaction, and
+   that now includes the two capture streams — a year of events alone can run
+   to tens of thousands of rows. The ceiling is generous because the failure
+   mode is the worst one there is: a rejected import reads as "the cloud is
+   broken" to someone who has just handed over everything they own. */
+pub const MAX_IMPORT_ROWS: usize = 500_000;
