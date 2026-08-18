@@ -1143,15 +1143,28 @@ pub async fn load(State(state): State<AppState>, user: AuthUser) -> ApiResult<Js
 }
 
 pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
-    let areas = sqlx::query("select * from areas where user_id = $1 order by position")
+    // These ten reads are independent, so they go out together rather than one
+    // after another. On Railway the database sat on the same private network
+    // and ten serial round trips cost almost nothing; against Neon each one
+    // crosses the internet through PgBouncer, and serially that was about a
+    // second of pure waiting per page load. Concurrently it is one round trip's
+    // worth. The pool is sized above this count so a single load cannot starve
+    // a request that arrives alongside it.
+    let areas_q = async {
+        Ok::<Vec<Area>, sqlx::Error>(
+            sqlx::query("select * from areas where user_id = $1 order by position")
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| Area {
             id: r.get("id"), name: r.get("name"), emoji: r.get("emoji"),
             color: r.get("color"), position: r.get("position"), created_at: r.get("created_at_ms"),
             description: r.get("description"), why_it_matters: r.get("why_it_matters"),
             target_share: r.get("target_share"),
-        }).collect();
-    let items = sqlx::query("select * from items where user_id = $1 order by position")
+        }).collect()
+        )
+    };
+    let items_q = async {
+        Ok::<Vec<Item>, sqlx::Error>(
+            sqlx::query("select * from items where user_id = $1 order by position")
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| Item {
             id: r.get("id"), area_id: r.get("area_id"), parent_id: r.get("parent_id"),
@@ -1169,30 +1182,46 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             pinned: r.get("pinned"), position: r.get("position"),
             created_at: r.get("created_at_ms"), completed_at: r.get("completed_at_ms"),
             deleted_at: r.get("deleted_at_ms"),
-        }).collect();
-    let seeds = sqlx::query("select * from seeds where user_id = $1 order by created_at_ms desc")
+        }).collect()
+        )
+    };
+    let seeds_q = async {
+        Ok::<Vec<Seed>, sqlx::Error>(
+            sqlx::query("select * from seeds where user_id = $1 order by created_at_ms desc")
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| Seed {
             id: r.get("id"), text: r.get("text"), created_at: r.get("created_at_ms"),
             item_id: r.get("item_id"), archived_at: r.get("archived_at_ms"),
             status: r.get("status"),
-        }).collect();
-    let actions = sqlx::query("select * from actions where user_id = $1")
+        }).collect()
+        )
+    };
+    let actions_q = async {
+        Ok::<Vec<ActionRow>, sqlx::Error>(
+            sqlx::query("select * from actions where user_id = $1")
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| ActionRow {
             id: r.get("id"), item_id: r.get("item_id"), title: r.get("title"),
             date: r.get("date"), done: r.get("done"), done_at: r.get("done_at_ms"),
             amount: r.get("amount"), priority: r.get("priority"), note: r.get("note"),
             created_at: r.get("created_at_ms"),
-        }).collect();
-    let logs = sqlx::query("select * from logs where user_id = $1")
+        }).collect()
+        )
+    };
+    let logs_q = async {
+        Ok::<Vec<LogRow>, sqlx::Error>(
+            sqlx::query("select * from logs where user_id = $1")
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| LogRow {
             id: r.get("id"), item_id: r.get("item_id"), date: r.get("date"),
             op: r.get("op"), value: r.get("value"), created_at: r.get("created_at_ms"),
             source: r.get("source"), via: r.get("via"),
-        }).collect();
-    let reflections = sqlx::query("select * from reflections where user_id = $1")
+        }).collect()
+        )
+    };
+    let reflections_q = async {
+        Ok::<Vec<Reflection>, sqlx::Error>(
+            sqlx::query("select * from reflections where user_id = $1")
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| Reflection {
             id: r.get("id"), period: r.get("period"), period_key: r.get("period_key"),
@@ -1200,8 +1229,12 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             ratings: r.get("ratings"), area_notes: r.get("area_notes"),
             wins: r.get("wins"), lessons: r.get("lessons"), blockers: r.get("blockers"),
             intentions: r.get("intentions"),
-        }).collect();
-    let journal = sqlx::query("select * from daily_entries where user_id = $1 order by date")
+        }).collect()
+        )
+    };
+    let journal_q = async {
+        Ok::<Vec<JournalEntry>, sqlx::Error>(
+            sqlx::query("select * from daily_entries where user_id = $1 order by date")
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| JournalEntry {
             id: r.get("id"), date: r.get("date"), rough_notes: r.get("rough_notes"),
@@ -1210,27 +1243,47 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             sleep_hours: r.get("sleep_hours"), sleep_quality: r.get("sleep_quality"),
             stress: r.get("stress"), focus: r.get("focus"),
             gratitude: r.get("gratitude"), intention: r.get("intention"), tags: r.get("tags"),
-        }).collect();
-    let labels = sqlx::query("select * from labels where user_id = $1 order by position")
+        }).collect()
+        )
+    };
+    let labels_q = async {
+        Ok::<Vec<Label>, sqlx::Error>(
+            sqlx::query("select * from labels where user_id = $1 order by position")
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| Label {
             id: r.get("id"), name: r.get("name"), color: r.get("color"), emoji: r.get("emoji"),
             position: r.get("position"), created_at: r.get("created_at_ms"),
-        }).collect();
-    let habit_day_notes = sqlx::query("select * from habit_day_notes where user_id = $1")
+        }).collect()
+        )
+    };
+    let habit_day_notes_q = async {
+        Ok::<Vec<HabitDayNote>, sqlx::Error>(
+            sqlx::query("select * from habit_day_notes where user_id = $1")
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| HabitDayNote {
             id: r.get("id"), item_id: r.get("item_id"), date: r.get("date"),
             text: r.get("text"), done_steps: r.get("done_steps"),
             done_steps_at: r.get("done_steps_at"),
             created_at: r.get("created_at_ms"), updated_at: r.get("updated_at_ms"),
-        }).collect();
-    let day_order = sqlx::query("select * from day_order where user_id = $1")
+        }).collect()
+        )
+    };
+    let day_order_q = async {
+        Ok::<Vec<DayOrder>, sqlx::Error>(
+            sqlx::query("select * from day_order where user_id = $1")
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| DayOrder {
             id: r.get("id"), date: r.get("date"), order: r.get("entry_order"),
             updated_at: r.get("updated_at_ms"),
-        }).collect();
+        }).collect()
+        )
+    };
+
+    let (areas, items, seeds, actions, logs, reflections, journal, labels, habit_day_notes, day_order) =
+        tokio::try_join!(
+            areas_q, items_q, seeds_q, actions_q, logs_q,
+            reflections_q, journal_q, labels_q, habit_day_notes_q, day_order_q
+        )?;
 
     // The two append-only streams are deliberately NOT part of the app
     // payload: nothing on screen reads them, and shipping a year of events
