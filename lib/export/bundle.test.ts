@@ -246,7 +246,7 @@ describe("bundle contents", () => {
     for (const expected of [
       "README.md", "context.md", "summary.md",
       "areas.csv", "items.csv", "actions.csv", "logs.csv", "focus_sessions.csv",
-      "routine_steps.csv", "list_entries.csv", "seeds.csv", "labels.csv",
+      "habit_days.csv", "routine_steps.csv", "list_entries.csv", "seeds.csv", "labels.csv",
       "day_order.csv", "daily.csv", "events.ndjson",
       "journal.md", "reflections.md", "notes.md", "raw.json",
     ]) {
@@ -308,6 +308,118 @@ describe("bundle contents", () => {
     expect(readme).toContain("rollover hour");
     expect(readme).toContain("wraps past midnight");
     expect(readme).toContain("21:00 → 02:00");
+  });
+});
+
+/* ————— nothing may reach raw.json and stop there ————— */
+
+describe("everything the app stores reaches a readable file", () => {
+  it("puts a habit's day plan somewhere a person would find it", () => {
+    // this exact text used to survive only in raw.json: routine_steps.csv
+    // skips anything without a script, which is most habits
+    const habit = item({ id: "h1", kind: "habit", tracker: "habit", title: "Clean", steps: null });
+    const files = buildBundle(
+      bundleInput({
+        items: [habit],
+        habitDayNotes: [
+          {
+            id: "n1", itemId: "h1", date: "2026-08-17", text: "clean the side desk",
+            doneSteps: null, doneStepsAt: null, createdAt: 0, updatedAt: 0,
+          },
+        ],
+      })
+    );
+    const readable = files
+      .filter((f) => f.name !== "raw.json" && f.content.includes("clean the side desk"))
+      .map((f) => f.name);
+    expect(readable).toContain("habit_days.csv");
+  });
+
+  it("says whether the day counted, and against what the day asked for", () => {
+    const habit = item({ id: "h1", kind: "habit", tracker: "habit", title: "Water", target: 3 });
+    const rows = rowsOf(
+      fileNamed(
+        buildBundle(
+          bundleInput({
+            items: [habit],
+            logs: [
+              { id: "l1", itemId: "h1", date: "2026-08-17", op: "add", value: 1, createdAt: 0 },
+              { id: "l2", itemId: "h1", date: "2026-08-17", op: "add", value: 1, createdAt: 0 },
+            ],
+            habitDayNotes: [
+              { id: "n1", itemId: "h1", date: "2026-08-17", text: "", doneSteps: null, doneStepsAt: null, createdAt: 0, updatedAt: 0 },
+            ],
+          })
+        ),
+        "habit_days.csv"
+      )
+    );
+    const header = rows[0];
+    const row = rows[1];
+    // two of three glasses: real progress, and not a day that counted
+    expect(row[header.indexOf("value_logged")]).toBe("2");
+    expect(row[header.indexOf("daily_target")]).toBe("3");
+    expect(row[header.indexOf("logged")]).toBe("false");
+  });
+});
+
+/**
+ * The guard for the whole class of bug this file exists to prevent: a field
+ * gets added to the app, and quietly reaches no readable file. raw.json holds
+ * everything by construction, so it does not count as coverage — the question
+ * is whether a person opening the folder would ever find the value.
+ *
+ * Every stored text field below carries a unique marker; if a new one is added
+ * to the model and nowhere to the bundle, this fails and names it.
+ */
+describe("coverage: nothing reaches raw.json and stops there", () => {
+  const M = (k: string) => `ZZMARK${k}ZZ`;
+
+  it("puts every stored field in at least one readable file", () => {
+    const db: Partial<DB> = {
+      areas: [{ id: "a1", name: M("areaName"), emoji: "🌿", color: "moss", position: 0, createdAt: 1, description: M("areaDesc"), whyItMatters: M("areaWhy"), targetShare: 0.25 }],
+      items: [
+        item({ id: "i1", areaId: "a1", kind: "note", tracker: "none", title: M("noteTitle"), note: M("itemNote"), richBody: M("richBody"), labels: ["lb1"], cadence: null }),
+        item({ id: "i2", areaId: "a1", kind: "list", tracker: "none", title: M("listTitle"), cadence: null,
+          entries: [{ id: "e1", text: M("entryText"), amount: 2, unit: M("entryUnit"), done: false, pickedAt: 1 }] }),
+        item({ id: "i3", areaId: "a1", kind: "habit", tracker: "habit", title: M("habitTitle") }),
+      ],
+      seeds: [{ id: "s1", text: M("seedText"), createdAt: 1, itemId: null, archivedAt: null, status: "inbox" }],
+      actions: [{ id: "ac1", itemId: "i1", title: M("actionTitle"), date: "2026-08-17", done: false, doneAt: null, amount: 1, priority: 0, note: M("actionNote"), createdAt: 1 }],
+      logs: [{ id: "l1", itemId: "i3", date: "2026-08-17", op: "add", value: 1, createdAt: 1, source: "manual", via: M("logVia") }],
+      reflections: [{ id: "rf1", period: "week", periodKey: "2026-W33", text: M("reflText"), createdAt: 1, updatedAt: 1,
+        ratings: { overall: 4, energy: 3, progress: 5 }, wins: [M("win")], lessons: [M("lesson")], blockers: [M("blocker")],
+        intentions: [{ id: "in1", text: M("intention"), itemId: "i3", targetValue: 3 }],
+        areaNotes: { a1: { rating: 4, note: M("areaNote") } } }],
+      journal: [{ id: "j1", date: "2026-08-17", roughNotes: M("rough"), endOfDay: M("eod"), mood: 4, energy: 3,
+        sleepHours: 7, sleepQuality: 4, stress: 2, focus: 5, gratitude: M("gratitude"), intention: M("dayIntention"),
+        tags: [M("dayTag")], createdAt: 1, updatedAt: 1 }],
+      labels: [{ id: "lb1", name: M("labelName"), color: "moss", emoji: "🏷️", position: 0, createdAt: 1 }],
+      habitDayNotes: [{ id: "n1", itemId: "i3", date: "2026-08-17", text: M("dayPlan"), doneSteps: null, doneStepsAt: null, createdAt: 1, updatedAt: 1 }],
+      dayOrder: [{ id: "d1", date: "2026-08-17", order: [M("orderEntry")], updatedAt: 1 }],
+    };
+    const streams: Partial<Streams> = {
+      focusSessions: [{ id: "fs1", itemId: "i3", entryId: M("entryId"), day: "2026-08-17", kind: "focus", stepId: null,
+        startedAt: 1, endedAt: 2, plannedSeconds: 60, actualSeconds: 30, pausedSeconds: 0, pauseCount: 0,
+        outcome: "abandoned", tz: M("tz"), utcOffsetMinutes: 330, createdAt: 1 }],
+      events: [{ id: "ev1", at: 1, day: "2026-08-17", tz: "T", utcOffsetMinutes: 330, type: "item.created",
+        itemId: "i1", payload: { note: M("eventPayload") }, createdAt: 1 }],
+    };
+    const settings = {
+      ...EMPTY_SETTINGS, becoming: M("becoming"), seasonOfLife: M("season"), occupation: M("occupation"),
+      constraints: M("constraints"), timezone: M("settingsTz"), wakeTime: "07:00", sleepTime: "23:00",
+      focusMinutesTarget: 90, habitDaysTarget: 5, deepWorkDaysTarget: 3, weekStart: 1, dayRolloverHour: 4,
+    };
+
+    const files = buildBundle({ ...bundleInput(db, streams), settings });
+    const readable = files.filter((f) => f.name !== "raw.json");
+    const markers = [
+      ...new Set([...JSON.stringify({ db, streams, settings }).matchAll(/ZZMARK(\w+?)ZZ/g)].map((m) => m[1])),
+    ];
+    expect(markers.length).toBeGreaterThan(20);
+
+    const orphaned = markers.filter((k) => !readable.some((f) => f.content.includes(M(k))));
+    expect(orphaned).toEqual([]);
   });
 });
 

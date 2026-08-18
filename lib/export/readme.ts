@@ -272,6 +272,24 @@ do exactly that.
 
 ---
 
+#### \`habit_days.csv\` — ${counts.habitDayNotes} rows
+
+What a habit or routine meant on one specific day. "Clean" is the habit;
+"clean the side desk" is what it meant on Tuesday, and that sentence is the
+human half of the record.
+
+| Column | Meaning |
+| --- | --- |
+| \`item_id\`, \`item_title\`, \`kind\`, \`area_name\` | which habit or routine |
+| \`day\`, \`weekday\` | the day it counts for |
+| \`day_plan\` | what you wrote that this day's occurrence meant |
+| \`logged\` | whether the day counted as done |
+| \`value_logged\`, \`daily_target\` | units done against what the day asked for (2 of 3 glasses) |
+| \`steps_done\`, \`steps_total\` | routines only |
+| \`first_written_*\`, \`last_updated_*\` | when the row was created and last touched |
+
+---
+
 #### \`routine_steps.csv\`
 
 One row per routine, per day, per step. This is where "what order did I

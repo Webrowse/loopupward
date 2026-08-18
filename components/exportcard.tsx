@@ -27,6 +27,7 @@ const CONTENTS: { group: string; files: { name: string; what: string }[] }[] = [
       { name: "actions.csv", what: "every task, when it was planned for, and when it was actually done" },
       { name: "logs.csv", what: "every unit of progress, and how it got there" },
       { name: "focus_sessions.csv", what: "every timer attempt: planned versus actual, pauses, and how it ended" },
+      { name: "habit_days.csv", what: "what each habit meant on each day, and whether the day counted" },
       { name: "routine_steps.csv", what: "each routine step per day, with the time and order you really did them" },
       { name: "daily.csv", what: "one row per day, everything paired up and nothing interpreted" },
       { name: "events.ndjson", what: "the full behavioural log, one line per thing that happened" },
@@ -53,7 +54,7 @@ const CONTENTS: { group: string; files: { name: string; what: string }[] }[] = [
  * file with no account, no upload and no service in the middle.
  */
 export function ExportCard() {
-  const { db, mode, user, settings } = useLife();
+  const { db, mode, user, settings, flushStreams } = useLife();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [built, setBuilt] = useState<{ files: number; bytes: number } | null>(null);
@@ -83,9 +84,11 @@ export function ExportCard() {
     setBusy(true);
     setError(null);
     try {
+      // anything still buffered belongs in this bundle: finishing a routine and
+      // immediately exporting must not leave that routine out of the file
+      await flushStreams();
       const input = await collectBundleInput({
         mode,
-        db,
         settings,
         email: user?.email ?? null,
       });

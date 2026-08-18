@@ -34,8 +34,7 @@ export interface BundlePreview {
 /** Gather everything the generator needs, from whichever source applies. */
 export async function collectBundleInput(opts: {
   mode: "local" | "cloud";
-  /** the in-memory copy the app is already holding, used for local mode */
-  db: DB;
+  /** the device's own preferences, used when there is no server to ask */
   settings: UserSettings;
   email: string | null;
 }): Promise<BundleInput> {
@@ -57,8 +56,9 @@ export async function collectBundleInput(opts: {
     };
   }
   return {
-    // trashed items are included on purpose: an export is the whole record,
-    // not the filtered view the app puts on screen
+    // read from storage rather than from the provider's copy: the app filters
+    // trashed items out of what it renders, and an export is the whole
+    // record, not the view
     db: { ...structuredClone(EMPTY_DB), ...readLocalDB() },
     streams: { ...structuredClone(EMPTY_STREAMS), ...readLocalStreams() },
     settings: opts.settings,

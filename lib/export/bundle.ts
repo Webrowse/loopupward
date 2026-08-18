@@ -16,7 +16,7 @@
 
 import { isoWithOffset, localTime, weekdayName } from "../clock";
 import { daysBetween, toDay } from "../dates";
-import { formatEntryAmount, routineMinutes } from "../progress";
+import { dayLogged, formatEntryAmount, habitDailyTarget, routineMinutes } from "../progress";
 import { scoreIntentions } from "../review";
 import { computeStats, LifeStats } from "../stats";
 import { DB, Item, Streams, UserSettings } from "../types";
@@ -57,6 +57,7 @@ export function buildBundle(input: BundleInput): BundleFile[] {
     { name: "actions.csv", content: actionsCsv(input) },
     { name: "logs.csv", content: logsCsv(input) },
     { name: "focus_sessions.csv", content: focusSessionsCsv(input) },
+    { name: "habit_days.csv", content: habitDaysCsv(input) },
     { name: "routine_steps.csv", content: routineStepsCsv(input) },
     { name: "list_entries.csv", content: listEntriesCsv(input) },
     { name: "seeds.csv", content: seedsCsv(input) },
@@ -510,6 +511,39 @@ function focusSessionsCsv(input: BundleInput): string {
         s.pauseCount,
         s.plannedSeconds ? Math.round((s.actualSeconds / s.plannedSeconds) * 100) / 100 : "",
         s.tz, s.utcOffsetMinutes,
+      ];
+    });
+  return csvFile(header, rows);
+}
+
+/**
+ * What each habit or routine meant on one specific day.
+ *
+ * "Clean" is the habit; "clean the side desk" is what it meant on Tuesday, and
+ * that sentence is the human half of the record. It used to survive only in
+ * raw.json, because routine_steps.csv skips anything without a script — so a
+ * plain habit's day plans, which is most of them, reached no readable file at
+ * all.
+ */
+function habitDaysCsv(input: BundleInput): string {
+  const L = lookups(input.db);
+  const header = [
+    "item_id", "item_title", "kind", "area_name", "day", "weekday", "day_plan",
+    "logged", "value_logged", "daily_target", "steps_done", "steps_total",
+    ...timeHeaders("first_written"), ...timeHeaders("last_updated"),
+  ];
+  const rows: CsvValue[][] = [...input.db.habitDayNotes]
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+    .map((n) => {
+      const item = L.itemById.get(n.itemId) ?? null;
+      const target = item ? habitDailyTarget(item) : 1;
+      const value = dayLogged(input.db.logs, n.itemId, n.date);
+      return [
+        n.itemId, item?.title ?? "(deleted item)", item?.kind ?? "", L.areaName(item),
+        n.date, dayWeekday(n.date), n.text,
+        value >= target, value, target,
+        n.doneSteps?.length ?? "", item?.steps?.length ?? "",
+        ...timeColumns(n.createdAt), ...timeColumns(n.updatedAt),
       ];
     });
   return csvFile(header, rows);

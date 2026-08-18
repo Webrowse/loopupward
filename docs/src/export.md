@@ -141,6 +141,13 @@ you thought.
 A routine produces one `routine_run` row **plus** one `routine_step` row per
 step. Do not add both, or you double-count the time.
 
+### `habit_days.csv`
+
+What a habit or routine meant on one specific day. "Clean" is the habit;
+"clean the side desk" is what it meant on Tuesday. Carries `day_plan`,
+whether the day was `logged`, `value_logged` against `daily_target` (2 of 3
+glasses), and `steps_done` / `steps_total` for routines.
+
 ### `routine_steps.csv`
 
 One row per routine, per day, per step. `position` is where the step sits in

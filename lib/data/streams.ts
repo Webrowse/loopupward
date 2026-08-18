@@ -144,17 +144,24 @@ export class StreamWriter {
     this.timer = setTimeout(() => this.flush(), FLUSH_MS);
   }
 
-  /** Hand everything buffered to the sink. Fire-and-forget by design: the
-   *  caller is a click handler, and it has already returned. */
-  flush() {
+  /**
+   * Hand everything buffered to the sink.
+   *
+   * Fire-and-forget from a click handler's point of view — the caller has
+   * already returned — but the promise is handed back, because one caller
+   * does need to wait: an export taken moments after a routine has to include
+   * that routine. Without this the last few seconds of a session are still in
+   * memory when the bundle is built, and quietly missing from it.
+   */
+  flush(): Promise<void> {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
     const rows = this.buffer;
-    if (rows.events.length + rows.focusSessions.length === 0) return;
+    if (rows.events.length + rows.focusSessions.length === 0) return Promise.resolve();
     this.buffer = { focusSessions: [], events: [] };
-    this.sink.append(rows).catch((e) => {
+    return this.sink.append(rows).catch((e) => {
       // Never surfaced and never retried into a loop: the streams are how the
       // app watches itself, and self-observation does not get to interrupt
       // the thing being observed.

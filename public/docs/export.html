@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "searchindex-91a71b2a.js";
+            window.path_to_searchindex_js = "searchindex-369e6349.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-60f42c93.js"></script>
@@ -313,6 +313,11 @@ for something else).</p>
 you thought.</p>
 <p>A routine produces one <code>routine_run</code> row <strong>plus</strong> one <code>routine_step</code> row per
 step. Do not add both, or you double-count the time.</p>
+<h3 id="habit_dayscsv"><a class="header" href="#habit_dayscsv"><code>habit_days.csv</code></a></h3>
+<p>What a habit or routine meant on one specific day. “Clean” is the habit;
+“clean the side desk” is what it meant on Tuesday. Carries <code>day_plan</code>,
+whether the day was <code>logged</code>, <code>value_logged</code> against <code>daily_target</code> (2 of 3
+glasses), and <code>steps_done</code> / <code>steps_total</code> for routines.</p>
 <h3 id="routine_stepscsv"><a class="header" href="#routine_stepscsv"><code>routine_steps.csv</code></a></h3>
 <p>One row per routine, per day, per step. <code>position</code> is where the step sits in
 the written script; <code>tick_order</code> is the order you <em>actually</em> did them, which is

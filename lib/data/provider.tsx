@@ -76,6 +76,10 @@ interface LifeContextValue {
   emit: (type: EventType, opts?: EmitOptions) => void;
   /** Record one finished timer attempt — completed, abandoned or otherwise. */
   recordSession: (session: Omit<FocusSession, "id" | "createdAt" | "tz" | "utcOffsetMinutes">) => void;
+  /** Write out anything still buffered and wait for it to land. Only the
+   *  export needs this: a bundle built seconds after a routine must contain
+   *  that routine, not the state of the world four seconds ago. */
+  flushStreams: () => Promise<void>;
   /** Pull the freshest data from wherever it lives (cloud rows, or this
    *  device's store) without reloading the page — phone edits show up on
    *  the laptop. Also runs by itself when the tab regains focus. */
@@ -213,6 +217,8 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     };
     writerRef.current!.event(event);
   }, []);
+
+  const flushStreams = useCallback(() => writerRef.current!.flush(), []);
 
   const recordSession = useCallback(
     (session: Omit<FocusSession, "id" | "createdAt" | "tz" | "utcOffsetMinutes">) => {
@@ -1284,7 +1290,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     simple, setSimple,
     restSeconds, setRestSeconds,
     settings, updateSettings,
-    emit, recordSession,
+    emit, recordSession, flushStreams,
     refresh, syncing, holdSync,
     addSeed, updateSeed, setSeedStatus, deleteSeed, plantSeed, unplantSeed,
     saveJournal,
