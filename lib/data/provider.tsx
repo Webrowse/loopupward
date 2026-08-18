@@ -8,8 +8,8 @@ import {
 } from "../api";
 import {
   Action, Area, AppEvent, DB, EMPTY_DB, EMPTY_SETTINGS, EventType, FocusSession, HabitDayNote,
-  Item, JournalEntry, Label, LogSource, Reflection, Seed, SeedStatus, TableName,
-  UserSettings,
+  DEFAULT_DAY_ROLLOVER_HOUR, Item, JournalEntry, Label, LogSource, Reflection, Seed, SeedStatus,
+  TableName, UserSettings,
 } from "../types";
 import { uid } from "../uid";
 import { CloudRepo } from "./cloud";
@@ -194,6 +194,10 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     writerRef.current!.setSink(sinkFor(!!user));
   }, [user]);
+
+  /** The hour a day rolls over, from settings — the rule that decides which
+   *  day a wrapped routine's late-night tick belongs to. */
+  const rolloverHour = settings.dayRolloverHour ?? DEFAULT_DAY_ROLLOVER_HOUR;
 
   const emit = useCallback((type: EventType, opts: EmitOptions = {}) => {
     const st = stamp(opts.day);
@@ -1110,7 +1114,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       if (linkKind(item) === "day") {
         for (const routine of db.items) {
           if (routine.kind !== "routine" || !routine.steps?.length) continue;
-          if (routineLogDay(routine) !== day) continue;
+          if (routineLogDay(routine, new Date(), rolloverHour) !== day) continue;
           for (const step of routine.steps) {
             if (step.itemId === item.id) {
               setRoutineStepDone(routine, day, step.id, !currentlyDone, true);
@@ -1119,7 +1123,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  }, [db.logs, db.habitDayNotes, db.items, upsertRows, removeRows, setRoutineStepDone]);
+  }, [db.logs, db.habitDayNotes, db.items, upsertRows, removeRows, setRoutineStepDone, rolloverHour]);
 
   const toggleEntry = useCallback((entry: TodayEntry, forDay?: string, opts?: LogOrigin) => {
     const day = forDay ?? today();
@@ -1137,7 +1141,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       // and any routine step standing for this same target agrees
       for (const routine of db.items) {
         if (routine.kind !== "routine" || !routine.steps?.length) continue;
-        const rDay = routineLogDay(routine);
+        const rDay = routineLogDay(routine, new Date(), rolloverHour);
         for (const step of routine.steps) {
           if (step.itemId === entry.item.id) {
             setRoutineStepDone(routine, rDay, step.id, nowDone, true);
@@ -1195,7 +1199,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  }, [db.items, db.actions, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem, bumpParentMeter, setRoutineStepDone, emit]);
+  }, [db.items, db.actions, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem, bumpParentMeter, setRoutineStepDone, emit, rolloverHour]);
 
   const reorderDay = useCallback((day: string, orderedEntryIds: string[], via: "drag" | "sort" = "drag") => {
     const existing = db.dayOrder.find((d) => d.date === day);

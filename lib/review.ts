@@ -1,5 +1,5 @@
-import { DB, Item } from "./types";
-import { dayFromMs, Period, periodRange, previousAnchor } from "./dates";
+import { DB, Intention, Item, Reflection } from "./types";
+import { dayFromMs, Period, periodKey, periodRange, previousAnchor } from "./dates";
 import { areaOfItem, bestStreak, completionsInRange, habitDailyTarget, habitDays } from "./progress";
 
 export interface AreaScore {
@@ -33,6 +33,31 @@ export interface JournalStats {
   topWords: string[];
 }
 
+/**
+ * What became of a promise.
+ *
+ * A reflection can carry intentions for the next period, each optionally
+ * naming an item and a number. This scores them by counting and nothing else:
+ * did the named item move, by how much, and was that as much as was asked
+ * for. An intention that names nothing countable gets `met: null` — "we
+ * cannot say" is an honest answer and a far better one than a guess.
+ */
+export interface IntentionScore {
+  intention: Intention;
+  itemTitle: string | null;
+  /** units added to the item's tracker during this period */
+  movement: number;
+  /** days the item was logged during this period (habits and routines) */
+  daysLogged: number;
+  /** the item was finished during this period */
+  completed: boolean;
+  /** what the counting actually measured, for showing the working */
+  measure: "units" | "days" | "completion" | null;
+  /** the number the measure produced, against targetValue */
+  achieved: number | null;
+  met: boolean | null;
+}
+
 export interface ReviewData {
   period: Period;
   start: string;
@@ -54,6 +79,9 @@ export interface ReviewData {
     habitDays: Record<string, number>; // itemId -> days done
     trackerAdded: Record<string, number>; // itemId -> units added
   };
+  /** the promises the LAST period's reflection made about this one, scored
+   *  against what actually happened here */
+  promised: IntentionScore[];
 }
 
 const STOPWORDS = new Set(
@@ -90,6 +118,55 @@ function possibleDays(item: Item, start: string, end: string, todayStr: string):
   const effectiveStart = createdDay > start ? createdDay : start;
   if (effectiveStart > end) return 0;
   return daysInRangeUpTo(effectiveStart, end, todayStr);
+}
+
+/**
+ * Score one period's worth of activity against the intentions written at the
+ * end of the period before it. Exported on its own because the /reflect page
+ * shows the working, and the export's reflections.md repeats it verbatim.
+ */
+export function scoreIntentions(
+  db: DB,
+  intentions: Intention[],
+  start: string,
+  end: string
+): IntentionScore[] {
+  return intentions.map((intention) => {
+    const item = intention.itemId ? db.items.find((i) => i.id === intention.itemId) ?? null : null;
+    if (!item) {
+      // a promise in words alone. Nothing to count, so nothing is claimed.
+      return {
+        intention, itemTitle: null, movement: 0, daysLogged: 0, completed: false,
+        measure: null, achieved: null, met: null,
+      };
+    }
+    const movement = db.logs
+      .filter((l) => l.itemId === item.id && l.op === "add" && l.date >= start && l.date <= end)
+      .reduce((sum, l) => sum + l.value, 0);
+    const daysLogged = [...habitDays(db.logs, item.id, habitDailyTarget(item))]
+      .filter((d) => d >= start && d <= end).length;
+    const completedDay = item.completedAt ? dayFromMs(item.completedAt) : null;
+    const completed = !!completedDay && completedDay >= start && completedDay <= end;
+
+    // which number answers the promise depends on what kind of thing it is:
+    // a habit is measured in days, a meter in units, a one-off in done or not
+    const measure: IntentionScore["measure"] =
+      item.kind === "habit" || item.kind === "routine" || item.tracker === "habit"
+        ? "days"
+        : item.tracker === "counter" || item.tracker === "book" || item.tracker === "money" || item.tracker === "percent"
+          ? "units"
+          : "completion";
+    const achieved = measure === "days" ? daysLogged : measure === "units" ? movement : completed ? 1 : 0;
+    const target = intention.targetValue;
+    const met =
+      measure === "completion" && target == null
+        ? completed
+        : target != null
+          ? achieved >= target
+          : achieved > 0;
+
+    return { intention, itemTitle: item.title, movement, daysLogged, completed, measure, achieved, met };
+  });
 }
 
 export function computeReview(db: DB, period: Period, anchor: string, todayStr: string): ReviewData {
@@ -208,6 +285,13 @@ export function computeReview(db: DB, period: Period, anchor: string, todayStr: 
   const prevPlanned = prevC.planned.length + prevHabitPossible;
   const prevCompleted = prevC.planned.filter((a) => a.done).length + prevHabitDone;
 
+  /* what the last reflection promised about this period, measured by counting */
+  const prevKey = periodKey(period, previousAnchor(period, anchor));
+  const prevReflection: Reflection | undefined = db.reflections.find(
+    (r) => r.period === period && r.periodKey === prevKey
+  );
+  const promised = scoreIntentions(db, prevReflection?.intentions ?? [], start, end);
+
   return {
     period, start, end, planned, completed, consistency,
     areaScores,
@@ -224,5 +308,6 @@ export function computeReview(db: DB, period: Period, anchor: string, todayStr: 
       habitDays: prevHabitDays,
       trackerAdded: prevTrackerAdded,
     },
+    promised,
   };
 }
