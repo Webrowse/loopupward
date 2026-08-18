@@ -16,6 +16,7 @@ const CONTENTS: { group: string; files: { name: string; what: string }[] }[] = [
     group: "To read first",
     files: [
       { name: "README.md", what: "what every file and every column means, written for someone who has never seen this app" },
+      { name: "manifest.json", what: "what the record can and cannot know: when each kind of record starts, and which timestamps are exact" },
       { name: "context.md", what: "what you said you're becoming, your targets, and what each area of your life is for" },
       { name: "summary.md", what: "the computed numbers, formatted to read" },
     ],
@@ -29,6 +30,7 @@ const CONTENTS: { group: string; files: { name: string; what: string }[] }[] = [
       { name: "focus_sessions.csv", what: "every timer attempt: planned versus actual, pauses, and how it ended" },
       { name: "habit_days.csv", what: "what each habit meant on each day, and whether the day counted" },
       { name: "routine_steps.csv", what: "each routine step per day, with the time and order you really did them" },
+      { name: "schedule_expectations.csv", what: "what was supposed to happen each day, next to what did — so a missed day is a row, not an absence" },
       { name: "daily.csv", what: "one row per day, everything paired up and nothing interpreted" },
       { name: "events.ndjson", what: "the full behavioural log, one line per thing that happened" },
       { name: "areas.csv, labels.csv, seeds.csv, list_entries.csv, day_order.csv", what: "the rest, in full" },
@@ -37,9 +39,10 @@ const CONTENTS: { group: string; files: { name: string; what: string }[] }[] = [
   {
     group: "Your words",
     files: [
-      { name: "journal.md", what: "every daily entry, in order" },
+      { name: "journal.md", what: "every daily entry, in order, including when it was written" },
       { name: "reflections.md", what: "every period reflection, and whether its intentions were met" },
       { name: "notes.md", what: "your notes, as markdown" },
+      { name: "journal.csv, reflections.csv, notes.csv", what: "the same entries with their ids and timestamps, for joining" },
       { name: "raw.json", what: "every table exactly as stored, in case a CSV lost some nuance" },
     ],
   },
@@ -174,6 +177,9 @@ export function ExportCard() {
         These files are yours to keep, read, or feed to whatever you like. LoopUpward has no
         AI in it and never talks to one: what it does instead is record honestly, so that when
         you do want to ask something of your own life, you have the material to ask with.
+        Where the record cannot know something — what a habit asked for before you changed
+        it, what a routine&rsquo;s steps were last spring — it says so and leaves the answer
+        blank, rather than filling it in with today&rsquo;s.
       </p>
     </Card>
   );

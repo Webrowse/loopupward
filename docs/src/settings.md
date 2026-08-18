@@ -28,9 +28,11 @@ Light/dark theme, and a choice of display fonts for headings and quotes.
 
 Deleted items rest in Trash, restorable for **7 days** (free) or **30 days** (Premium), then they're gone for good. Deleting a parent never deletes its children — they step up a level.
 
+A restore brings back the whole thing: the item's tasks and its entire progress history come with it, not just the name. They stay out of sight while it sits in Trash, and are destroyed only when it is finally purged.
+
 ## Export
 
-*Download everything* gives you a zip: a folder of plain files holding everything the app knows about you — your items, tasks, progress, focus sessions, journal, reflections and the full record of how you actually used the app, plus a README that explains every file and column.
+*Download everything* gives you a zip: a folder of plain files holding everything the app knows about you — your items, tasks, progress, focus sessions, journal, reflections and the full record of how you actually used the app, plus a README that explains every file and column, and a `manifest.json` that says where the record's own knowledge starts and stops.
 
 It is built in your browser and **never sent anywhere**. Read it yourself, open it in a spreadsheet, or hand it to whatever tool you like. Signed in or not, the bundle is identical.
 

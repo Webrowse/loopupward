@@ -41,11 +41,37 @@ Each moment appears three ways, so you never do timezone arithmetic:
 | `*_local_time` | `06:12` | the wall clock you saw |
 | `*_weekday` | `Tuesday` | the weekday it fell on |
 
-The offset is per row, not per file, so a year spanning travel and DST stays
-readable. Durations are always **minutes**, one decimal, everywhere.
+Durations are always **minutes**, one decimal, everywhere.
 
 **Empty means "not recorded", never zero.** A blank `mood` is a day you did not
 rate. Nothing in the bundle is backfilled with a guess.
+
+### 3. Which zone a timestamp was rendered in
+
+`focus_sessions.csv` and `events.ndjson` recorded the UTC offset in force at the
+moment, so they are exact — travel and daylight saving included. Every other
+file is rendered in **your own timezone** from Settings, which is right except
+during a trip. `manifest.json` lists which files got which, under `timezone`.
+
+### 4. What the record cannot know
+
+The behavioural event log and the focus-session log started later than the rest
+of the app. `manifest.json` gives the exact date under `observation_begins`, and
+the bundle's own README repeats it.
+
+Before that date:
+
+- Zeros in `daily.csv` for `app_opens`, `events` and `focus_sessions` mean
+  **not observed**, not "did nothing".
+- What a habit's target was, what schedule it was on, and which steps a routine
+  held cannot be reconstructed — so the files that need those say `unknown` in a
+  `*_source` column and leave the verdict blank.
+
+**A blank verdict is deliberate.** Raising a water habit from two glasses to
+three must not turn every past two-glass day into a failure, and a routine step
+added last week must not appear as six months of skipping. Where the export
+cannot establish what was being asked for at the time, it says so instead of
+using today's answer.
 
 ## The files
 
@@ -54,8 +80,34 @@ rate. Nothing in the bundle is backfilled with a guess.
 | File | What it is |
 | --- | --- |
 | `README.md` | this reference, written for someone who has never seen the app |
+| `manifest.json` | coverage windows, timezone grades, and the vocabulary of every coded column — what the record can and cannot know |
 | `context.md` | who you said you are, what you're becoming, your targets, and what each area is for |
 | `summary.md` | the computed numbers, formatted to read |
+
+### The three kinds of file
+
+- **Record** — what happened, at the time it happened: `logs.csv`,
+  `actions.csv`, `focus_sessions.csv`, `events.ndjson`, `habit_days.csv`,
+  `routine_steps.csv`, `seeds.csv`, `list_entries.csv`, `day_order.csv`, and the
+  journal / reflection / note files.
+- **State as of export** — how things look *today*: `items.csv`, `areas.csv`,
+  `labels.csv`, `context.md`. A goal reading "done" here says nothing about the
+  journey; that is in the Record files.
+- **Derived** — plain counting over the Record, and recomputable:
+  `schedule_expectations.csv`, `daily.csv`, `summary.md`.
+
+### `schedule_expectations.csv` — what was *supposed* to happen
+
+Everything else records what you did, and **a missed day is not a row anywhere —
+it is the absence of one**. This file supplies the other half: one row per
+scheduled item per day it was alive, saying whether that day was `required`
+(a fixed schedule named it), `not_due`, `eligible` (a quota schedule like
+"4× a week", where the period is owed rather than the day), or `unknown`.
+
+Adherence becomes a join rather than a reconstruction: filter
+`expectation = required` and take the share with `met = true`. Retiring a habit
+ends its expectations that day, so the months after you deliberately stopped are
+not counted against you.
 
 ### `areas.csv`
 
