@@ -8,6 +8,7 @@ mod limits;
 mod ratelimit;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::http::{header, HeaderValue, Method};
 use axum::middleware;
@@ -41,11 +42,45 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Config::from_env()?;
+
+    // Serving pool, pointed at Neon's POOLED endpoint. Ten per instance is
+    // cheap against a pooler that accepts 10k clients, so several Cloud Run
+    // instances can each hold one without approaching the limit.
+    //
+    // idle_timeout sits below Neon's five-minute scale-to-zero window on
+    // purpose: let sqlx retire an idle connection itself, rather than have the
+    // compute suspend and hand a request a socket that is already dead.
+    // acquire_timeout has to absorb a cold wake, which is the normal case here
+    // — this database is asleep more often than it is awake.
     let pool = PgPoolOptions::new()
-        .max_connections(10)
+        // Above the ten concurrent reads a single /v1/data now issues, so one
+        // page load cannot take the whole pool and stall a request beside it.
+        .max_connections(20)
+        .min_connections(0)
+        .idle_timeout(Duration::from_secs(180))
+        .max_lifetime(Duration::from_secs(1800))
+        .acquire_timeout(Duration::from_secs(30))
         .connect(&config.database_url)
         .await?;
-    sqlx::migrate!("./migrations").run(&pool).await?;
+
+    // Migrations deliberately do NOT go through the pooler. sqlx guards them
+    // with a session-level advisory lock, which PgBouncer's transaction
+    // pooling does not support: lock and unlock can land on different
+    // backends, so the lock guards nothing, and an unlock that misses strands
+    // it — after which every future cold start blocks on boot. Use the direct
+    // endpoint when one is configured, on a pool that closes straight after.
+    match config.migration_database_url.as_deref() {
+        Some(url) => {
+            let migrator = PgPoolOptions::new()
+                .max_connections(1)
+                .acquire_timeout(Duration::from_secs(30))
+                .connect(url)
+                .await?;
+            sqlx::migrate!("./migrations").run(&migrator).await?;
+            migrator.close().await;
+        }
+        None => sqlx::migrate!("./migrations").run(&pool).await?,
+    }
     tracing::info!("migrations applied");
 
     let origins: Vec<HeaderValue> = config

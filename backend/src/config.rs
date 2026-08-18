@@ -3,6 +3,12 @@ use std::env;
 #[derive(Clone)]
 pub struct Config {
     pub database_url: String,
+    /// Migrations run over this instead of `database_url` when set. Neon's
+    /// pooled endpoint is PgBouncer in transaction mode, which does not
+    /// support the session-level advisory lock sqlx guards migrations with —
+    /// point this at the DIRECT endpoint. Unset locally and in CI, where
+    /// `database_url` is already a direct connection.
+    pub migration_database_url: Option<String>,
     pub port: u16,
     pub google_client_id: String,
     pub owner_email: String,
@@ -30,6 +36,7 @@ impl Config {
         Ok(Self {
             database_url: env::var("DATABASE_URL")
                 .map_err(|_| anyhow::anyhow!("DATABASE_URL is required"))?,
+            migration_database_url: opt("MIGRATION_DATABASE_URL"),
             port: opt("PORT").and_then(|p| p.parse().ok()).unwrap_or(8080),
             google_client_id: opt("GOOGLE_CLIENT_ID").unwrap_or_default(),
             owner_email: opt("OWNER_EMAIL").unwrap_or_default(),
