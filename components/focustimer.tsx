@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLife } from "@/lib/data/provider";
 import { formatValue, linkKind, routineDoneSteps, routineMinutes, todayEntries, TodayEntry } from "@/lib/progress";
 import { Item, RoutineStep } from "@/lib/types";
+import { useAttempt } from "@/lib/focusrecord";
 import { Button, Chip, Field, Sheet, inputCls } from "@/components/ui";
 
 const PRESETS = [5, 10, 15, 25, 45];
@@ -247,7 +248,10 @@ export function FocusTimer({
   onToggle: (entry: TodayEntry) => void;
   onClose: () => void;
 }) {
-  const { restSeconds, holdSync } = useLife();
+  const { restSeconds, holdSync, recordSession } = useLife();
+  // every focus block gets a row when it ends, however it ends — see
+  // lib/focusrecord.ts
+  const attempt = useAttempt(recordSession);
   const [activeId, setActiveId] = useState<string | null>(initialEntryId);
   const [minutes, setMinutes] = useState(25);
   const [running, setRunning] = useState(false);
@@ -354,28 +358,59 @@ export function FocusTimer({
   // belongs to whatever the user is actually working in
   useEffect(() => {
     if (!open || minimized) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // leaving by Escape is an outcome like any other: a countdown that
+    // already ran out and was then left is "expired", not "abandoned"
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      attempt.end(finished ? "expired" : "abandoned");
+      onClose();
+    };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [open, minimized, onClose]);
+  }, [open, minimized, onClose, attempt, finished]);
 
-  if (!open) return null;
-
-  const expand = () => onRestore?.();
-
-  const beginTimer = () => {
+  /** Put the countdown on the clock and open the record of it.
+   *
+   *  A useCallback above the early return rather than a plain closure below
+   *  it: this is the one handler that both reads the wall clock and opens an
+   *  attempt, and defined inline it reads to the compiler as render-phase
+   *  work. */
+  const beginTimer = useCallback(() => {
+    if (!current) return;
     beepedRef.current = false;
-    setEndAt(Date.now() + minutes * 60_000);
+    // one clock read, so the attempt's start and the countdown's deadline
+    // agree to the millisecond
+    const startedAt = Date.now();
+    attempt.begin({
+      kind: "focus",
+      itemId: current.item?.id ?? null,
+      entryId: current.action.id,
+      day: current.action.date,
+      plannedSeconds: minutes * 60,
+    });
+    setEndAt(startedAt + minutes * 60_000);
     setRemaining(minutes * 60);
     setFinished(false);
     setOvertime(0);
     setPausedAt(null);
     setResting(false);
     setRunning(true);
+  }, [attempt, current, minutes]);
+
+  if (!open) return null;
+
+  const expand = () => onRestore?.();
+
+  /** Walking away from a running block. A countdown that already ran out and
+   *  was then left is "expired", not "abandoned" — the work may well have
+   *  been done; what ended was the watching. */
+  const leave = () => {
+    attempt.end(finished ? "expired" : "abandoned");
+    onClose();
   };
 
   // the first task of a session starts straight away; a task picked after
@@ -395,13 +430,18 @@ export function FocusTimer({
       if (left > 0) setRemaining(left);
       else { setRemaining(0); setOvertime(-left); }
       setPausedAt(now);
+      attempt.pause();
     } else {
       setEndAt(endAt + (Date.now() - pausedAt));
       setPausedAt(null);
+      attempt.resume();
     }
   };
 
   const pickNext = (entry: TodayEntry) => {
+    // swapped away from rather than finished: still a real attempt, and the
+    // difference between the two is the whole point of recording outcomes
+    attempt.end("interrupted");
     setActiveId(entry.action.id);
     setMinutes(suggestedFor(entry.action.id));
     setPickingNext(false);
@@ -505,6 +545,7 @@ export function FocusTimer({
 
   const check = () => {
     const completing = !current.action.done;
+    attempt.end(completing ? "completed" : "abandoned");
     onToggle(current);
     if (completing) {
       setCompletedOne(true); // the next task this session earns a breather first
@@ -554,6 +595,8 @@ export function FocusTimer({
       <RestBreak
         nextTitle={title}
         seconds={restSeconds}
+        day={current.action.date}
+        entryId={current.action.id}
         minimized={minimized}
         onMinimize={onMinimize}
         onRestore={onRestore}
@@ -721,7 +764,7 @@ export function FocusTimer({
         >
           {paused ? "▶ Resume" : "⏸ Pause"}
         </button>
-        <button onClick={onClose} className="pressable text-sm text-ink-3 hover:text-ink px-4 py-2">
+        <button onClick={leave} className="pressable text-sm text-ink-3 hover:text-ink px-4 py-2">
           Cancel
         </button>
       </div>
@@ -785,6 +828,9 @@ function RoutineRun({
     <StepRun
       title={item.title}
       steps={item.steps ?? []}
+      day={day}
+      runKind="routine_run"
+      runItemId={item.id}
       doneIds={routineDoneSteps(db, item.id, day)}
       onStepDone={(stepId, done) => setRoutineStepDone(item, day, stepId, done)}
       minimized={minimized}
@@ -835,6 +881,11 @@ function DayRun({
     <StepRun
       title="Today"
       steps={steps}
+      day={day}
+      runKind="day_run"
+      // a day run's steps are the day's own rows, so each one records against
+      // the row it stands for rather than against a script
+      entryIdOf={(entryId) => ({ entryId, itemId: byId.get(entryId)?.item?.id ?? null })}
       doneIds={doneIds}
       untimedAsks={false}
       finishedWords={{
@@ -845,7 +896,9 @@ function DayRun({
       onStepDone={(entryId, done) => {
         const entry = byId.get(entryId);
         // toggleEntry flips, so only call it when the row disagrees with the tick
-        if (entry && entry.action.done !== done) toggleEntry(entry, day);
+        if (entry && entry.action.done !== done) {
+          toggleEntry(entry, day, { source: "focus_timer", via: "day_run_step" });
+        }
       }}
       minimized={minimized}
       onMinimize={onMinimize}
@@ -898,27 +951,42 @@ export function DayRunHost({
  * ever renders when that's above zero.
  */
 function RestBreak({
-  nextTitle, seconds, minimized = false, onMinimize, onRestore, onDone, onClose,
+  nextTitle, seconds, day, entryId = "", minimized = false, onMinimize, onRestore, onDone, onClose,
 }: {
   nextTitle?: string;
   seconds: number;
+  /** the day the run belongs to, so a breather lands on the same day its
+   *  steps do — including a night routine's 1am steps, which are yesterday's */
+  day: string;
+  entryId?: string;
   minimized?: boolean;
   onMinimize?: () => void;
   onRestore?: () => void;
   onDone: () => void;
   onClose: () => void;
 }) {
+  const { recordSession } = useLife();
+  const attempt = useAttempt(recordSession);
   const [endAt] = useState(() => Date.now() + Math.max(1, seconds) * 1000);
   const [remaining, setRemaining] = useState(Math.max(1, seconds));
   const doneRef = useRef(false);
-  const finish = () => {
+  // a breather is a session like any other: how much rest was actually taken
+  // versus how much was asked for is a real question about a day
+  useEffect(() => {
+    attempt.begin({
+      kind: "rest", itemId: null, entryId, day, plannedSeconds: Math.max(1, seconds),
+    });
+    // begun once, for this breather; ended by whichever exit is taken
+  }, [attempt, day, entryId, seconds]);
+  const finish = (outcome: "completed" | "skipped" = "completed") => {
     if (doneRef.current) return;
     doneRef.current = true;
+    attempt.end(outcome);
     onDone();
   };
   useWallClock(true, () => {
     const left = Math.ceil((endAt - Date.now()) / 1000);
-    if (left <= 0) { setRemaining(0); finish(); }
+    if (left <= 0) { setRemaining(0); finish("completed"); }
     else setRemaining(left);
   });
   useEffect(() => {
@@ -944,7 +1012,7 @@ function RestBreak({
         context="Breather — next up"
         clock={`${pad(mm)}:${pad(ss)}`}
         fraction={seconds > 0 ? remaining / Math.max(1, seconds) : undefined}
-        onDone={finish}
+        onDone={() => finish("skipped")}
         doneLabel="Start now"
         onExpand={() => onRestore?.()}
       />
@@ -965,7 +1033,7 @@ function RestBreak({
         {mm}:{pad(ss)}
       </div>
       <div className="flex items-center gap-6">
-        <Button onClick={finish}>Start now</Button>
+        <Button onClick={() => finish("skipped")}>Start now</Button>
         <button onClick={onClose} className="pressable px-4 py-2 text-sm text-ink-3 hover:text-ink">
           Leave
         </button>
@@ -997,7 +1065,9 @@ function StepMeter({ item }: { item: Item }) {
   const dirty = draft !== null && draft !== item.current;
 
   const commit = () => {
-    if (draft !== null && draft !== item.current) setTracker(item, draft);
+    if (draft !== null && draft !== item.current) {
+      setTracker(item, draft, { source: "focus_timer", via: "step_meter" });
+    }
     setDraft(null);
   };
 
@@ -1081,11 +1151,23 @@ const ASK_PRESETS = [5, 10, 15, 20, 30];
  */
 function StepRun({
   title, steps, doneIds, onStepDone, untimedAsks = true, finishedWords,
+  day, runKind, runItemId = null, entryIdOf,
   minimized = false, onMinimize, onRestore, onFinished, onClose,
 }: {
   /** what is being walked — a routine's name, or the day itself */
   title: string;
   steps: RoutineStep[];
+  /** the day every session written from this run belongs to. For a routine
+   *  whose window wraps past midnight that is the evening it started, not the
+   *  calendar day — see routineLogDay. */
+  day: string;
+  /** the run as a whole: a routine's script, or a chosen stretch of a day */
+  runKind: "routine_run" | "day_run";
+  /** the routine itself, when the run is a routine */
+  runItemId?: string | null;
+  /** the Today row a given step stands for, when it stands for one. A day
+   *  run's steps ARE rows; a routine's steps are not. */
+  entryIdOf?: (stepId: string) => { entryId: string; itemId: string | null };
   /** steps already ticked, so a half-finished run picks up where it stopped */
   doneIds: Set<string>;
   onStepDone: (stepId: string, done: boolean) => void;
@@ -1103,7 +1185,11 @@ function StepRun({
   onFinished: () => void;
   onClose: () => void;
 }) {
-  const { db, restSeconds } = useLife();
+  const { db, restSeconds, recordSession, emit } = useLife();
+  // one row per step plus one for the run itself, all buffered and sent as a
+  // single batch — a ten-step routine is one request, not eleven
+  const stepAttempt = useAttempt(recordSession);
+  const runAttempt = useAttempt(recordSession);
 
   // what's left to do this run — or the whole script again, when the day
   // was already finished and this is a deliberate second lap
@@ -1113,6 +1199,10 @@ function StepRun({
   });
   const stepId = queue[0] ?? null;
   const step = steps.find((s) => s.id === stepId) ?? null;
+  const queueRef = useRef(queue);
+  useEffect(() => {
+    queueRef.current = queue;
+  });
 
   const [phase, setPhase] = useState<"ask" | "timed" | "open">(() =>
     step == null || step.minutes == null ? (untimedAsks && step ? "ask" : "open") : "timed"
@@ -1146,12 +1236,64 @@ function StepRun({
   // does not claim every step was walked when one was waved past
   const [leftSomeOut, setLeftSomeOut] = useState(false);
 
+  /** The run itself, from first step to last. Its planned length is the sum
+   *  of what the script claims; its actual length is what the clock says —
+   *  and the ratio of those two is the most interesting number the export
+   *  carries. */
+  useEffect(() => {
+    const plannedMinutes = steps.reduce((sum, st) => sum + (st.minutes ?? 0), 0);
+    runAttempt.begin({
+      kind: runKind,
+      itemId: runItemId,
+      entryId: runItemId ?? "",
+      day,
+      plannedSeconds: plannedMinutes > 0 ? Math.round(plannedMinutes * 60) : null,
+    });
+    if (runKind === "day_run") {
+      emit("day_run.started", { day, payload: { plannedStepIds: steps.map((st) => st.id), stepCount: steps.length } });
+    }
+    // opened once for this run; every exit below closes it
+  }, [runAttempt, runKind, runItemId, day, steps, emit]);
+
+  /** How many of the planned steps were actually walked, for the closing
+   *  event of a run that ended early. */
+  const walkedCount = () => steps.filter((st) => doneIds.has(st.id)).length;
+
+  /** Start recording the step now on screen. Every route into a step —
+   *  next in line, skipped to the back, pulled forward from the panel — goes
+   *  through `enter`, so this is the one place a step attempt begins. */
+  const beginStepAttempt = (st: RoutineStep, previous: "interrupted" | "skipped" = "interrupted") => {
+    const link = entryIdOf?.(st.id);
+    stepAttempt.begin(
+      {
+        // a day run's "steps" are Today rows being focused on one at a time,
+        // which is a focus block; a routine's steps are steps
+        kind: runKind === "day_run" ? "focus" : "routine_step",
+        itemId: link?.itemId ?? st.itemId ?? runItemId,
+        entryId: link?.entryId ?? "",
+        day,
+        stepId: st.id,
+        plannedSeconds: st.minutes != null ? Math.round(st.minutes * 60) : null,
+      },
+      previous
+    );
+  };
+
+  // the first step of a run arrives through the initial queue state rather
+  // than through enter(), so it opens its own attempt here
+  useEffect(() => {
+    const first = steps.find((st) => st.id === queueRef.current[0]);
+    if (first) beginStepAttempt(first);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** Put a step on screen with a clean clock. Takes an id so every route into
    *  it — next in line, skipped to the back, pulled forward from the panel —
    *  is the same one call; an id that no longer exists is simply nothing. */
-  const enter = (stepId: string | undefined) => {
+  const enter = (stepId: string | undefined, previous: "interrupted" | "skipped" = "interrupted") => {
     const s = stepId ? steps.find((x) => x.id === stepId) : undefined;
     if (!s) return;
+    beginStepAttempt(s, previous);
     setJustChecked(false);
     setFinished(false);
     setOvertime(0);
@@ -1212,30 +1354,61 @@ function StepRun({
         setElapsed(Math.max(0, Math.round((now - startedAt) / 1000)));
       }
       setPausedAt(now);
+      stepAttempt.pause();
     } else {
       const delta = Date.now() - pausedAt;
       if (endAtRef.current != null) endAtRef.current += delta;
       if (startedAtRef.current != null) startedAtRef.current += delta;
       setPausedAt(null);
+      stepAttempt.resume();
     }
   };
 
   // The runner stays mounted while minimized so the clock and the queue keep
   // going, but it no longer owns the screen: the page underneath has to
   // scroll, and Escape belongs to whatever the user is actually working in.
+  /** Walking out mid-run. The step on screen and the run itself are both
+   *  abandoned, and a day run says how far it got before it stopped — which
+   *  is the number worth having about a plan that did not finish. */
+  const leaveRun = () => {
+    stepAttempt.end("abandoned");
+    runAttempt.end("abandoned");
+    if (runKind === "day_run") {
+      emit("day_run.abandoned", {
+        day,
+        payload: { stepCount: steps.length, completedBefore: walkedCount() },
+      });
+    }
+    onClose();
+  };
+  const leaveRunRef = useRef(leaveRun);
+  useEffect(() => {
+    leaveRunRef.current = leaveRun;
+  });
+
+  /** The run reached its end. */
+  const finishRun = () => {
+    runAttempt.end("completed");
+    if (runKind === "day_run") {
+      emit("day_run.finished", { day, payload: { stepCount: steps.length, completed: walkedCount() } });
+    }
+    onFinished();
+  };
+
   useEffect(() => {
     if (minimized) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && leaveRunRef.current();
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [minimized, onClose]);
+  }, [minimized]);
 
   const doneStep = () => {
     if (!step || justChecked) return;
+    stepAttempt.end("completed");
     onStepDone(step.id, true);
     setJustChecked(true);
     const rest = queue.slice(1);
@@ -1245,7 +1418,7 @@ function StepRun({
         // the end of a routine deserves the full screen back
         onRestore?.();
         setCelebrating(true);
-        setTimeout(onFinished, 1400);
+        setTimeout(finishRun, 1400);
       } else if (restSeconds > 0) {
         setPendingQueue(rest); // a breather, then the next step
       } else {
@@ -1266,9 +1439,17 @@ function StepRun({
 
   const skipStep = () => {
     if (queue.length < 2 || justChecked) return;
+    const current = step;
     const rest = [...queue.slice(1), queue[0]];
     setQueue(rest);
-    enter(rest[0]);
+    enter(rest[0], "skipped");
+    if (current) {
+      emit("routine.step_skipped", {
+        itemId: runItemId,
+        day,
+        payload: { stepId: current.id, stepTitle: current.title, optional: !!current.optional, sentToBack: true },
+      });
+    }
   };
 
   /** Leave an optional step out of this run for good. "Skip for now" sends a
@@ -1278,15 +1459,24 @@ function StepRun({
   const dropStep = () => {
     if (justChecked) return;
     setLeftSomeOut(true);
+    const current = step;
+    if (current) {
+      emit("routine.step_skipped", {
+        itemId: runItemId,
+        day,
+        payload: { stepId: current.id, stepTitle: current.title, optional: !!current.optional, sentToBack: false },
+      });
+    }
     const rest = queue.slice(1);
     if (rest.length === 0) {
+      stepAttempt.end("skipped");
       onRestore?.();
       setCelebrating(true);
-      setTimeout(onFinished, 1400);
+      setTimeout(finishRun, 1400);
       return;
     }
     setQueue(rest);
-    enter(rest[0]);
+    enter(rest[0], "skipped");
   };
 
   /* ——— rearranging what's left, mid-run ——— */
@@ -1299,6 +1489,11 @@ function StepRun({
     if (stepId === queue[0]) return;
     setQueue([stepId, ...queue.filter((id) => id !== stepId)]);
     enter(stepId);
+    emit("routine.reordered", {
+      itemId: runItemId,
+      day,
+      payload: { pulledForward: stepId, from: queue.indexOf(stepId), remaining: queue.length },
+    });
   };
 
   /** Tick a step off from the panel — done earlier, or done alongside
@@ -1307,17 +1502,19 @@ function StepRun({
   const tickFromPanel = (stepId: string) => {
     if (justChecked) return;
     onStepDone(stepId, true);
+    const wasOnScreen = stepId === queue[0];
+    if (wasOnScreen) stepAttempt.end("completed");
     const rest = queue.filter((id) => id !== stepId);
     if (rest.length === 0) {
       setArranging(false);
       onRestore?.();
       setCelebrating(true);
-      setTimeout(onFinished, 1400);
+      setTimeout(finishRun, 1400);
       return;
     }
     setQueue(rest);
     // it was the one on screen — move on exactly as its own check would
-    if (stepId === queue[0]) enter(rest[0]);
+    if (wasOnScreen) enter(rest[0]);
   };
 
   /** Un-tick something finished earlier — it goes back to the end of the
@@ -1351,6 +1548,7 @@ function StepRun({
       <RestBreak
         nextTitle={nextStep?.title}
         seconds={restSeconds}
+        day={day}
         minimized={minimized}
         onMinimize={onMinimize}
         onRestore={onRestore}
@@ -1539,6 +1737,7 @@ function StepRun({
           <div className="mt-3 flex items-center justify-between gap-2">
             <button
               onClick={() => {
+                stepAttempt.setPlanned(null);
                 startedAtRef.current = null;
                 setElapsed(0);
                 setPhase("open");
@@ -1551,6 +1750,7 @@ function StepRun({
               small
               onClick={() => {
                 const m = Math.max(1, Math.min(480, Math.round(parseFloat(askVal) || 0)));
+                stepAttempt.setPlanned(m * 60);
                 beepedRef.current = false;
                 setTotal(m * 60);
                 setRemaining(m * 60);
@@ -1659,7 +1859,7 @@ function StepRun({
             Rearrange ⇅
           </button>
         )}
-        <button onClick={onClose} className="pressable text-sm text-ink-3 hover:text-ink px-3 py-2">
+        <button onClick={leaveRun} className="pressable text-sm text-ink-3 hover:text-ink px-3 py-2">
           Leave it here
         </button>
       </div>

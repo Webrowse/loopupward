@@ -77,6 +77,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/data/{table}", delete(data::remove))
         .route("/v1/import", post(data::import))
         .route("/v1/export", get(data::export))
+        .route("/v1/settings", get(data::get_settings))
+        .route("/v1/settings", put(data::put_settings))
         .route("/v1/billing/subscribe", post(billing::subscribe))
         .route("/v1/billing/confirm", post(billing::confirm))
         .route("/v1/billing/webhook", post(billing::webhook))

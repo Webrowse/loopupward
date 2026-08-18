@@ -12,8 +12,10 @@ interface FocusSessionValue {
    *  into its step runner instead of the setup sheet. Asking for the row
    *  that's already running just brings it back to full screen. */
   openFocus: (entryId: string, opts?: { day?: string; autoRun?: boolean }) => void;
-  /** Walk a chosen set of today's rows one at a time. The plan is disposable:
-   *  it lives here until the run ends and is never written anywhere. */
+  /** Walk a chosen set of today's rows one at a time. The plan itself is
+   *  disposable — it lives here until the run ends — but the run is not:
+   *  starting one emits day_run.started with the rows it planned, and every
+   *  step of it is written as a focus session. */
   openDayRun: (day: string, plan: DayRunStep[]) => void;
   /** the row the timer holds right now, minimized or not — null when idle */
   focusingId: string | null;
@@ -95,7 +97,7 @@ export function FocusSessionHost({ children }: { children: ReactNode }) {
         minimized={minimized}
         onMinimize={() => setMinimized(true)}
         onRestore={() => setMinimized(false)}
-        onToggle={(entry) => toggleEntry(entry, day ?? today())}
+        onToggle={(entry) => toggleEntry(entry, day ?? today(), { source: "focus_timer", via: "focus_check" })}
         onClose={() => {
           setSession(null);
           setMinimized(false);

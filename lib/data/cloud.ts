@@ -2,7 +2,7 @@
 
 import { api } from "../api";
 import { SERVER_CAPS } from "../limits";
-import { DB, EMPTY_DB, Seed, TableName } from "../types";
+import { DB, EMPTY_DB, EMPTY_STREAMS, Seed, Streams, TableName } from "../types";
 import { uid } from "../uid";
 import { Repo } from "./repo";
 
@@ -24,9 +24,14 @@ export class CloudRepo implements Repo {
     await api(`/v1/data/${table}`, { method: "DELETE", body: { ids } });
   }
 
-  /** Push an entire on-device DB into the cloud (first sign-in migration). */
-  async importAll(db: DB): Promise<void> {
-    await api("/v1/import", { method: "POST", body: fitToServerCaps(db) });
+  /** Push an entire on-device life into the cloud (first sign-in migration):
+   *  the tables, and the two append-only capture streams that describe how
+   *  they were actually used. */
+  async importAll(db: DB, streams: Streams = EMPTY_STREAMS): Promise<void> {
+    await api("/v1/import", {
+      method: "POST",
+      body: { ...fitToServerCaps(db), ...streams },
+    });
   }
 }
 

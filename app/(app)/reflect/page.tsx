@@ -268,7 +268,7 @@ function Reflect() {
               defaultValue={reflection?.text ?? ""}
               onBlur={(e) => {
                 const v = e.target.value.trim();
-                if (v !== (reflection?.text ?? "")) saveReflection(period, key, v);
+                if (v !== (reflection?.text ?? "")) saveReflection(period, key, { text: v });
               }}
               placeholder="What did this period teach you?"
               className="w-full min-h-24 resize-none rounded-(--radius-card) border border-line bg-surface px-4 py-3 text-[0.95rem] text-ink placeholder:text-ink-3 outline-none focus:border-accent shadow-(--shadow-card)"

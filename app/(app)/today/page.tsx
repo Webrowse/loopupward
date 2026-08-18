@@ -357,7 +357,7 @@ function Today() {
                           <div className="absolute right-0 top-full z-40 mt-1.5 w-48 overflow-hidden rounded-xl border border-line-soft bg-surface shadow-(--shadow-float)">
                             <button
                               onClick={() => {
-                                reorderDay(day, sortedByDone(entries).map((e) => e.action.id));
+                                reorderDay(day, sortedByDone(entries).map((e) => e.action.id), "sort");
                                 setSortMenuOpen(false);
                               }}
                               className="block w-full px-3.5 py-2.5 text-left text-sm text-ink hover:bg-surface-2"
@@ -1094,7 +1094,7 @@ function TaskList({ rows, day, reordering }: { rows: TaskRowConfig[]; day: strin
     if (el) el.style.transform = "";
     setDraggingId(null);
     setDragOrder(null);
-    reorderDay(day, orderRef.current);
+    reorderDay(day, orderRef.current, "drag");
   };
 
   // safety net: a touch that grazes the handle mid-scroll can start a drag

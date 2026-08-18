@@ -105,6 +105,14 @@ export interface Area {
   color: string; // key into AREA_COLORS
   position: number;
   createdAt: number;
+  /** What this part of life actually is, in your own words. Optional, and
+   *  written for the export: an area score means more than "the lowest
+   *  completion rate" once the area says what it is for. */
+  description?: string;
+  whyItMatters?: string;
+  /** Share of your attention this area is meant to get, 0..1. Optional —
+   *  an unweighted life is a valid life. */
+  targetShare?: number | null;
 }
 
 export interface Item {
@@ -199,6 +207,24 @@ export interface Action {
   createdAt: number;
 }
 
+/**
+ * Where a progress value came from. A manual tick, a focus-timer completion,
+ * a routine's auto-log and a cascade from a finished child used to write
+ * identical rows and could not be told apart afterwards.
+ *
+ * "unknown" is not a bug: rows written before this existed carry it, and
+ * claiming they were manual would be a lie in the data.
+ */
+export type LogSource =
+  | "manual"
+  | "today_check"
+  | "item_page"
+  | "focus_timer"
+  | "routine_run"
+  | "parent_cascade"
+  | "import"
+  | "unknown";
+
 /** Progress event: habit day logged, counter bumped, money updated… */
 export interface Log {
   id: string;
@@ -209,9 +235,38 @@ export interface Log {
   op: "add" | "set";
   value: number;
   createdAt: number;
+  /** how this value got here — see LogSource */
+  source?: LogSource;
+  /** the specific control that did it ("today_checkbox", "step_meter"), for
+   *  when the source alone is too coarse to answer a question */
+  via?: string;
 }
 
-/** Free-text reflection attached to a review period. */
+/** A commitment made for the NEXT period. Optionally naming an item and a
+ *  number, which is the only reason a period can ever be scored against what
+ *  the last one promised — by counting, never by judging. */
+export interface Intention {
+  id: string;
+  text: string;
+  /** the item this promise is about, when it is about one */
+  itemId: string | null;
+  /** what "kept" would mean in numbers: 5 (days, units, pages…) */
+  targetValue: number | null;
+}
+
+export interface ReflectionRatings {
+  overall: number | null;
+  energy: number | null;
+  progress: number | null;
+}
+
+export interface AreaNote {
+  rating: number | null;
+  note: string;
+}
+
+/** Free-text reflection attached to a review period, plus the structure that
+ *  lets the next period measure itself against this one. */
 export interface Reflection {
   id: string;
   period: "week" | "month" | "quarter" | "year";
@@ -220,6 +275,15 @@ export interface Reflection {
   text: string;
   createdAt: number;
   updatedAt: number;
+  /** overall / energy / progress, each 1–5 */
+  ratings?: ReflectionRatings | null;
+  /** per areaId */
+  areaNotes?: Record<string, AreaNote> | null;
+  wins?: string[];
+  lessons?: string[];
+  blockers?: string[];
+  /** promises for the period after this one */
+  intentions?: Intention[] | null;
 }
 
 /** The daily journal: what I planned, did, thought, felt. One entry per day. */
@@ -237,6 +301,20 @@ export interface JournalEntry {
   energy: number | null;
   createdAt: number;
   updatedAt: number;
+  /* the quiet, optional half of a day — all nullable, all behind a
+     disclosure, because the daily flow must not get longer for anyone
+     who does not want these */
+  sleepHours?: number | null;
+  /** 1–5 */
+  sleepQuality?: number | null;
+  /** 1–5 */
+  stress?: number | null;
+  /** 1–5 — how focused the day felt, not how much got done */
+  focus?: number | null;
+  gratitude?: string;
+  /** "one thing that would make today good" */
+  intention?: string;
+  tags?: string[];
 }
 
 /** User-created tag: Rust, Family, French B2… independent of life areas. */
@@ -262,6 +340,11 @@ export interface HabitDayNote {
    *  one-row-per-item-per-day home the day's plan text lives in. When every
    *  step is here, the routine's day is logged like any habit. */
   doneSteps: string[] | null;
+  /** stepId → epoch ms it was ticked. doneSteps alone is timeless: it says
+   *  which steps happened, never when or in what order. Kept beside it
+   *  rather than replacing it, so everything already reading doneSteps
+   *  keeps working untouched. */
+  doneStepsAt?: Record<string, number> | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -277,6 +360,162 @@ export interface DayOrder {
   order: string[];
   updatedAt: number;
 }
+
+/* ————— capture streams —————
+ *
+ * Two append-only logs that sit beside the tables above rather than inside
+ * them. Nothing on screen reads either one: they exist so that a year from
+ * now the export can answer questions the app was never asked, including the
+ * unflattering ones. They are never edited and never deleted.
+ *
+ * Every row carries epoch ms PLUS the IANA zone and UTC offset captured at
+ * write time, so a year spanning DST and travel stays interpretable, and the
+ * local `day` it belongs to under the app's own day-attribution rules — which
+ * is NOT always its calendar day (see routineLogDay in lib/progress.ts).
+ */
+
+/** What a timer attempt was. A routine run produces one row per step plus one
+ *  for the run itself; "rest" is the breather between two of them. */
+export type FocusKind = "focus" | "routine_step" | "routine_run" | "day_run" | "rest";
+
+/**
+ * How an attempt ended:
+ *  completed   — the thing got ticked
+ *  expired     — the countdown ran out and the screen was left
+ *  abandoned   — closed mid-attempt
+ *  skipped     — deliberately passed over (sent to the back, or left out)
+ *  interrupted — swapped away from for something else
+ */
+export type FocusOutcome = "completed" | "abandoned" | "skipped" | "interrupted" | "expired";
+
+export interface FocusSession {
+  id: string;
+  itemId: string | null;
+  /** the Today row it started from — a real action id, or a virtual
+   *  "habit:<itemId>:<date>" / "today-item:<itemId>" id */
+  entryId: string;
+  day: string;
+  kind: FocusKind;
+  /** routine_step only */
+  stepId: string | null;
+  startedAt: number;
+  endedAt: number;
+  /** what was asked for; null means untimed, counted up instead */
+  plannedSeconds: number | null;
+  /** wall-clock seconds it actually ran, pauses excluded */
+  actualSeconds: number;
+  pausedSeconds: number;
+  pauseCount: number;
+  outcome: FocusOutcome;
+  tz: string;
+  utcOffsetMinutes: number;
+  createdAt: number;
+}
+
+/**
+ * Every behavioural fact worth keeping. The type strings are the vocabulary
+ * of the export's events.ndjson, so they are documented once here and never
+ * renamed — a reader a year from now has only these words to go on.
+ */
+export const EVENT_TYPES = [
+  // a node's whole life, from birth to purge
+  "item.created", "item.renamed", "item.kind_changed", "item.tracker_changed",
+  "item.horizon_changed", "item.target_changed", "item.cadence_changed", "item.window_changed",
+  "item.moved", "item.labels_changed", "item.pinned", "item.unpinned",
+  "item.completed", "item.reopened", "item.trashed", "item.restored", "item.purged",
+  // what actually got planned, moved, and done
+  "action.created", "action.rescheduled", "action.amount_changed", "action.priority_changed",
+  "action.note_edited", "action.done", "action.undone",
+  // routines, including the steps that did not happen
+  "routine.step_done", "routine.step_undone", "routine.step_skipped", "routine.reordered",
+  // walking the day one row at a time
+  "day_run.started", "day_run.finished", "day_run.abandoned",
+  // lists, seeds, order
+  "list.entry_added", "list.entry_picked", "list.entry_done",
+  "seed.captured", "seed.planted", "seed.status_changed", "seed.deleted",
+  "day.reordered",
+  // the writing half
+  "journal.saved", "reflection.saved",
+  // being here at all
+  "app.opened", "page.viewed",
+] as const;
+
+export type EventType = (typeof EVENT_TYPES)[number];
+
+export interface AppEvent {
+  id: string;
+  /** epoch ms the thing happened */
+  at: number;
+  day: string;
+  tz: string;
+  utcOffsetMinutes: number;
+  type: EventType;
+  itemId: string | null;
+  payload: Record<string, unknown>;
+  createdAt: number;
+}
+
+/**
+ * Server-owned preferences and context, one row per user. Everything is
+ * optional and nothing gates a feature: a user who fills in none of it sees
+ * exactly today's app. The context fields exist for one reason — they are
+ * what makes an exported year readable a year later, by you or by whatever
+ * tool you hand it to.
+ */
+export interface UserSettings {
+  /* display, previously localStorage-only (localStorage stays the offline
+     cache and the anti-FOUC boot value; the server wins on load) */
+  theme: "light" | "dark" | null;
+  font: string | null;
+  simple: boolean | null;
+  restSeconds: number | null;
+
+  /* clock — how this person's day is actually shaped */
+  timezone: string | null;
+  /** 0 = Sunday … 6 = Saturday */
+  weekStart: number | null;
+  /** the hour a "day" rolls over. Default 4: before 4am you are still living
+   *  last night, which is exactly what routineLogDay() assumes. */
+  dayRolloverHour: number | null;
+  wakeTime: string | null;
+  sleepTime: string | null;
+
+  /* context, all free text */
+  seasonOfLife: string | null;
+  occupation: string | null;
+  /** in one line: who you are trying to become */
+  becoming: string | null;
+  /** what is genuinely in the way right now */
+  constraints: string | null;
+
+  /* what you are aiming at, so the numbers have something to mean */
+  focusMinutesTarget: number | null;
+  habitDaysTarget: number | null;
+  deepWorkDaysTarget: number | null;
+
+  createdAt: number | null;
+  updatedAt: number | null;
+}
+
+export const DEFAULT_DAY_ROLLOVER_HOUR = 4;
+
+export const EMPTY_SETTINGS: UserSettings = {
+  theme: null, font: null, simple: null, restSeconds: null,
+  timezone: null, weekStart: null, dayRolloverHour: null, wakeTime: null, sleepTime: null,
+  seasonOfLife: null, occupation: null, becoming: null, constraints: null,
+  focusMinutesTarget: null, habitDaysTarget: null, deepWorkDaysTarget: null,
+  createdAt: null, updatedAt: null,
+};
+
+/** The two append-only streams, kept out of DB on purpose: nothing in the UI
+ *  reads them, so they must never take part in a render or be shipped down
+ *  the wire on a page load. See lib/data/streams.ts. */
+export interface Streams {
+  focusSessions: FocusSession[];
+  events: AppEvent[];
+}
+
+export const EMPTY_STREAMS: Streams = { focusSessions: [], events: [] };
 
 export interface DB {
   areas: Area[];

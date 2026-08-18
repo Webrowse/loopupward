@@ -7,17 +7,37 @@ import {
   api, ApiRequestError, apiConfigured, ApiUser, clearToken, getToken,
 } from "../api";
 import {
-  Action, Area, DB, EMPTY_DB, HabitDayNote, Item, JournalEntry, Label, Reflection, Seed,
-  SeedStatus, TableName,
+  Action, Area, AppEvent, DB, EMPTY_DB, EMPTY_SETTINGS, EventType, FocusSession, HabitDayNote,
+  Item, JournalEntry, Label, LogSource, Reflection, Seed, SeedStatus, TableName,
+  UserSettings,
 } from "../types";
 import { uid } from "../uid";
 import { CloudRepo } from "./cloud";
 import { LocalRepo, clearLocalDB, localHasData, readLocalDB } from "./local";
+import { clearLocalStreams, readLocalStreams, sinkFor, StreamWriter } from "./streams";
 import { Repo } from "./repo";
+import { currentTimezone, stamp } from "../clock";
+import { actionChangeEvents, itemChangeEvents } from "./changes";
 import { today } from "../dates";
 import { dayLogged, habitDailyTarget, linkKind, requiredSteps, routineLogDay, TodayEntry } from "../progress";
 import { FREE_LIMITS, PREMIUM_TRASH_DAYS } from "../limits";
 import { DEFAULT_FONT, FontId, isFontId } from "../fonts";
+
+/** Where a progress value came from, passed down from whichever control
+ *  wrote it. Every log row carries this now — a manual tick and a routine's
+ *  auto-log used to be indistinguishable after the fact. */
+export interface LogOrigin {
+  source?: LogSource;
+  via?: string;
+}
+
+export interface EmitOptions {
+  itemId?: string | null;
+  payload?: Record<string, unknown>;
+  /** the local day this belongs to, when it is not the calendar day (a night
+   *  routine ticked at 1am belongs to the evening before) */
+  day?: string;
+}
 
 interface LifeContextValue {
   ready: boolean;
@@ -43,6 +63,19 @@ interface LifeContextValue {
    *  routine step starts (0 = none). A skippable countdown, remembered here. */
   restSeconds: number;
   setRestSeconds: (v: number) => void;
+  /** Preferences and context, server-owned when signed in (localStorage stays
+   *  the offline cache and the anti-FOUC boot value). Nothing in here gates a
+   *  feature: it exists to make an exported year readable a year later. */
+  settings: UserSettings;
+  updateSettings: (patch: Partial<UserSettings>) => void;
+
+  /** Record one behavioural fact. Fire-and-forget: buffered, batched, and
+   *  never in the path of the interaction that caused it. Most events are
+   *  emitted from the mutations below — this is for the ones only a screen
+   *  can see, like a routine step skipped or a day run abandoned. */
+  emit: (type: EventType, opts?: EmitOptions) => void;
+  /** Record one finished timer attempt — completed, abandoned or otherwise. */
+  recordSession: (session: Omit<FocusSession, "id" | "createdAt" | "tz" | "utcOffsetMinutes">) => void;
   /** Pull the freshest data from wherever it lives (cloud rows, or this
    *  device's store) without reloading the page — phone edits show up on
    *  the laptop. Also runs by itself when the tab regains focus. */
@@ -84,32 +117,36 @@ interface LifeContextValue {
   purgeItem: (id: string) => void;
   completeItem: (id: string) => void;
   reopenItem: (id: string) => void;
-  setTracker: (item: Item, value: number) => void;
+  setTracker: (item: Item, value: number, opts?: LogOrigin) => void;
 
   addAction: (
     title: string,
     date: string,
     itemId?: string | null,
     amount?: number,
-    opts?: { priority?: number; note?: string }
+    opts?: { priority?: number; note?: string; origin?: string }
   ) => void;
   updateAction: (id: string, patch: Partial<Action>) => void;
   deleteAction: (id: string) => void;
-  toggleEntry: (entry: TodayEntry, day?: string) => void;
+  toggleEntry: (entry: TodayEntry, day?: string, opts?: LogOrigin) => void;
   /** Log or unlog one habit occurrence for a single day — distinct from
    *  completeItem, which retires the habit for good. */
   /** `skipLinked` is internal plumbing: it stops the two halves of a linked
    *  routine step writing to each other in a circle. */
-  toggleHabitDay: (item: Item, day: string, currentlyDone: boolean, skipLinked?: boolean) => void;
+  toggleHabitDay: (item: Item, day: string, currentlyDone: boolean, skipLinked?: boolean, opts?: LogOrigin) => void;
   /** Tick one step of a routine's script for a single day. Checking the
    *  last open step logs the routine's day (same as toggleHabitDay);
    *  unchecking a step on a fully-done day un-logs it again. */
   setRoutineStepDone: (item: Item, day: string, stepId: string, done: boolean, skipLinked?: boolean) => void;
   /** Persist a manual drag order for one day's Today list. Completing a
    *  task never calls this — only dragging, or the "Sort" tidy-up, does. */
-  reorderDay: (day: string, orderedEntryIds: string[]) => void;
+  reorderDay: (day: string, orderedEntryIds: string[], via?: "drag" | "sort") => void;
 
-  saveReflection: (period: Reflection["period"], periodKey: string, text: string) => void;
+  saveReflection: (
+    period: Reflection["period"],
+    periodKey: string,
+    patch: Partial<Omit<Reflection, "id" | "period" | "periodKey" | "createdAt" | "updatedAt">>
+  ) => void;
 
   /** empty text removes the day's plan entirely */
   setHabitDayNote: (itemId: string, date: string, text: string) => void;
@@ -117,6 +154,10 @@ interface LifeContextValue {
   signOut: () => Promise<void>;
   exportJSON: () => string;
 }
+
+/** New key — the three that must never be renamed (lifeos-token,
+ *  lifeos-db-v1, lifeos-theme) are untouched. */
+const SETTINGS_KEY = "lifeos-settings-v1";
 
 const LifeContext = createContext<LifeContextValue | null>(null);
 
@@ -133,19 +174,114 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [theme, setThemeState] = useState<"light" | "dark">("light");
   const [font, setFontState] = useState<FontId>(DEFAULT_FONT);
+  const [simple, setSimpleState] = useState(false);
+  const [restSeconds, setRestSecondsState] = useState(5);
+  const [settings, setSettingsState] = useState<UserSettings>(EMPTY_SETTINGS);
   const repoRef = useRef<Repo>(new LocalRepo());
   const cloudAvailable = apiConfigured();
   const mode: "local" | "cloud" = user ? "cloud" : "local";
 
-  /* ————— theme ————— */
+  /* ————— the capture streams —————
+   * One writer for the session, living in a ref so that recording a fact
+   * never re-renders anything. See lib/data/streams.ts for why. */
+  const writerRef = useRef<StreamWriter | null>(null);
+  if (writerRef.current === null) writerRef.current = new StreamWriter();
+  useEffect(() => {
+    const w = writerRef.current!;
+    w.start();
+    return () => w.stop();
+  }, []);
+  useEffect(() => {
+    writerRef.current!.setSink(sinkFor(!!user));
+  }, [user]);
+
+  const emit = useCallback((type: EventType, opts: EmitOptions = {}) => {
+    const st = stamp(opts.day);
+    const event: AppEvent = {
+      id: uid(),
+      at: st.at,
+      day: st.day,
+      tz: st.tz,
+      utcOffsetMinutes: st.utcOffsetMinutes,
+      type,
+      itemId: opts.itemId ?? null,
+      payload: opts.payload ?? {},
+      createdAt: st.at,
+    };
+    writerRef.current!.event(event);
+  }, []);
+
+  const recordSession = useCallback(
+    (session: Omit<FocusSession, "id" | "createdAt" | "tz" | "utcOffsetMinutes">) => {
+      const st = stamp(session.day, session.endedAt);
+      writerRef.current!.session({
+        ...session,
+        id: uid(),
+        tz: st.tz,
+        utcOffsetMinutes: st.utcOffsetMinutes,
+        createdAt: Date.now(),
+      });
+    },
+    []
+  );
+
+  /* ————— settings & context —————
+   *
+   * Server-owned once signed in, with localStorage as the offline cache and
+   * the anti-FOUC boot value (app/layout.tsx reads lifeos-theme before React
+   * exists — renaming that key would sign a user out of their own theme).
+   * The server wins on load; every edit writes through to both.
+   *
+   * Declared above the individual preference setters because every one of
+   * them writes through to here.
+   */
+  const updateSettings = useCallback((patch: Partial<UserSettings>) => {
+    setSettingsState((prev) => {
+      const next = { ...prev, ...patch, updatedAt: Date.now() };
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch {}
+      if (getToken() && apiConfigured()) {
+        // fire-and-forget: a preference failing to reach the cloud must not
+        // block the screen that changed it — the device copy is authoritative
+        // until the next successful write
+        api("/v1/settings", { method: "PUT", body: next }).catch((e) => {
+          console.warn("[lifeos] settings save failed", e);
+        });
+      }
+      return next;
+    });
+  }, []);
+
+  /* ————— what this device already knows —————
+   *
+   * One pass, after mount rather than during render: the server's HTML cannot
+   * see localStorage, so reading it any earlier would hand React two
+   * different first renders. The boot script in app/layout.tsx has already
+   * put theme and font on <html> by the time this runs — this is where React
+   * catches up with it.
+   */
   useEffect(() => {
     setThemeState(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+    try {
+      setSimpleState(localStorage.getItem("lifeos-simple") === "1");
+      const rest = localStorage.getItem("lifeos-rest");
+      if (rest !== null) {
+        const n = parseInt(rest, 10);
+        if (Number.isFinite(n) && n >= 0) setRestSecondsState(Math.min(600, n));
+      }
+      const cached = localStorage.getItem(SETTINGS_KEY);
+      if (cached) {
+        setSettingsState({ ...EMPTY_SETTINGS, ...(JSON.parse(cached) as Partial<UserSettings>) });
+      }
+    } catch {}
   }, []);
+
+  /* ————— theme ————— */
   const setTheme = useCallback((t: "light" | "dark") => {
     setThemeState(t);
     document.documentElement.dataset.theme = t === "dark" ? "dark" : "";
     try { localStorage.setItem("lifeos-theme", t); } catch {}
-  }, []);
+    updateSettings({ theme: t });
+  }, [updateSettings]);
 
   /* ————— display font ————— */
   useEffect(() => {
@@ -159,33 +295,61 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     setFontState(f);
     document.documentElement.dataset.font = f;
     try { localStorage.setItem("lifeos-font", f); } catch {}
-  }, []);
+    updateSettings({ font: f });
+  }, [updateSettings]);
 
   /* ————— simple mode ————— */
-  const [simple, setSimpleState] = useState(false);
-  useEffect(() => {
-    try { setSimpleState(localStorage.getItem("lifeos-simple") === "1"); } catch {}
-  }, []);
   const setSimple = useCallback((v: boolean) => {
     setSimpleState(v);
     try { localStorage.setItem("lifeos-simple", v ? "1" : "0"); } catch {}
-  }, []);
+    updateSettings({ simple: v });
+  }, [updateSettings]);
 
   /* ————— rest between focus tasks/steps ————— */
-  const [restSeconds, setRestSecondsState] = useState(5);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("lifeos-rest");
-      if (raw !== null) {
-        const n = parseInt(raw, 10);
-        if (Number.isFinite(n) && n >= 0) setRestSecondsState(Math.min(600, n));
-      }
-    } catch {}
-  }, []);
   const setRestSeconds = useCallback((v: number) => {
     const n = Math.max(0, Math.min(600, Math.round(v)));
     setRestSecondsState(n);
     try { localStorage.setItem("lifeos-rest", String(n)); } catch {}
+    updateSettings({ restSeconds: n });
+  }, [updateSettings]);
+
+
+  /**
+   * Take the server's copy on load. Applied straight to the underlying
+   * preference state rather than through the setters, because the setters
+   * write back — and a load that immediately re-uploads what it just read is
+   * a loop, not a sync.
+   *
+   * A timezone the server does not have yet is filled in from the browser and
+   * written once. Without it no exported timestamp can be read across travel
+   * or DST, which is the whole reason the column exists.
+   */
+  const applyServerSettings = useCallback((remote: UserSettings) => {
+    const merged: UserSettings = { ...EMPTY_SETTINGS, ...remote };
+    if (!merged.timezone) merged.timezone = currentTimezone() || null;
+    if (merged.theme === "dark" || merged.theme === "light") {
+      setThemeState(merged.theme);
+      document.documentElement.dataset.theme = merged.theme === "dark" ? "dark" : "";
+      try { localStorage.setItem("lifeos-theme", merged.theme); } catch {}
+    }
+    if (isFontId(merged.font)) {
+      setFontState(merged.font);
+      document.documentElement.dataset.font = merged.font;
+      try { localStorage.setItem("lifeos-font", merged.font); } catch {}
+    }
+    if (merged.simple !== null) {
+      setSimpleState(merged.simple);
+      try { localStorage.setItem("lifeos-simple", merged.simple ? "1" : "0"); } catch {}
+    }
+    if (merged.restSeconds !== null) {
+      setRestSecondsState(Math.max(0, Math.min(600, merged.restSeconds)));
+      try { localStorage.setItem("lifeos-rest", String(merged.restSeconds)); } catch {}
+    }
+    setSettingsState(merged);
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged)); } catch {}
+    if (!remote.timezone && merged.timezone) {
+      api("/v1/settings", { method: "PUT", body: merged }).catch(() => {});
+    }
   }, []);
 
   /* ————— session & data bootstrap ————— */
@@ -208,9 +372,13 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
             // "cloud unreachable" and left the user silently signed out.)
             try {
               const local = readLocalDB();
-              await cloud.importAll(local);
+              // the on-device capture streams travel with the life they
+              // describe — a year of focus sessions is not something to
+              // leave behind on one browser
+              await cloud.importAll(local, readLocalStreams());
               data = await cloud.load();
               clearLocalDB();
+              clearLocalStreams();
             } catch (e) {
               console.error("[lifeos] first sign-in import failed", e);
               if (!cancelled) {
@@ -226,6 +394,17 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
             setDb(data);
             setReady(true);
           }
+          // settings are the server's copy of who this person is — fetched
+          // after the data so a slow settings call never delays the app, and
+          // applied over the device cache because the server wins on load
+          api<UserSettings>("/v1/settings")
+            .then((remote) => {
+              if (cancelled) return;
+              applyServerSettings(remote);
+            })
+            .catch(() => {
+              // the device cache is a perfectly good fallback
+            });
           return;
         } catch (e) {
           if (e instanceof ApiRequestError && e.status === 401) {
@@ -248,7 +427,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
 
     boot();
     return () => { cancelled = true; };
-  }, []);
+  }, [applyServerSettings]);
 
   /* ————— persistence helpers ————— */
   // writes still on their way to the repo — a refresh while one is in
@@ -374,8 +553,9 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       itemId: null, archivedAt: null, status: "inbox",
     };
     upsertRows("seeds", [seed]);
+    emit("seed.captured", { payload: { seedId: seed.id, length: seed.text.length } });
     return seed;
-  }, [upsertRows]);
+  }, [upsertRows, emit]);
 
   const updateSeed = useCallback((id: string, text: string) => {
     const seed = db.seeds.find((s) => s.id === id);
@@ -391,14 +571,27 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       status,
       archivedAt: status === "archived" ? Date.now() : null,
     }]);
-  }, [db.seeds, upsertRows]);
+    emit("seed.status_changed", {
+      payload: { seedId: id, from: seed.status, to: status, ageMs: Date.now() - seed.createdAt },
+    });
+  }, [db.seeds, upsertRows, emit]);
 
-  const deleteSeed = useCallback((id: string) => removeRows("seeds", [id]), [removeRows]);
+  const deleteSeed = useCallback((id: string) => {
+    const seed = db.seeds.find((s) => s.id === id);
+    removeRows("seeds", [id]);
+    emit("seed.deleted", {
+      payload: { seedId: id, ageMs: seed ? Date.now() - seed.createdAt : null, status: seed?.status ?? null },
+    });
+  }, [db.seeds, removeRows, emit]);
 
   const plantSeed = useCallback((seed: Seed, item: Item) => {
     upsertRows("items", [item]);
     upsertRows("seeds", [{ ...seed, itemId: item.id, archivedAt: Date.now(), status: "archived" }]);
-  }, [upsertRows]);
+    emit("seed.planted", {
+      itemId: item.id,
+      payload: { seedId: seed.id, kind: item.kind, restedMs: Date.now() - seed.createdAt },
+    });
+  }, [upsertRows, emit]);
 
   /** Undo for plantSeed: removes the item it created and brings the seed
    *  back to the inbox exactly as it was, for the "undo" on the moved
@@ -420,7 +613,17 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
           ...patch,
         };
     upsertRows("journal", [entry]);
-  }, [db.journal, upsertRows]);
+    emit("journal.saved", {
+      day: date,
+      payload: {
+        fields: Object.keys(patch),
+        roughChars: entry.roughNotes.length,
+        eodChars: entry.endOfDay.length,
+        mood: entry.mood,
+        energy: entry.energy,
+      },
+    });
+  }, [db.journal, upsertRows, emit]);
 
   /* ————— labels ————— */
   const addLabel = useCallback((name: string, emoji: string, color: string): Label | null => {
@@ -486,13 +689,29 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     // habits and routines live on their schedule — default to every day
     if ((item.kind === "habit" || item.kind === "routine") && !item.cadence) item.cadence = "daily";
     upsertRows("items", [item]);
+    // the birth snapshot: "when did this enter my life, and as what" is only
+    // answerable if the answer is recorded at the moment it happens
+    emit("item.created", {
+      itemId: item.id,
+      payload: {
+        kind: item.kind, tracker: item.tracker, horizon: item.horizon,
+        horizonPeriod: item.horizonPeriod, areaId: item.areaId, parentId: item.parentId,
+        target: item.target, cadence: item.cadence, labels: item.labels,
+        titleLength: item.title.length,
+      },
+    });
     return item;
-  }, [db.items.length, upsertRows]);
+  }, [db.items.length, upsertRows, emit]);
 
   const updateItem = useCallback((id: string, patch: Partial<Item>) => {
     const item = db.items.find((i) => i.id === id);
-    if (item) upsertRows("items", [{ ...item, ...patch }]);
-  }, [db.items, upsertRows]);
+    if (!item) return;
+    const next = { ...item, ...patch };
+    upsertRows("items", [next]);
+    // one diff here covers every path that edits an item — the item page, the
+    // Life tree, the list screen, the pull-to-Today overlay
+    for (const e of itemChangeEvents(item, next)) emit(e.type, e);
+  }, [db.items, upsertRows, emit]);
 
   const deleteItem = useCallback((id: string) => {
     const item = db.items.find((i) => i.id === id);
@@ -509,7 +728,15 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     const logIds = db.logs.filter((l) => l.itemId === id).map((l) => l.id);
     if (logIds.length) removeRows("logs", logIds);
     upsertRows("items", [{ ...item, deletedAt: Date.now() }]);
-  }, [db, upsertRows, removeRows]);
+    emit("item.trashed", {
+      itemId: id,
+      payload: {
+        kind: item.kind, status: item.status,
+        ageDays: Math.round((Date.now() - item.createdAt) / 86_400_000),
+        childrenLifted: kids.length, actionsRemoved: actionIds.length, logsRemoved: logIds.length,
+      },
+    });
+  }, [db, upsertRows, removeRows, emit]);
 
   const trashedItems = useMemo(
     () => db.items.filter((i) => i.deletedAt).sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)),
@@ -518,19 +745,33 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
 
   const restoreItem = useCallback((id: string) => {
     const item = db.items.find((i) => i.id === id);
-    if (item) upsertRows("items", [{ ...item, deletedAt: null }]);
-  }, [db.items, upsertRows]);
+    if (!item) return;
+    upsertRows("items", [{ ...item, deletedAt: null }]);
+    emit("item.restored", {
+      itemId: id,
+      payload: { kind: item.kind, trashedForMs: item.deletedAt ? Date.now() - item.deletedAt : null },
+    });
+  }, [db.items, upsertRows, emit]);
 
-  const purgeItem = useCallback((id: string) => removeRows("items", [id]), [removeRows]);
+  const purgeItem = useCallback((id: string) => {
+    const item = db.items.find((i) => i.id === id);
+    removeRows("items", [id]);
+    emit("item.purged", { itemId: id, payload: { kind: item?.kind ?? null, title: item?.title ?? null } });
+  }, [db.items, removeRows, emit]);
 
   // Trash empties itself after the retention window — no server cron needed,
   // this just sweeps whatever's overdue whenever the item list changes.
   useEffect(() => {
     const retentionDays = premium ? PREMIUM_TRASH_DAYS : FREE_LIMITS.trashDays;
     const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
-    const expired = db.items.filter((i) => i.deletedAt && i.deletedAt < cutoff).map((i) => i.id);
-    if (expired.length) removeRows("items", expired);
-  }, [db.items, premium, removeRows]);
+    const expired = db.items.filter((i) => i.deletedAt && i.deletedAt < cutoff);
+    if (expired.length) {
+      removeRows("items", expired.map((i) => i.id));
+      for (const i of expired) {
+        emit("item.purged", { itemId: i.id, payload: { kind: i.kind, title: i.title, by: "retention" } });
+      }
+    }
+  }, [db.items, premium, removeRows, emit]);
 
   /** Reorganize the life tree: change area and/or parent. Guards against cycles. */
   const moveItem = useCallback((id: string, dest: { areaId?: string | null; parentId?: string | null }) => {
@@ -554,8 +795,10 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       : parentId
         ? db.items.find((i) => i.id === parentId)?.areaId ?? item.areaId
         : item.areaId;
-    upsertRows("items", [{ ...item, parentId, areaId }]);
-  }, [db.items, upsertRows]);
+    const next = { ...item, parentId, areaId };
+    upsertRows("items", [next]);
+    for (const e of itemChangeEvents(item, next)) emit(e.type, e);
+  }, [db.items, upsertRows, emit]);
 
   /** Completing a thing nudges the meter of whatever it's nested inside:
    *  finish "part 1" and the 3-part book above it reads 1/3 without anyone
@@ -580,13 +823,14 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       }]);
       upsertRows("logs", [{
         id: uid(), itemId: parent.id, date: today(), op: "add", value: d, createdAt: Date.now(),
+        source: "parent_cascade", via: `child:${c.id}`,
       }]);
       if (reached) bump(parent, 1, depth + 1);
     };
     bump(child, delta, 0);
   }, [db.items, upsertRows]);
 
-  const completeItem = useCallback((id: string) => {
+  const completeItem = useCallback((id: string, opts?: LogOrigin) => {
     const item = db.items.find((i) => i.id === id);
     if (!item || item.status === "done") return;
     // a metered goal marked complete should read full, so its count agrees
@@ -613,10 +857,27 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         op: isCumulative ? "add" : "set",
         value: isCumulative ? filled - item.current : filled,
         createdAt: Date.now(),
+        source: opts?.source ?? "manual", via: opts?.via ?? "complete_item",
       }]);
     }
     bumpParentMeter(item, 1);
-  }, [db.items, upsertRows, bumpParentMeter]);
+    emit("item.completed", {
+      itemId: item.id,
+      payload: {
+        kind: item.kind,
+        tracker: item.tracker,
+        // how long this took from the day it entered the system
+        ageDays: Math.round((Date.now() - item.createdAt) / 86_400_000),
+        // pieces still on the board when the whole thing was called done
+        openActionsRemaining: db.actions.filter((a) => a.itemId === item.id && !a.done).length,
+        openChildrenRemaining: db.items.filter(
+          (k) => k.parentId === item.id && !k.deletedAt && k.status === "active"
+        ).length,
+        horizon: item.horizon,
+        areaId: item.areaId,
+      },
+    });
+  }, [db.items, db.actions, upsertRows, bumpParentMeter, emit]);
 
   const reopenItem = useCallback((id: string) => {
     const item = db.items.find((i) => i.id === id);
@@ -625,9 +886,16 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     // takes back the nudge its completion gave (floored at zero, so meters
     // advanced by hand before this feature existed can't go negative)
     if (item.status === "done") bumpParentMeter(item, -1);
-  }, [db.items, upsertRows, bumpParentMeter]);
+    emit("item.reopened", {
+      itemId: item.id,
+      payload: {
+        kind: item.kind, fromStatus: item.status,
+        doneForMs: item.completedAt ? Date.now() - item.completedAt : null,
+      },
+    });
+  }, [db.items, upsertRows, bumpParentMeter, emit]);
 
-  const setTracker = useCallback((item: Item, value: number) => {
+  const setTracker = useCallback((item: Item, value: number, opts?: LogOrigin) => {
     // a book stops at its last chapter and a percent at 100; counters and
     // money may overshoot their target on purpose
     const cap = item.tracker === "book" ? item.target : item.tracker === "percent" ? 100 : null;
@@ -649,6 +917,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       op: isCumulative ? "add" : "set",
       value: isCumulative ? v - item.current : v,
       createdAt: Date.now(),
+      source: opts?.source ?? "manual", via: opts?.via ?? "tracker_control",
     }]);
   }, [upsertRows, bumpParentMeter]);
 
@@ -658,29 +927,46 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     date: string,
     itemId: string | null = null,
     amount = 1,
-    opts: { priority?: number; note?: string } = {}
+    opts: { priority?: number; note?: string; origin?: string } = {}
   ) => {
     const action: Action = {
       id: uid(), itemId, title: title.trim(), date, done: false, doneAt: null,
       amount, priority: opts.priority ?? 0, note: opts.note ?? "", createdAt: Date.now(),
     };
     upsertRows("actions", [action]);
-  }, [upsertRows]);
+    emit("action.created", {
+      itemId,
+      day: date,
+      payload: {
+        actionId: action.id, date, amount, priority: action.priority,
+        hasNote: !!action.note.trim(), linked: !!itemId,
+        // where it came from: a suggestion chip, a goal's "break off a piece",
+        // or typed by hand into the day
+        origin: opts.origin ?? "manual",
+      },
+    });
+  }, [upsertRows, emit]);
 
   const updateAction = useCallback((id: string, patch: Partial<Action>) => {
     const action = db.actions.find((a) => a.id === id);
-    if (action) upsertRows("actions", [{ ...action, ...patch }]);
-  }, [db.actions, upsertRows]);
+    if (!action) return;
+    const next = { ...action, ...patch };
+    upsertRows("actions", [next]);
+    // every path that moves a task to another day arrives here, which is what
+    // makes action.rescheduled a trustworthy procrastination signal
+    for (const e of actionChangeEvents(action, next)) emit(e.type, { ...e, day: next.date });
+  }, [db.actions, upsertRows, emit]);
 
   const deleteAction = useCallback((id: string) => removeRows("actions", [id]), [removeRows]);
 
   /** Add or take back exactly one occurrence of an item's day. One, not all:
    *  a habit with a target of three glasses must not lose the other two
    *  because a linked routine step was un-ticked. */
-  const logOneOccurrence = useCallback((itemId: string, day: string, add: boolean) => {
+  const logOneOccurrence = useCallback((itemId: string, day: string, add: boolean, opts?: LogOrigin) => {
     if (add) {
       upsertRows("logs", [{
         id: uid(), itemId, date: day, op: "add", value: 1, createdAt: Date.now(),
+        source: opts?.source ?? "manual", via: opts?.via ?? "",
       }]);
       return;
     }
@@ -707,11 +993,19 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     else ticked.delete(stepId);
     // keep script order and silently drop marks for steps since deleted
     const doneSteps = stepIds.filter((id) => ticked.has(id));
+    // when each step was ticked, so the order and time of day a script was
+    // actually walked survives — doneSteps alone is timeless
+    const now = Date.now();
+    const at: Record<string, number> = { ...(existing?.doneStepsAt ?? {}) };
+    if (done) at[stepId] = now;
+    else delete at[stepId];
+    for (const key of Object.keys(at)) if (!ticked.has(key)) delete at[key];
+    const doneStepsAt = Object.keys(at).length ? at : null;
     const row: HabitDayNote = existing
-      ? { ...existing, doneSteps: doneSteps.length ? doneSteps : null, updatedAt: Date.now() }
+      ? { ...existing, doneSteps: doneSteps.length ? doneSteps : null, doneStepsAt, updatedAt: now }
       : {
-          id: uid(), itemId: item.id, date: day, text: "", doneSteps,
-          createdAt: Date.now(), updatedAt: Date.now(),
+          id: uid(), itemId: item.id, date: day, text: "", doneSteps, doneStepsAt,
+          createdAt: now, updatedAt: now,
         };
     if (!row.text.trim() && !row.doneSteps?.length) {
       if (existing) removeRows("habitDayNotes", [existing.id]);
@@ -729,10 +1023,26 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     if (allDone && !logged) {
       upsertRows("logs", [{
         id: uid(), itemId: item.id, date: day, op: "add", value: 1, createdAt: Date.now(),
+        source: "routine_run", via: "last_required_step",
       }]);
     } else if (!allDone && logged) {
       removeRows("logs", dayLogs.map((l) => l.id));
     }
+
+    const stepIndex = stepIds.indexOf(stepId);
+    emit(done ? "routine.step_done" : "routine.step_undone", {
+      itemId: item.id,
+      day,
+      payload: {
+        stepId,
+        stepIndex,
+        stepTitle: steps[stepIndex]?.title ?? null,
+        optional: !!steps[stepIndex]?.optional,
+        doneCount: doneSteps.length,
+        stepCount: stepIds.length,
+        completesDay: allDone && !logged,
+      },
+    });
 
     // a linked step and its row on the day are one act, so tick both. Only
     // ever one occurrence, and only when it would actually change something:
@@ -749,24 +1059,24 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
       if (kind === "day") {
         const value = dayLogged(db.logs, linked.id, day);
         const wanted = done ? value < habitDailyTarget(linked) : value > 0;
-        if (wanted) logOneOccurrence(linked.id, day, done);
+        if (wanted) logOneOccurrence(linked.id, day, done, { source: "routine_run", via: `step:${stepId}` });
       } else if (kind === "done") {
         // a one-off target: the step and the target are the same act, so
         // finishing one finishes the other. skipLinked stops the two halves
         // calling each other back.
-        if (done) completeItem(linked.id);
+        if (done) completeItem(linked.id, { source: "routine_run", via: `step:${stepId}` });
         else reopenItem(linked.id);
       }
       // "meter" writes nothing here: its count is the record, and the runner
       // puts that count on the step for you to move by hand
     }
-  }, [db.habitDayNotes, db.logs, db.items, upsertRows, removeRows, logOneOccurrence, completeItem, reopenItem]);
+  }, [db.habitDayNotes, db.logs, db.items, upsertRows, removeRows, logOneOccurrence, completeItem, reopenItem, emit]);
 
   /** Log or unlog one habit occurrence for a single day. This only ever
    *  touches the log history — it never changes the habit's own status,
    *  so "done today" can never accidentally retire the habit. */
   const toggleHabitDay = useCallback((
-    item: Item, day: string, currentlyDone: boolean, skipLinked = false
+    item: Item, day: string, currentlyDone: boolean, skipLinked = false, opts?: LogOrigin
   ) => {
     if (currentlyDone) {
       const existing = db.logs.filter((l) => l.itemId === item.id && l.date === day && l.op === "add");
@@ -774,6 +1084,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     } else {
       upsertRows("logs", [{
         id: uid(), itemId: item.id, date: day, op: "add", value: 1, createdAt: Date.now(),
+        source: opts?.source ?? "today_check", via: opts?.via ?? "day_checkbox",
       }]);
     }
     // a routine's round checkbox is shorthand for its whole script — the
@@ -810,18 +1121,19 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [db.logs, db.habitDayNotes, db.items, upsertRows, removeRows, setRoutineStepDone]);
 
-  const toggleEntry = useCallback((entry: TodayEntry, forDay?: string) => {
+  const toggleEntry = useCallback((entry: TodayEntry, forDay?: string, opts?: LogOrigin) => {
     const day = forDay ?? today();
+    const origin: LogOrigin = { source: opts?.source ?? "today_check", via: opts?.via ?? "today_checkbox" };
     if (entry.virtualHabit && entry.item) {
       // the row itself knows which day it stands for — for a night routine
       // ticked at 1 am that's yesterday, not the page's calendar day
-      toggleHabitDay(entry.item, entry.action.date, entry.action.done);
+      toggleHabitDay(entry.item, entry.action.date, entry.action.done, false, origin);
       return;
     }
     if (entry.virtualItemTask && entry.item) {
       const nowDone = !entry.action.done;
       if (entry.action.done) reopenItem(entry.item.id);
-      else completeItem(entry.item.id);
+      else completeItem(entry.item.id, origin);
       // and any routine step standing for this same target agrees
       for (const routine of db.items) {
         if (routine.kind !== "routine" || !routine.steps?.length) continue;
@@ -837,6 +1149,18 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     const a = entry.action;
     const nowDone = !a.done;
     upsertRows("actions", [{ ...a, done: nowDone, doneAt: nowDone ? Date.now() : null }]);
+    emit(nowDone ? "action.done" : "action.undone", {
+      itemId: a.itemId,
+      day,
+      payload: {
+        actionId: a.id, title: a.title, plannedFor: a.date,
+        // a task ticked on a later day than it was planned for: the gap is
+        // the interesting number, and it is only visible right here
+        daysLate: nowDone ? Math.round((new Date(`${day}T12:00:00`).getTime() - new Date(`${a.date}T12:00:00`).getTime()) / 86_400_000) : null,
+        carriedFrom: entry.carriedFrom,
+        via: origin.via,
+      },
+    });
     // progress flows upward: completing a linked action advances its item.
     // amount 0 is a real choice — a directional step ("clone the repo")
     // that belongs to the goal without pretending to move its meter
@@ -853,6 +1177,7 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         }]);
         upsertRows("logs", [{
           id: uid(), itemId: item.id, date: day, op: "add", value: delta, createdAt: Date.now(),
+          source: origin.source, via: origin.via,
         }]);
         if (reachedTarget) bumpParentMeter(item, 1);
       } else if (item && item.tracker === "check") {
@@ -865,33 +1190,49 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
         );
         const otherOpen = db.actions.some((x) => x.itemId === item.id && x.id !== a.id && !x.done);
         if (!hasKids && !otherOpen) {
-          if (nowDone && item.status === "active") completeItem(item.id);
+          if (nowDone && item.status === "active") completeItem(item.id, origin);
           else if (!nowDone && item.status === "done") reopenItem(item.id);
         }
       }
     }
-  }, [db.items, db.actions, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem, bumpParentMeter, setRoutineStepDone]);
+  }, [db.items, db.actions, upsertRows, removeRows, toggleHabitDay, completeItem, reopenItem, bumpParentMeter, setRoutineStepDone, emit]);
 
-  const reorderDay = useCallback((day: string, orderedEntryIds: string[]) => {
+  const reorderDay = useCallback((day: string, orderedEntryIds: string[], via: "drag" | "sort" = "drag") => {
     const existing = db.dayOrder.find((d) => d.date === day);
     upsertRows("dayOrder", [
       existing
         ? { ...existing, order: orderedEntryIds, updatedAt: Date.now() }
         : { id: uid(), date: day, order: orderedEntryIds, updatedAt: Date.now() },
     ]);
-  }, [db.dayOrder, upsertRows]);
+    // a deliberate drag and the "Sort" tidy-up are different acts and must
+    // not read the same afterwards
+    emit("day.reordered", { day, payload: { via, entryCount: orderedEntryIds.length } });
+  }, [db.dayOrder, upsertRows, emit]);
 
   /* ————— reflections ————— */
-  const saveReflection = useCallback((period: Reflection["period"], periodKey: string, text: string) => {
+  const saveReflection = useCallback((
+    period: Reflection["period"],
+    periodKey: string,
+    patch: Partial<Omit<Reflection, "id" | "period" | "periodKey" | "createdAt" | "updatedAt">>
+  ) => {
     const existing = db.reflections.find((r) => r.period === period && r.periodKey === periodKey);
-    if (existing) {
-      upsertRows("reflections", [{ ...existing, text, updatedAt: Date.now() }]);
-    } else {
-      upsertRows("reflections", [{
-        id: uid(), period, periodKey, text, createdAt: Date.now(), updatedAt: Date.now(),
-      }]);
-    }
-  }, [db.reflections, upsertRows]);
+    const next: Reflection = existing
+      ? { ...existing, ...patch, updatedAt: Date.now() }
+      : {
+          id: uid(), period, periodKey, text: "",
+          createdAt: Date.now(), updatedAt: Date.now(),
+          ...patch,
+        };
+    upsertRows("reflections", [next]);
+    emit("reflection.saved", {
+      payload: {
+        period, periodKey, fields: Object.keys(patch),
+        textChars: next.text.length,
+        intentionCount: next.intentions?.length ?? 0,
+        winCount: next.wins?.length ?? 0,
+      },
+    });
+  }, [db.reflections, upsertRows, emit]);
 
   /* ————— habit day notes ————— */
   const setHabitDayNote = useCallback((itemId: string, date: string, text: string) => {
@@ -945,6 +1286,8 @@ export function LifeProvider({ children }: { children: React.ReactNode }) {
     font, setFont,
     simple, setSimple,
     restSeconds, setRestSeconds,
+    settings, updateSettings,
+    emit, recordSession,
     refresh, syncing, holdSync,
     addSeed, updateSeed, setSeedStatus, deleteSeed, plantSeed, unplantSeed,
     saveJournal,

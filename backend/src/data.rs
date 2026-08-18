@@ -21,6 +21,16 @@ pub struct Area {
     pub color: String,
     pub position: i32,
     pub created_at: i64,
+    /// What this area of life actually is, in the user's own words — so an
+    /// exported area score means more than "the lowest completion rate".
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub why_it_matters: String,
+    /// Share of attention this area is meant to get, 0..1. Optional: an
+    /// unweighted life is a valid life.
+    #[serde(default)]
+    pub target_share: Option<f64>,
 }
 
 /// One step of a routine's script: "face wash — 5 minutes".
@@ -173,6 +183,19 @@ pub struct LogRow {
     pub op: String,
     pub value: f64,
     pub created_at: i64,
+    /// How this value got here: a manual tick, a focus-timer completion, a
+    /// routine auto-log, a cascade from a child. Rows written before this
+    /// existed carry "unknown" rather than claiming to be manual.
+    #[serde(default = "unknown_source")]
+    pub source: String,
+    /// The specific control that did it, free text ("today_checkbox",
+    /// "step_meter"), for when the source alone is too coarse.
+    #[serde(default)]
+    pub via: String,
+}
+
+fn unknown_source() -> String {
+    "unknown".into()
 }
 
 #[derive(Serialize, Deserialize)]
@@ -185,6 +208,23 @@ pub struct Reflection {
     pub text: String,
     pub created_at: i64,
     pub updated_at: i64,
+    /// overall / energy / progress, 1-5, as {"overall":4,...}
+    #[serde(default)]
+    pub ratings: Option<sqlx::types::JsonValue>,
+    /// per areaId: {"rating":4,"note":"..."}
+    #[serde(default)]
+    pub area_notes: Option<sqlx::types::JsonValue>,
+    #[serde(default)]
+    pub wins: Vec<String>,
+    #[serde(default)]
+    pub lessons: Vec<String>,
+    #[serde(default)]
+    pub blockers: Vec<String>,
+    /// Commitments for the NEXT period, each optionally naming an item and a
+    /// number to reach. The following period scores these by counting, which
+    /// is the only reason a reflection can ever be measured against anything.
+    #[serde(default)]
+    pub intentions: Option<sqlx::types::JsonValue>,
 }
 
 /// One journal entry per user per day (Postgres table: daily_entries).
@@ -201,6 +241,23 @@ pub struct JournalEntry {
     pub energy: Option<i32>,
     pub created_at: i64,
     pub updated_at: i64,
+    /// The quiet, optional half of a day. All nullable: the daily flow must
+    /// not get longer for anyone who does not want these.
+    #[serde(default)]
+    pub sleep_hours: Option<f64>,
+    #[serde(default)]
+    pub sleep_quality: Option<i32>,
+    #[serde(default)]
+    pub stress: Option<i32>,
+    #[serde(default)]
+    pub focus: Option<i32>,
+    #[serde(default)]
+    pub gratitude: String,
+    /// "one thing that would make today good"
+    #[serde(default)]
+    pub intention: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -229,6 +286,10 @@ pub struct HabitDayNote {
     /// routines only: ids of the steps done on this day
     #[serde(default)]
     pub done_steps: Option<Vec<String>>,
+    /// stepId -> epoch ms, so the order and time of day a script was actually
+    /// walked survives. done_steps stays exactly as it was beside it.
+    #[serde(default)]
+    pub done_steps_at: Option<sqlx::types::JsonValue>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -247,6 +308,85 @@ pub struct DayOrder {
     pub updated_at: i64,
 }
 
+/// One timer attempt, written when it ENDS for any reason — completed, closed,
+/// skipped or left running past its deadline. Abandonment data is the half the
+/// app used to throw away, so it is recorded exactly like success.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FocusSession {
+    pub id: Uuid,
+    pub item_id: Option<Uuid>,
+    /// the Today row it started from — a real action id, or a virtual
+    /// "habit:<itemId>:<date>" id, so it is text rather than uuid
+    #[serde(default)]
+    pub entry_id: String,
+    pub day: String,
+    /// focus | routine_step | routine_run | day_run | rest
+    pub kind: String,
+    pub step_id: Option<String>,
+    pub started_at: i64,
+    pub ended_at: i64,
+    /// what was asked for; null means untimed (counted up instead)
+    pub planned_seconds: Option<i32>,
+    #[serde(default)]
+    pub actual_seconds: i32,
+    #[serde(default)]
+    pub paused_seconds: i32,
+    #[serde(default)]
+    pub pause_count: i32,
+    pub outcome: String,
+    #[serde(default)]
+    pub tz: String,
+    #[serde(default)]
+    pub utc_offset_minutes: i32,
+    pub created_at: i64,
+}
+
+/// One behavioural fact. Append-only: events are never updated or deleted,
+/// because the record of what happened includes what did not work out.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventRow {
+    pub id: Uuid,
+    pub at: i64,
+    pub day: String,
+    #[serde(default)]
+    pub tz: String,
+    #[serde(default)]
+    pub utc_offset_minutes: i32,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub item_id: Option<Uuid>,
+    #[serde(default)]
+    pub payload: Option<sqlx::types::JsonValue>,
+    pub created_at: i64,
+}
+
+/// Server-owned preferences and context (Postgres table: user_settings).
+/// Everything is optional: a user who fills in nothing sees today's app.
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct UserSettings {
+    pub theme: Option<String>,
+    pub font: Option<String>,
+    pub simple: Option<bool>,
+    pub rest_seconds: Option<i32>,
+    pub timezone: Option<String>,
+    pub week_start: Option<i32>,
+    pub day_rollover_hour: Option<i32>,
+    pub wake_time: Option<String>,
+    pub sleep_time: Option<String>,
+    pub season_of_life: Option<String>,
+    pub occupation: Option<String>,
+    pub becoming: Option<String>,
+    pub constraints: Option<String>,
+    pub focus_minutes_target: Option<i32>,
+    pub habit_days_target: Option<i32>,
+    pub deep_work_days_target: Option<i32>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DbPayload {
@@ -260,6 +400,8 @@ pub struct DbPayload {
     pub labels: Vec<Label>,
     pub habit_day_notes: Vec<HabitDayNote>,
     pub day_order: Vec<DayOrder>,
+    pub focus_sessions: Vec<FocusSession>,
+    pub events: Vec<EventRow>,
 }
 
 /* ————— validation ————— */
@@ -276,6 +418,12 @@ const STATUSES: &[&str] = &["active", "done", "someday", "archived"];
 const HORIZONS: &[&str] = &["someday", "life", "year", "quarter", "month", "week", "today", "date"];
 const CADENCES: &[&str] = &["daily", "weekdays", "days", "weekly", "monthly"];
 const PERIODS: &[&str] = &["week", "month", "quarter", "year"];
+const LOG_SOURCES: &[&str] = &[
+    "manual", "today_check", "item_page", "focus_timer", "routine_run", "parent_cascade",
+    "import", "unknown",
+];
+const FOCUS_KINDS: &[&str] = &["focus", "routine_step", "routine_run", "day_run", "rest"];
+const FOCUS_OUTCOMES: &[&str] = &["completed", "abandoned", "skipped", "interrupted", "expired"];
 
 fn bad(msg: impl Into<String>) -> ApiError {
     ApiError::BadRequest(msg.into())
@@ -330,7 +478,15 @@ impl Area {
         }
         ck_len("name", &self.name, MAX_NAME)?;
         ck_len("emoji", &self.emoji, MAX_EMOJI)?;
-        ck_len("color", &self.color, 32)
+        ck_len("color", &self.color, 32)?;
+        ck_len("description", &self.description, MAX_AREA_TEXT)?;
+        ck_len("why it matters", &self.why_it_matters, MAX_AREA_TEXT)?;
+        if let Some(share) = self.target_share {
+            if !share.is_finite() || !(0.0..=1.0).contains(&share) {
+                return Err(bad("target share must be between 0 and 1"));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -441,12 +597,31 @@ impl JournalEntry {
         };
         ck_len("daily notes", &self.rough_notes, rough_max)?;
         ck_len("reflection", &self.end_of_day, eod_max)?;
-        for (field, v) in [("mood", self.mood), ("energy", self.energy)] {
+        for (field, v) in [
+            ("mood", self.mood),
+            ("energy", self.energy),
+            ("sleep quality", self.sleep_quality),
+            ("stress", self.stress),
+            ("focus", self.focus),
+        ] {
             if let Some(n) = v {
                 if !(1..=5).contains(&n) {
                     return Err(bad(format!("{field} must be 1–5")));
                 }
             }
+        }
+        if let Some(h) = self.sleep_hours {
+            if !h.is_finite() || !(0.0..=24.0).contains(&h) {
+                return Err(bad("sleep hours must be between 0 and 24"));
+            }
+        }
+        ck_len("gratitude", &self.gratitude, MAX_DAILY_EXTRA)?;
+        ck_len("intention", &self.intention, MAX_DAILY_EXTRA)?;
+        if self.tags.len() > MAX_DAY_TAGS {
+            return Err(bad(format!("a day can carry at most {MAX_DAY_TAGS} tags")));
+        }
+        for t in &self.tags {
+            ck_len("tag", t, MAX_NAME)?;
         }
         Ok(())
     }
@@ -481,6 +656,8 @@ impl ActionRow {
 impl LogRow {
     fn validate(&self) -> ApiResult<()> {
         ck_in("op", &self.op, &["add", "set"])?;
+        ck_in("source", &self.source, LOG_SOURCES)?;
+        ck_len("via", &self.via, 64)?;
         ck_date(&self.date)?;
         ck_num("value", self.value)
     }
@@ -490,8 +667,81 @@ impl Reflection {
     fn validate(&self) -> ApiResult<()> {
         ck_in("period", &self.period, PERIODS)?;
         ck_len("periodKey", &self.period_key, 16)?;
-        ck_len("text", &self.text, MAX_REFLECTION_TEXT)
+        ck_len("text", &self.text, MAX_REFLECTION_TEXT)?;
+        for (field, list) in [("wins", &self.wins), ("lessons", &self.lessons), ("blockers", &self.blockers)] {
+            if list.len() > MAX_REFLECTION_LINES {
+                return Err(bad(format!("too many {field} (max {MAX_REFLECTION_LINES})")));
+            }
+            for line in list {
+                ck_len(field, line, MAX_REFLECTION_LINE)?;
+            }
+        }
+        for (field, v) in [("ratings", &self.ratings), ("areaNotes", &self.area_notes), ("intentions", &self.intentions)] {
+            if let Some(json) = v {
+                ck_json_size(field, json, MAX_REFLECTION_TEXT)?;
+            }
+        }
+        Ok(())
     }
+}
+
+impl FocusSession {
+    fn validate(&self) -> ApiResult<()> {
+        ck_date(&self.day)?;
+        ck_in("kind", &self.kind, FOCUS_KINDS)?;
+        ck_in("outcome", &self.outcome, FOCUS_OUTCOMES)?;
+        ck_len("entryId", &self.entry_id, MAX_TITLE)?;
+        if let Some(id) = &self.step_id {
+            ck_len("stepId", id, 64)?;
+        }
+        ck_len("tz", &self.tz, 64)?;
+        if !(-1080..=1080).contains(&self.utc_offset_minutes) {
+            return Err(bad("utcOffsetMinutes is out of range"));
+        }
+        // a day of wall clock is the generous ceiling; anything past it is a
+        // stuck tab, not a session, and storing it would poison every average
+        for (field, v) in [
+            ("plannedSeconds", self.planned_seconds.unwrap_or(0)),
+            ("actualSeconds", self.actual_seconds),
+            ("pausedSeconds", self.paused_seconds),
+        ] {
+            if !(0..=MAX_SESSION_SECONDS).contains(&v) {
+                return Err(bad(format!("{field} is out of range")));
+            }
+        }
+        if !(0..=10_000).contains(&self.pause_count) {
+            return Err(bad("pauseCount is out of range"));
+        }
+        Ok(())
+    }
+}
+
+impl EventRow {
+    fn validate(&self) -> ApiResult<()> {
+        ck_date(&self.day)?;
+        ck_len("type", &self.kind, 64)?;
+        if self.kind.trim().is_empty() {
+            return Err(bad("event type is required"));
+        }
+        ck_len("tz", &self.tz, 64)?;
+        if !(-1080..=1080).contains(&self.utc_offset_minutes) {
+            return Err(bad("utcOffsetMinutes is out of range"));
+        }
+        if let Some(payload) = &self.payload {
+            ck_json_size("payload", payload, MAX_EVENT_PAYLOAD)?;
+        }
+        Ok(())
+    }
+}
+
+/// A jsonb blob still has to fit in a human-sized wall — validating the shape
+/// of every payload would defeat the point of a free-form column, but its
+/// serialized size is a fair thing to hold a line on.
+fn ck_json_size(field: &str, v: &sqlx::types::JsonValue, max: usize) -> ApiResult<()> {
+    if v.to_string().len() > max {
+        return Err(bad(format!("{field} is too large (max {max} bytes)")));
+    }
+    Ok(())
 }
 
 impl HabitDayNote {
@@ -505,6 +755,9 @@ impl HabitDayNote {
             for id in steps {
                 ck_len("done step id", id, 64)?;
             }
+        }
+        if let Some(at) = &self.done_steps_at {
+            ck_json_size("doneStepsAt", at, 8_000)?;
         }
         Ok(())
     }
@@ -529,15 +782,18 @@ async fn upsert_areas(conn: &mut PgConnection, user: Uuid, rows: &[Area]) -> Api
     for r in rows {
         r.validate()?;
         sqlx::query(
-            "insert into areas (id, user_id, name, emoji, color, position, created_at_ms)
-             values ($1, $2, $3, $4, $5, $6, $7)
+            "insert into areas (id, user_id, name, emoji, color, position, created_at_ms,
+               description, why_it_matters, target_share)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
              on conflict (id) do update set
                name = excluded.name, emoji = excluded.emoji, color = excluded.color,
-               position = excluded.position
+               position = excluded.position, description = excluded.description,
+               why_it_matters = excluded.why_it_matters, target_share = excluded.target_share
              where areas.user_id = $2",
         )
         .bind(r.id).bind(user).bind(&r.name).bind(&r.emoji).bind(&r.color)
         .bind(r.position).bind(r.created_at)
+        .bind(&r.description).bind(&r.why_it_matters).bind(r.target_share)
         .execute(&mut *conn)
         .await?;
     }
@@ -628,14 +884,15 @@ async fn upsert_logs(conn: &mut PgConnection, user: Uuid, rows: &[LogRow]) -> Ap
     for r in rows {
         r.validate()?;
         sqlx::query(
-            "insert into logs (id, user_id, item_id, date, op, value, created_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7)
+            "insert into logs (id, user_id, item_id, date, op, value, created_at_ms, source, via)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
              on conflict (id) do update set
-               date = excluded.date, op = excluded.op, value = excluded.value
+               date = excluded.date, op = excluded.op, value = excluded.value,
+               source = excluded.source, via = excluded.via
              where logs.user_id = $2",
         )
         .bind(r.id).bind(user).bind(r.item_id).bind(&r.date).bind(&r.op)
-        .bind(r.value).bind(r.created_at)
+        .bind(r.value).bind(r.created_at).bind(&r.source).bind(&r.via)
         .execute(&mut *conn)
         .await?;
     }
@@ -653,15 +910,22 @@ async fn upsert_journal(
         // one entry per day: a second device writing the same date merges into it
         sqlx::query(
             "insert into daily_entries (id, user_id, date, rough_notes, end_of_day, mood, energy,
-               created_at_ms, updated_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+               created_at_ms, updated_at_ms, sleep_hours, sleep_quality, stress, focus,
+               gratitude, intention, tags)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
              on conflict (user_id, date) do update set
                rough_notes = excluded.rough_notes, end_of_day = excluded.end_of_day,
                mood = excluded.mood, energy = excluded.energy,
+               sleep_hours = excluded.sleep_hours, sleep_quality = excluded.sleep_quality,
+               stress = excluded.stress, focus = excluded.focus,
+               gratitude = excluded.gratitude, intention = excluded.intention,
+               tags = excluded.tags,
                updated_at_ms = excluded.updated_at_ms",
         )
         .bind(r.id).bind(user).bind(&r.date).bind(&r.rough_notes).bind(&r.end_of_day)
         .bind(r.mood).bind(r.energy).bind(r.created_at).bind(r.updated_at)
+        .bind(r.sleep_hours).bind(r.sleep_quality).bind(r.stress).bind(r.focus)
+        .bind(&r.gratitude).bind(&r.intention).bind(&r.tags)
         .execute(&mut *conn)
         .await?;
     }
@@ -691,15 +955,21 @@ async fn upsert_reflections(conn: &mut PgConnection, user: Uuid, rows: &[Reflect
     for r in rows {
         r.validate()?;
         sqlx::query(
-            "insert into reflections (id, user_id, period, period_key, text, created_at_ms, updated_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7)
+            "insert into reflections (id, user_id, period, period_key, text, created_at_ms, updated_at_ms,
+               ratings, area_notes, wins, lessons, blockers, intentions)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
              on conflict (id) do update set
                period = excluded.period, period_key = excluded.period_key,
-               text = excluded.text, updated_at_ms = excluded.updated_at_ms
+               text = excluded.text, updated_at_ms = excluded.updated_at_ms,
+               ratings = excluded.ratings, area_notes = excluded.area_notes,
+               wins = excluded.wins, lessons = excluded.lessons,
+               blockers = excluded.blockers, intentions = excluded.intentions
              where reflections.user_id = $2",
         )
         .bind(r.id).bind(user).bind(&r.period).bind(&r.period_key).bind(&r.text)
         .bind(r.created_at).bind(r.updated_at)
+        .bind(&r.ratings).bind(&r.area_notes).bind(&r.wins).bind(&r.lessons)
+        .bind(&r.blockers).bind(&r.intentions)
         .execute(&mut *conn)
         .await?;
     }
@@ -716,14 +986,16 @@ async fn upsert_habit_day_notes(
         // one row per habit per day: a second device writing the same
         // item + date merges into it
         sqlx::query(
-            "insert into habit_day_notes (id, user_id, item_id, date, text, done_steps, created_at_ms, updated_at_ms)
-             values ($1,$2,$3,$4,$5,$6,$7,$8)
+            "insert into habit_day_notes (id, user_id, item_id, date, text, done_steps,
+               done_steps_at, created_at_ms, updated_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
              on conflict (user_id, item_id, date) do update set
                text = excluded.text, done_steps = excluded.done_steps,
+               done_steps_at = excluded.done_steps_at,
                updated_at_ms = excluded.updated_at_ms",
         )
         .bind(r.id).bind(user).bind(r.item_id).bind(&r.date).bind(&r.text)
-        .bind(&r.done_steps).bind(r.created_at).bind(r.updated_at)
+        .bind(&r.done_steps).bind(&r.done_steps_at).bind(r.created_at).bind(r.updated_at)
         .execute(&mut *conn)
         .await?;
     }
@@ -747,6 +1019,47 @@ async fn upsert_day_order(conn: &mut PgConnection, user: Uuid, rows: &[DayOrder]
     Ok(())
 }
 
+/// Append-only: a session that already exists is never rewritten. A retry
+/// after a flaky flush must not be able to change what happened.
+async fn upsert_focus_sessions(conn: &mut PgConnection, user: Uuid, rows: &[FocusSession]) -> ApiResult<()> {
+    for r in rows {
+        r.validate()?;
+        sqlx::query(
+            "insert into focus_sessions (id, user_id, item_id, entry_id, day, kind, step_id,
+               started_at_ms, ended_at_ms, planned_seconds, actual_seconds, paused_seconds,
+               pause_count, outcome, tz, utc_offset_minutes, created_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+             on conflict (id) do nothing",
+        )
+        .bind(r.id).bind(user).bind(r.item_id).bind(&r.entry_id).bind(&r.day).bind(&r.kind)
+        .bind(&r.step_id).bind(r.started_at).bind(r.ended_at).bind(r.planned_seconds)
+        .bind(r.actual_seconds).bind(r.paused_seconds).bind(r.pause_count).bind(&r.outcome)
+        .bind(&r.tz).bind(r.utc_offset_minutes).bind(r.created_at)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
+/// Append-only, same reasoning: an event is a record of a moment, and a
+/// re-delivered batch must be a no-op rather than a rewrite of history.
+async fn upsert_events(conn: &mut PgConnection, user: Uuid, rows: &[EventRow]) -> ApiResult<()> {
+    for r in rows {
+        r.validate()?;
+        sqlx::query(
+            "insert into events (id, user_id, at_ms, day, tz, utc_offset_minutes, type, item_id,
+               payload, created_at_ms)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,coalesce($9, '{}'::jsonb),$10)
+             on conflict (id) do nothing",
+        )
+        .bind(r.id).bind(user).bind(r.at).bind(&r.day).bind(&r.tz).bind(r.utc_offset_minutes)
+        .bind(&r.kind).bind(r.item_id).bind(&r.payload).bind(r.created_at)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
 /* ————— caps enforcement (checked inside the transaction, then commit) ————— */
 
 /// Client table name → Postgres table name.
@@ -755,6 +1068,7 @@ fn sql_table(table: &str) -> &str {
         "journal" => "daily_entries",
         "habitDayNotes" => "habit_day_notes",
         "dayOrder" => "day_order",
+        "focusSessions" => "focus_sessions",
         other => other,
     }
 }
@@ -784,6 +1098,8 @@ async fn enforce_caps(
             "labels" => c.labels,
             "habitDayNotes" => c.habit_day_notes,
             "dayOrder" => c.day_order,
+            "focusSessions" => c.focus_sessions,
+            "events" => c.events,
             _ => i64::MAX,
         };
         if n > cap {
@@ -831,6 +1147,8 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
         .iter().map(|r| Area {
             id: r.get("id"), name: r.get("name"), emoji: r.get("emoji"),
             color: r.get("color"), position: r.get("position"), created_at: r.get("created_at_ms"),
+            description: r.get("description"), why_it_matters: r.get("why_it_matters"),
+            target_share: r.get("target_share"),
         }).collect();
     let items = sqlx::query("select * from items where user_id = $1 order by position")
         .bind(user).fetch_all(&state.pool).await?
@@ -871,12 +1189,16 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
         .iter().map(|r| LogRow {
             id: r.get("id"), item_id: r.get("item_id"), date: r.get("date"),
             op: r.get("op"), value: r.get("value"), created_at: r.get("created_at_ms"),
+            source: r.get("source"), via: r.get("via"),
         }).collect();
     let reflections = sqlx::query("select * from reflections where user_id = $1")
         .bind(user).fetch_all(&state.pool).await?
         .iter().map(|r| Reflection {
             id: r.get("id"), period: r.get("period"), period_key: r.get("period_key"),
             text: r.get("text"), created_at: r.get("created_at_ms"), updated_at: r.get("updated_at_ms"),
+            ratings: r.get("ratings"), area_notes: r.get("area_notes"),
+            wins: r.get("wins"), lessons: r.get("lessons"), blockers: r.get("blockers"),
+            intentions: r.get("intentions"),
         }).collect();
     let journal = sqlx::query("select * from daily_entries where user_id = $1 order by date")
         .bind(user).fetch_all(&state.pool).await?
@@ -884,6 +1206,9 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             id: r.get("id"), date: r.get("date"), rough_notes: r.get("rough_notes"),
             end_of_day: r.get("end_of_day"), mood: r.get("mood"), energy: r.get("energy"),
             created_at: r.get("created_at_ms"), updated_at: r.get("updated_at_ms"),
+            sleep_hours: r.get("sleep_hours"), sleep_quality: r.get("sleep_quality"),
+            stress: r.get("stress"), focus: r.get("focus"),
+            gratitude: r.get("gratitude"), intention: r.get("intention"), tags: r.get("tags"),
         }).collect();
     let labels = sqlx::query("select * from labels where user_id = $1 order by position")
         .bind(user).fetch_all(&state.pool).await?
@@ -896,6 +1221,7 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
         .iter().map(|r| HabitDayNote {
             id: r.get("id"), item_id: r.get("item_id"), date: r.get("date"),
             text: r.get("text"), done_steps: r.get("done_steps"),
+            done_steps_at: r.get("done_steps_at"),
             created_at: r.get("created_at_ms"), updated_at: r.get("updated_at_ms"),
         }).collect();
     let day_order = sqlx::query("select * from day_order where user_id = $1")
@@ -905,7 +1231,41 @@ pub async fn load_all(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
             updated_at: r.get("updated_at_ms"),
         }).collect();
 
-    Ok(DbPayload { areas, items, seeds, actions, logs, reflections, journal, labels, habit_day_notes, day_order })
+    // The two append-only streams are deliberately NOT part of the app
+    // payload: nothing on screen reads them, and shipping a year of events
+    // down the wire on every page load would be a real cost for no gain.
+    // The export path calls load_everything instead.
+    Ok(DbPayload {
+        areas, items, seeds, actions, logs, reflections, journal, labels, habit_day_notes,
+        day_order, focus_sessions: Vec::new(), events: Vec::new(),
+    })
+}
+
+/// Everything, streams included — what the export bundle is built from.
+pub async fn load_everything(state: &AppState, user: Uuid) -> ApiResult<DbPayload> {
+    let mut data = load_all(state, user).await?;
+    data.focus_sessions = sqlx::query(
+        "select * from focus_sessions where user_id = $1 order by started_at_ms",
+    )
+        .bind(user).fetch_all(&state.pool).await?
+        .iter().map(|r| FocusSession {
+            id: r.get("id"), item_id: r.get("item_id"), entry_id: r.get("entry_id"),
+            day: r.get("day"), kind: r.get("kind"), step_id: r.get("step_id"),
+            started_at: r.get("started_at_ms"), ended_at: r.get("ended_at_ms"),
+            planned_seconds: r.get("planned_seconds"), actual_seconds: r.get("actual_seconds"),
+            paused_seconds: r.get("paused_seconds"), pause_count: r.get("pause_count"),
+            outcome: r.get("outcome"), tz: r.get("tz"),
+            utc_offset_minutes: r.get("utc_offset_minutes"), created_at: r.get("created_at_ms"),
+        }).collect();
+    data.events = sqlx::query("select * from events where user_id = $1 order by at_ms")
+        .bind(user).fetch_all(&state.pool).await?
+        .iter().map(|r| EventRow {
+            id: r.get("id"), at: r.get("at_ms"), day: r.get("day"), tz: r.get("tz"),
+            utc_offset_minutes: r.get("utc_offset_minutes"), kind: r.get("type"),
+            item_id: r.get("item_id"), payload: r.get("payload"),
+            created_at: r.get("created_at_ms"),
+        }).collect();
+    Ok(data)
 }
 
 #[derive(Deserialize)]
@@ -955,6 +1315,10 @@ async fn apply_upsert(
             upsert_habit_day_notes(tx.as_mut(), user.id, &parse::<HabitDayNote>(rows)?).await
         }
         "dayOrder" => upsert_day_order(tx.as_mut(), user.id, &parse::<DayOrder>(rows)?).await,
+        "focusSessions" => {
+            upsert_focus_sessions(tx.as_mut(), user.id, &parse::<FocusSession>(rows)?).await
+        }
+        "events" => upsert_events(tx.as_mut(), user.id, &parse::<EventRow>(rows)?).await,
         _ => Err(ApiError::NotFound),
     }
 }
@@ -970,6 +1334,9 @@ pub async fn remove(
     Path(table): Path<String>,
     Json(body): Json<IdsBody>,
 ) -> ApiResult<Json<Value>> {
+    // focusSessions and events are deliberately absent: both are append-only
+    // logs of what happened, and the whole point of them is that a later
+    // change of heart cannot edit the record.
     const TABLES: &[&str] = &[
         "areas", "items", "seeds", "actions", "logs", "reflections", "journal", "labels",
         "habitDayNotes", "dayOrder",
@@ -1001,7 +1368,7 @@ pub async fn import(
     let total = body.areas.len() + body.items.len() + body.seeds.len()
         + body.actions.len() + body.logs.len() + body.reflections.len()
         + body.journal.len() + body.labels.len() + body.habit_day_notes.len()
-        + body.day_order.len();
+        + body.day_order.len() + body.focus_sessions.len() + body.events.len();
     if total > MAX_IMPORT_ROWS {
         return Err(ApiError::BadRequest(format!("Import too large (max {MAX_IMPORT_ROWS} rows)")));
     }
@@ -1016,12 +1383,14 @@ pub async fn import(
     upsert_labels(tx.as_mut(), user.id, &body.labels).await?;
     upsert_habit_day_notes(tx.as_mut(), user.id, &body.habit_day_notes).await?;
     upsert_day_order(tx.as_mut(), user.id, &body.day_order).await?;
+    upsert_focus_sessions(tx.as_mut(), user.id, &body.focus_sessions).await?;
+    upsert_events(tx.as_mut(), user.id, &body.events).await?;
     enforce_caps(
         &mut tx,
         &user,
         &[
             "areas", "items", "seeds", "actions", "logs", "reflections", "journal", "labels",
-            "habitDayNotes", "dayOrder",
+            "habitDayNotes", "dayOrder", "focusSessions", "events",
         ],
     )
     .await?;
@@ -1029,12 +1398,149 @@ pub async fn import(
     Ok(Json(json!({ "ok": true, "imported": total })))
 }
 
+/// Everything this account holds, in one JSON document: the app tables, both
+/// append-only streams, and the settings that say how to read them. This is
+/// the source the export bundle is built from — the bundle itself is
+/// assembled on the client so that a signed-out user, whose data never leaves
+/// their device, gets a byte-for-byte identical set of files.
 pub async fn export(State(state): State<AppState>, user: AuthUser) -> ApiResult<Json<Value>> {
-    let data = load_all(&state, user.id).await?;
+    let data = load_everything(&state, user.id).await?;
+    let settings = read_settings(&state, user.id).await?;
     Ok(Json(json!({
         "app": "LoopUpward",
         "exportedAt": chrono::Utc::now().to_rfc3339(),
         "account": { "email": user.email },
+        "settings": settings,
         "data": data,
     })))
+}
+
+/* ————— settings ————— */
+
+async fn read_settings(state: &AppState, user: Uuid) -> ApiResult<UserSettings> {
+    let row = sqlx::query("select * from user_settings where user_id = $1")
+        .bind(user)
+        .fetch_optional(&state.pool)
+        .await?;
+    Ok(match row {
+        None => UserSettings::default(),
+        Some(r) => UserSettings {
+            theme: r.get("theme"),
+            font: r.get("font"),
+            simple: r.get("simple"),
+            rest_seconds: r.get("rest_seconds"),
+            timezone: r.get("timezone"),
+            week_start: r.get("week_start"),
+            day_rollover_hour: r.get("day_rollover_hour"),
+            wake_time: r.get("wake_time"),
+            sleep_time: r.get("sleep_time"),
+            season_of_life: r.get("season_of_life"),
+            occupation: r.get("occupation"),
+            becoming: r.get("becoming"),
+            constraints: r.get("constraints"),
+            focus_minutes_target: r.get("focus_minutes_target"),
+            habit_days_target: r.get("habit_days_target"),
+            deep_work_days_target: r.get("deep_work_days_target"),
+            created_at: r.get("created_at_ms"),
+            updated_at: r.get("updated_at_ms"),
+        },
+    })
+}
+
+impl UserSettings {
+    fn validate(&self) -> ApiResult<()> {
+        for (field, v) in [
+            ("seasonOfLife", &self.season_of_life),
+            ("occupation", &self.occupation),
+            ("becoming", &self.becoming),
+            ("constraints", &self.constraints),
+        ] {
+            if let Some(text) = v {
+                ck_len(field, text, MAX_CONTEXT_TEXT)?;
+            }
+        }
+        if let Some(tz) = &self.timezone {
+            ck_len("timezone", tz, 64)?;
+        }
+        for (field, v) in [("wakeTime", &self.wake_time), ("sleepTime", &self.sleep_time)] {
+            if let Some(t) = v {
+                if !t.is_empty() && !is_hm(t) {
+                    return Err(bad(format!("{field} must be HH:MM")));
+                }
+            }
+        }
+        if let Some(w) = self.week_start {
+            if !(0..=6).contains(&w) {
+                return Err(bad("weekStart must be a weekday number 0–6"));
+            }
+        }
+        if let Some(h) = self.day_rollover_hour {
+            if !(0..=12).contains(&h) {
+                return Err(bad("dayRolloverHour must be between 0 and 12"));
+            }
+        }
+        if let Some(r) = self.rest_seconds {
+            if !(0..=600).contains(&r) {
+                return Err(bad("restSeconds is out of range"));
+            }
+        }
+        for (field, v) in [
+            ("focusMinutesTarget", self.focus_minutes_target),
+            ("habitDaysTarget", self.habit_days_target),
+            ("deepWorkDaysTarget", self.deep_work_days_target),
+        ] {
+            if let Some(n) = v {
+                if !(0..=10_000).contains(&n) {
+                    return Err(bad(format!("{field} is out of range")));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+pub async fn get_settings(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> ApiResult<Json<UserSettings>> {
+    Ok(Json(read_settings(&state, user.id).await?))
+}
+
+/// Whole-document replace. Settings are a single small row edited by one
+/// person on one screen; a patch protocol would buy nothing and would make
+/// "clear this field" ambiguous.
+pub async fn put_settings(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(body): Json<UserSettings>,
+) -> ApiResult<Json<UserSettings>> {
+    body.validate()?;
+    let now = chrono::Utc::now().timestamp_millis();
+    sqlx::query(
+        "insert into user_settings (user_id, theme, font, simple, rest_seconds, timezone,
+           week_start, day_rollover_hour, wake_time, sleep_time, season_of_life, occupation,
+           becoming, constraints, focus_minutes_target, habit_days_target,
+           deep_work_days_target, created_at_ms, updated_at_ms)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$18)
+         on conflict (user_id) do update set
+           theme = excluded.theme, font = excluded.font, simple = excluded.simple,
+           rest_seconds = excluded.rest_seconds, timezone = excluded.timezone,
+           week_start = excluded.week_start, day_rollover_hour = excluded.day_rollover_hour,
+           wake_time = excluded.wake_time, sleep_time = excluded.sleep_time,
+           season_of_life = excluded.season_of_life, occupation = excluded.occupation,
+           becoming = excluded.becoming, constraints = excluded.constraints,
+           focus_minutes_target = excluded.focus_minutes_target,
+           habit_days_target = excluded.habit_days_target,
+           deep_work_days_target = excluded.deep_work_days_target,
+           updated_at_ms = excluded.updated_at_ms",
+    )
+    .bind(user.id).bind(&body.theme).bind(&body.font).bind(body.simple).bind(body.rest_seconds)
+    .bind(&body.timezone).bind(body.week_start).bind(body.day_rollover_hour)
+    .bind(&body.wake_time).bind(&body.sleep_time).bind(&body.season_of_life)
+    .bind(&body.occupation).bind(&body.becoming).bind(&body.constraints)
+    .bind(body.focus_minutes_target).bind(body.habit_days_target)
+    .bind(body.deep_work_days_target).bind(now)
+    .execute(&state.pool)
+    .await?;
+    Ok(Json(read_settings(&state, user.id).await?))
 }

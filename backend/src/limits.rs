@@ -15,6 +15,8 @@ pub struct Caps {
     pub labels: i64,
     pub habit_day_notes: i64,
     pub day_order: i64,
+    pub focus_sessions: i64,
+    pub events: i64,
 }
 
 pub fn caps(premium: bool) -> Caps {
@@ -31,6 +33,8 @@ pub fn caps(premium: bool) -> Caps {
             labels: 500,
             habit_day_notes: 100_000,
             day_order: 50_000,
+            focus_sessions: 2_000_000,
+            events: 5_000_000,
         }
     } else {
         Caps {
@@ -45,6 +49,8 @@ pub fn caps(premium: bool) -> Caps {
             labels: 10,
             habit_day_notes: 5_000,
             day_order: 2_000,
+            focus_sessions: 100_000,
+            events: 250_000,
         }
     }
 }
@@ -63,6 +69,8 @@ pub fn caps_json(premium: bool) -> Value {
         "labels": c.labels,
         "habitDayNotes": c.habit_day_notes,
         "dayOrder": c.day_order,
+        "focusSessions": c.focus_sessions,
+        "events": c.events,
         "journalRoughChars": if premium { MAX_JOURNAL_ROUGH_PREMIUM } else { MAX_JOURNAL_ROUGH_FREE },
         "journalEodChars": if premium { MAX_JOURNAL_EOD_PREMIUM } else { MAX_JOURNAL_EOD_FREE },
     })
@@ -80,6 +88,20 @@ pub const MAX_HABIT_DAY_NOTE: usize = 500;
 /* a day's manual task order is a plain id list, not user text */
 pub const MAX_DAY_ORDER_ENTRIES: usize = 500;
 pub const MAX_NAME: usize = 120;
+/* an area explains itself in a paragraph, not an essay */
+pub const MAX_AREA_TEXT: usize = 2_000;
+/* who you are and what you are becoming — context for reading the export */
+pub const MAX_CONTEXT_TEXT: usize = 4_000;
+/* the optional half of a day: gratitude, the one intention */
+pub const MAX_DAILY_EXTRA: usize = 2_000;
+pub const MAX_DAY_TAGS: usize = 20;
+/* a reflection's wins/lessons/blockers are bullet points, not chapters */
+pub const MAX_REFLECTION_LINES: usize = 50;
+pub const MAX_REFLECTION_LINE: usize = 1_000;
+/* an event payload is a handful of fields about one moment */
+pub const MAX_EVENT_PAYLOAD: usize = 4_000;
+/* a day of wall clock: past this it is a stuck tab, not a focus session */
+pub const MAX_SESSION_SECONDS: i32 = 86_400;
 /* journal walls — the human loop stays human-sized */
 pub const MAX_JOURNAL_ROUGH_FREE: usize = 5_000;
 pub const MAX_JOURNAL_EOD_FREE: usize = 3_000;
