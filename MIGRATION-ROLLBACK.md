@@ -10,7 +10,7 @@ content hash at that moment.
 |---|---|---|
 | API process | Railway service `loopupward` | Cloud Run `loopupward`, region **us-east4** |
 | Database | Railway Postgres 18.4 | Neon Postgres 18.4, `us-east-2` |
-| Secrets | Railway service variables | GCP Secret Manager (12 secrets) |
+| Secrets | Railway service variables | GCP Secret Manager: only the 4 that are genuinely secret (both Neon URLs, Razorpay key secret, Razorpay webhook secret). The Google client id, Razorpay key id and the six plan ids are plain env vars: all three are already handed to the browser, and the plan ids are inert without the key secret. Four enabled versions sits inside the six-version free tier, so Secret Manager costs nothing. |
 | Deploys | Railway watched the repo | `.github/workflows/deploy-backend.yml` |
 | Public URL | `api.loopupward.com` | unchanged |
 
